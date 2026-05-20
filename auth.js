@@ -1,5 +1,7 @@
 /**
  * CheckFire Marketing Hub — Auth (lightweight PKCE, no library)
+ * Uses localStorage (not sessionStorage) so state survives the Microsoft redirect
+ * in corporate browser environments.
  */
 
 const AUTH = { token: null, account: null };
@@ -12,7 +14,7 @@ function getRedirectUri() {
   return HUB_CONFIG.redirectUri || (window.location.origin + window.location.pathname);
 }
 
-// Start with minimal scopes — no admin consent required
+// Minimal scopes — no admin consent required for sign-in
 const SCOPES = 'User.Read openid profile offline_access';
 
 // ── PKCE ─────────────────────────────────────────────────────
@@ -34,10 +36,14 @@ async function generatePKCE() {
 async function setupSignInButton() {
   try {
     const { verifier, challenge } = await generatePKCE();
-    const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
+    const state = crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now();
 
-    sessionStorage.setItem('hub_pkce_verifier', verifier);
-    sessionStorage.setItem('hub_pkce_state', state);
+    // localStorage survives the browser navigation to Microsoft and back
+    localStorage.setItem('hub_pkce_verifier', verifier);
+    localStorage.setItem('hub_pkce_state',    state);
+    localStorage.setItem('hub_pkce_time',     Date.now().toString());
 
     const params = new URLSearchParams({
       client_id:             HUB_CONFIG.clientId,
@@ -70,26 +76,41 @@ async function handleRedirect() {
 
   if (error) {
     showStatus('Microsoft error: ' + (params.get('error_description') || error), true);
+    window.history.replaceState({}, document.title, window.location.pathname);
     showAuthOverlay();
     return false;
   }
 
   if (!code) return false;
 
-  showStatus('Got code — verifying state...');
+  showStatus('Got code — verifying state…');
 
-  const savedState    = sessionStorage.getItem('hub_pkce_state');
-  const savedVerifier = sessionStorage.getItem('hub_pkce_verifier');
+  const savedState    = localStorage.getItem('hub_pkce_state');
+  const savedVerifier = localStorage.getItem('hub_pkce_verifier');
+  const savedTime     = parseInt(localStorage.getItem('hub_pkce_time') || '0', 10);
 
-  if (!savedState || state !== savedState) {
-    showStatus('State mismatch — please try signing in again. (saved: ' + (savedState ? 'yes' : 'missing') + ')', true);
-    // Clean URL and show sign-in
+  // Expire PKCE state after 10 minutes
+  if (Date.now() - savedTime > 10 * 60 * 1000) {
+    showStatus('Sign-in session expired — please try again.', true);
+    localStorage.removeItem('hub_pkce_verifier');
+    localStorage.removeItem('hub_pkce_state');
+    localStorage.removeItem('hub_pkce_time');
     window.history.replaceState({}, document.title, window.location.pathname);
     showAuthOverlay();
     return false;
   }
 
-  showStatus('Exchanging code for token...');
+  if (!savedState || state !== savedState) {
+    showStatus(
+      'State mismatch — please try again. (saved: ' + (savedState ? savedState.slice(0,8) + '…' : 'missing') +
+      ' | received: ' + (state ? state.slice(0,8) + '…' : 'missing') + ')', true
+    );
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showAuthOverlay();
+    return false;
+  }
+
+  showStatus('Exchanging code for token…');
 
   try {
     const res = await fetch(`${getAuthority()}/token`, {
@@ -114,10 +135,12 @@ async function handleRedirect() {
     }
 
     AUTH.token = data.access_token;
-    if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
+    if (data.refresh_token) localStorage.setItem('hub_refresh', data.refresh_token);
 
-    sessionStorage.removeItem('hub_pkce_verifier');
-    sessionStorage.removeItem('hub_pkce_state');
+    // Clean up PKCE state
+    localStorage.removeItem('hub_pkce_verifier');
+    localStorage.removeItem('hub_pkce_state');
+    localStorage.removeItem('hub_pkce_time');
 
     window.history.replaceState({}, document.title, window.location.pathname);
     showStatus('Signed in!');
@@ -125,7 +148,7 @@ async function handleRedirect() {
     return true;
 
   } catch (e) {
-    showStatus('Fetch error: ' + e.message, true);
+    showStatus('Network error: ' + e.message, true);
     window.history.replaceState({}, document.title, window.location.pathname);
     showAuthOverlay();
     return false;
@@ -136,7 +159,7 @@ async function handleRedirect() {
 
 async function getAccessToken() {
   if (AUTH.token) return AUTH.token;
-  const refresh = sessionStorage.getItem('hub_refresh');
+  const refresh = localStorage.getItem('hub_refresh');
   if (!refresh) return null;
   try {
     const res = await fetch(`${getAuthority()}/token`, {
@@ -150,12 +173,12 @@ async function getAccessToken() {
       }),
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    if (data.error) throw new Error(data.error_description || data.error);
     AUTH.token = data.access_token;
-    if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
+    if (data.refresh_token) localStorage.setItem('hub_refresh', data.refresh_token);
     return AUTH.token;
   } catch (e) {
-    sessionStorage.removeItem('hub_refresh');
+    localStorage.removeItem('hub_refresh');
     return null;
   }
 }
@@ -177,7 +200,11 @@ async function loadUserProfile() {
 
 function signOut() {
   AUTH.token = null;
-  sessionStorage.clear();
+  AUTH.account = null;
+  localStorage.removeItem('hub_refresh');
+  localStorage.removeItem('hub_pkce_verifier');
+  localStorage.removeItem('hub_pkce_state');
+  localStorage.removeItem('hub_pkce_time');
   window.location.href = `${getAuthority()}/logout?post_logout_redirect_uri=${encodeURIComponent(getRedirectUri())}`;
 }
 
@@ -189,16 +216,22 @@ async function initAuth() {
     return false;
   }
 
+  // Handle return from Microsoft login
   if (window.location.search.includes('code=') || window.location.search.includes('error=')) {
     return await handleRedirect();
   }
 
-  const refresh = sessionStorage.getItem('hub_refresh');
+  // Try silent refresh from saved token
+  const refresh = localStorage.getItem('hub_refresh');
   if (refresh) {
     const token = await getAccessToken();
-    if (token) { await loadUserProfile(); return true; }
+    if (token) {
+      await loadUserProfile();
+      return true;
+    }
   }
 
+  // Not signed in — show overlay
   showAuthOverlay();
   return false;
 }
@@ -212,10 +245,14 @@ function showAuthOverlay() {
 
 function showSignedIn(user) {
   document.getElementById('auth-overlay')?.classList.add('hidden');
+
+  // Update global nav user info if it exists
   const info = document.getElementById('nav-user-info');
   if (info) info.style.display = 'flex';
-  const name = user.displayName || user.mail || 'You';
-  const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+
+  const name     = user.displayName || user.mail || 'You';
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
   const avatar = document.getElementById('nav-user-avatar');
   const nameEl = document.getElementById('nav-user-name');
   if (avatar) avatar.textContent = initials;
@@ -230,16 +267,20 @@ function showDemoMode() {
 }
 
 function showStatus(msg, isError) {
-  // Show status in the auth card so it's always visible
   let el = document.getElementById('hub-auth-status');
   if (!el) {
     el = document.createElement('div');
     el.id = 'hub-auth-status';
-    el.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0A0A0A;color:#fff;padding:10px 18px;border-radius:10px;font-size:12px;z-index:99999;max-width:90vw;text-align:center';
+    el.style.cssText = [
+      'position:fixed', 'bottom:16px', 'left:50%', 'transform:translateX(-50%)',
+      'padding:10px 18px', 'border-radius:10px', 'font-size:12px',
+      'z-index:99999', 'max-width:90vw', 'text-align:center',
+      'font-family:sans-serif', 'color:#fff', 'pointer-events:none',
+    ].join(';');
     document.body.appendChild(el);
   }
   el.textContent = msg;
-  el.style.background = isError ? '#DC2626' : '#0A0A0A';
-  el.style.display = 'block';
+  el.style.background = isError ? '#DC2626' : '#111';
+  el.style.display    = 'block';
   if (!isError) setTimeout(() => { if (el) el.style.display = 'none'; }, 4000);
 }
