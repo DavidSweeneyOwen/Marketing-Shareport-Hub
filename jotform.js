@@ -32,6 +32,9 @@ async function fetchShowroomSubmissions() {
     return data.content || [];
   } catch (e) {
     console.warn('[Jotform] Failed to fetch submissions:', e.message);
+    // Surface error to visits panel
+    const vc = document.getElementById('sd-visits-container');
+    if (vc) vc.innerHTML = `<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">API error: ${e.message}</p>`;
     return null;
   }
 }
@@ -313,7 +316,16 @@ function onBookingSubmitted() {
 async function loadShowroomData() {
   const submissions = await fetchShowroomSubmissions();
 
-  if (submissions) {
+  if (submissions === null) {
+    // API unavailable — show a soft message in visits panel
+    const vc = document.getElementById('sd-visits-container');
+    if (vc) vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">Could not connect to booking system.<br><span style="color:#AAA;font-size:11px">Check your Jotform API key in config.js</span></p>';
+  } else if (submissions.length === 0) {
+    const vc = document.getElementById('sd-visits-container');
+    if (vc) vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">No bookings found in Jotform yet.</p>';
+  }
+
+  if (submissions && submissions.length > 0) {
     const { dates, parsed } = parseBookedDates(submissions);
     JF.bookedDates  = dates;
     JF.submissions  = parsed;
@@ -425,3 +437,11 @@ function renderMiniShowroomCalendar(bookedDates) {
     badgeEl.className = `badge ${freeDays > 0 ? 'green' : 'red'}`;
   }
 }
+
+// ─── Self-boot ────────────────────────────────────────────────
+// Jotform data doesn't need Microsoft auth — load it as soon as
+// the page is ready, regardless of sign-in state.
+document.addEventListener('DOMContentLoaded', () => {
+  // Small delay so the rest of the page scripts have initialised
+  setTimeout(loadShowroomData, 800);
+});
