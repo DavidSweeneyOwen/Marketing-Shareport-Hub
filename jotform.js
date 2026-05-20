@@ -439,9 +439,6 @@ function renderMiniShowroomCalendar(bookedDates) {
 }
 
 // ─── Self-boot ────────────────────────────────────────────────
-// Jotform data doesn't need Microsoft auth — load it as soon as
-// the page is ready, regardless of sign-in state.
-document.addEventListener('DOMContentLoaded', () => {
-  // Small delay so the rest of the page scripts have initialised
-  setTimeout(loadShowroomData, 800);
-});
+// Script tags are at the bottom of <body> so the DOM above is
+// already parsed — call directly, no event listener needed.
+setTimeout(loadShowroomData, 500);
