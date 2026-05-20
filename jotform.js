@@ -6,6 +6,15 @@
  * Also handles the booking modal with Jotform iframe embed.
  */
 
+// Immediate proof-of-life — runs synchronously as scripts load at bottom of <body>
+// If this line runs, DOM above the script tags is already parsed
+(function() {
+  const vc = document.getElementById('sd-visits-container');
+  if (vc) {
+    vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">Fetching bookings…</p>';
+  }
+})();
+
 // ─── State ───────────────────────────────────────────────────
 
 const JF = {
@@ -337,8 +346,8 @@ async function loadShowroomData() {
   if (document.getElementById('sd-cal-container')) {
     renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.bookedDates);
   }
-  // Render home page upcoming visits
-  if (document.getElementById('sd-visits-container')) {
+  // Render home page upcoming visits — only if we got real data
+  if (JF.loaded && document.getElementById('sd-visits-container')) {
     renderUpcomingVisits('sd-visits-container', JF.submissions);
   }
   // Render Trade page mini calendar sidebar
