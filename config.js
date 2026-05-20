@@ -1,33 +1,22 @@
 /**
  * CheckFire Marketing Hub — Configuration
- * ─────────────────────────────────────────
- * Fill in these values once during setup.
- * See DEPLOY.md for step-by-step instructions.
  */
 
 const HUB_CONFIG = {
 
-  // ── Azure AD ─────────────────────────────────────────────────
-  // From your App Registration in Azure Portal > Azure Active Directory
-  tenantId:   'YOUR_TENANT_ID',   // e.g. 'a1b2c3d4-...'
-  clientId:   'YOUR_CLIENT_ID',   // e.g. 'e5f6g7h8-...'
+  tenantId:   'a865e107-f1f1-4c83-b773-130146f1deff',
+  clientId:   '0cae2c21-b578-446e-8518-0855ad12d494',
 
-  // ── SharePoint ───────────────────────────────────────────────
-  // The URL of your SharePoint marketing site (no trailing slash)
-  sharepointSite: 'https://checkfire.sharepoint.com/sites/Marketing',
+  sharepointSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
 
-  // ── SharePoint List Names ────────────────────────────────────
-  // These must match the exact list names in your SharePoint site.
   lists: {
     launches:  'Product Launches',
     campaigns: 'Campaigns',
     events:    'Events',
   },
 
-  // ── Document Library ─────────────────────────────────────────
-  documentsLibrary: 'Marketing Assets',
+  documentsLibrary: 'Documents',
 
-  // ── Redirect URI (leave blank to auto-detect) ────────────────
-  redirectUri: '',
+  redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
 
 };
