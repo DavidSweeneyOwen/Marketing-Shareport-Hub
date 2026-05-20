@@ -238,3 +238,34 @@ function showAuthError(msg) {
   }
   console.error('[Auth]', msg);
 }
+
+// ── Pre-build the sign-in URL so the button works as a real link ──
+
+async function setupSignInButton() {
+  try {
+    const { verifier, challenge } = await generatePKCE();
+    const state = Math.random().toString(36).slice(2);
+    sessionStorage.setItem('pkce_verifier', verifier);
+    sessionStorage.setItem('pkce_state', state);
+
+    const params = new URLSearchParams({
+      client_id:             HUB_CONFIG.clientId,
+      response_type:         'code',
+      redirect_uri:          AUTH.redirectUri,
+      scope:                 AUTH.scopes,
+      code_challenge:        challenge,
+      code_challenge_method: 'S256',
+      state,
+      prompt:                'select_account',
+    });
+
+    const url = `https://login.microsoftonline.com/${HUB_CONFIG.tenantId}/oauth2/v2.0/authorize?${params}`;
+    const btn = document.getElementById('signin-link');
+    if (btn) {
+      btn.href = url;
+      btn.onclick = null; // remove onclick, just use the href
+    }
+  } catch(e) {
+    console.error('Could not build sign-in URL:', e);
+  }
+}
