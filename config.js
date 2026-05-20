@@ -33,7 +33,7 @@ HUB_CONFIG.wordpress = {
 // ── Jotform — Showroom Booking ────────────────────────────────
 // EU API key from your Jotform account (My Account → API Keys)
 HUB_CONFIG.jotform = {
-  apiKey:  'YOUR_JOTFORM_API_KEY',   // ← paste your EU API key here
+  apiKey:  'd60aa0a76de3c7b4120dd4fee9f79500',   // ← paste your EU API key here
   formId:  '240422414566047',
   apiBase: 'https://eu-api.jotform.com',
 };
