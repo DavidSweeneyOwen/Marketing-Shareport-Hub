@@ -20,3 +20,12 @@ const HUB_CONFIG = {
   redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
 
 };
+
+
+// ── WordPress News Feed ───────────────────────────────────────
+// Pulls latest posts directly from the CheckFire website.
+// No authentication needed — uses the public WordPress REST API.
+HUB_CONFIG.wordpress = {
+  apiUrl: 'https://www.checkfire.co.uk/wp-json/wp/v2',
+  postsPerPage: 6,
+};
