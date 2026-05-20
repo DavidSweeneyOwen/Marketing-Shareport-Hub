@@ -1,27 +1,26 @@
 /**
- * CheckFire Marketing Hub — Auth
- * Lightweight OAuth 2.0 PKCE — no external library required.
+ * CheckFire Marketing Hub — Auth (lightweight PKCE, no library)
  */
 
-const AUTH = {
-  token: null,
-  account: null,
+const AUTH = { token: null, account: null };
 
-  get authority() {
-    return `https://login.microsoftonline.com/${HUB_CONFIG.tenantId}/oauth2/v2.0`;
-  },
+function getAuthority() {
+  return `https://login.microsoftonline.com/${HUB_CONFIG.tenantId}/oauth2/v2.0`;
+}
 
-  get redirectUri() {
-    return HUB_CONFIG.redirectUri || window.location.origin + window.location.pathname;
-  },
+function getRedirectUri() {
+  return HUB_CONFIG.redirectUri || (window.location.origin + window.location.pathname);
+}
 
-  scopes: 'User.Read Sites.Read.All Files.Read.All offline_access openid profile',
-};
+// Start with minimal scopes — no admin consent required
+const SCOPES = 'User.Read openid profile offline_access';
 
-// ── PKCE helpers ──────────────────────────────────────────────
+// ── PKCE ─────────────────────────────────────────────────────
 
 async function generatePKCE() {
-  const verifier = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  const verifier = btoa(String.fromCharCode(...array))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
   const data = new TextEncoder().encode(verifier);
   const hash = await crypto.subtle.digest('SHA-256', data);
@@ -30,115 +29,133 @@ async function generatePKCE() {
   return { verifier, challenge };
 }
 
-// ── Sign in ───────────────────────────────────────────────────
+// ── Sign in button setup ──────────────────────────────────────
 
-async function signIn() {
+async function setupSignInButton() {
   try {
     const { verifier, challenge } = await generatePKCE();
-    const state = Math.random().toString(36).slice(2);
+    const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
 
-    sessionStorage.setItem('pkce_verifier', verifier);
-    sessionStorage.setItem('pkce_state', state);
+    sessionStorage.setItem('hub_pkce_verifier', verifier);
+    sessionStorage.setItem('hub_pkce_state', state);
 
     const params = new URLSearchParams({
       client_id:             HUB_CONFIG.clientId,
       response_type:         'code',
-      redirect_uri:          AUTH.redirectUri,
-      scope:                 AUTH.scopes,
+      redirect_uri:          getRedirectUri(),
+      scope:                 SCOPES,
       code_challenge:        challenge,
       code_challenge_method: 'S256',
       state,
       prompt:                'select_account',
     });
 
-    window.location.href = `${AUTH.authority}/authorize?${params}`;
+    const url = `${getAuthority()}/authorize?${params}`;
+    const btn = document.getElementById('signin-link');
+    if (btn) { btn.href = url; btn.onclick = null; }
+
+    showStatus('Ready to sign in');
   } catch (e) {
-    showAuthError('Could not start sign-in: ' + e.message);
+    showStatus('Setup error: ' + e.message, true);
   }
 }
 
-// ── Handle redirect back from Microsoft ───────────────────────
+// ── Handle redirect back ──────────────────────────────────────
 
 async function handleRedirect() {
   const params = new URLSearchParams(window.location.search);
-  const code  = params.get('code');
-  const state = params.get('state');
-  const error = params.get('error');
+  const code   = params.get('code');
+  const state  = params.get('state');
+  const error  = params.get('error');
 
   if (error) {
-    showAuthError('Sign-in error: ' + (params.get('error_description') || error));
+    showStatus('Microsoft error: ' + (params.get('error_description') || error), true);
+    showAuthOverlay();
     return false;
   }
 
   if (!code) return false;
 
-  // Validate state
-  if (state !== sessionStorage.getItem('pkce_state')) {
-    showAuthError('Security error — please try signing in again.');
+  showStatus('Got code — verifying state...');
+
+  const savedState    = sessionStorage.getItem('hub_pkce_state');
+  const savedVerifier = sessionStorage.getItem('hub_pkce_verifier');
+
+  if (!savedState || state !== savedState) {
+    showStatus('State mismatch — please try signing in again. (saved: ' + (savedState ? 'yes' : 'missing') + ')', true);
+    // Clean URL and show sign-in
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showAuthOverlay();
     return false;
   }
 
-  const verifier = sessionStorage.getItem('pkce_verifier');
+  showStatus('Exchanging code for token...');
 
   try {
-    const res = await fetch(`${AUTH.authority}/token`, {
+    const res = await fetch(`${getAuthority()}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id:     HUB_CONFIG.clientId,
         grant_type:    'authorization_code',
         code,
-        redirect_uri:  AUTH.redirectUri,
-        code_verifier: verifier,
+        redirect_uri:  getRedirectUri(),
+        code_verifier: savedVerifier,
       }),
     });
 
     const data = await res.json();
-    if (data.error) throw new Error(data.error_description || data.error);
+
+    if (data.error) {
+      showStatus('Token error: ' + (data.error_description || data.error), true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      showAuthOverlay();
+      return false;
+    }
 
     AUTH.token = data.access_token;
+    if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
 
-    // Store refresh token if present
-    if (data.refresh_token) sessionStorage.setItem('refresh_token', data.refresh_token);
+    sessionStorage.removeItem('hub_pkce_verifier');
+    sessionStorage.removeItem('hub_pkce_state');
 
-    // Clean up URL
     window.history.replaceState({}, document.title, window.location.pathname);
-
-    // Get user info
+    showStatus('Signed in!');
     await loadUserProfile();
     return true;
+
   } catch (e) {
-    showAuthError('Token exchange failed: ' + e.message);
+    showStatus('Fetch error: ' + e.message, true);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showAuthOverlay();
     return false;
   }
 }
 
-// ── Get access token (with refresh) ──────────────────────────
+// ── Token refresh ─────────────────────────────────────────────
 
 async function getAccessToken() {
   if (AUTH.token) return AUTH.token;
-
-  const refresh = sessionStorage.getItem('refresh_token');
+  const refresh = sessionStorage.getItem('hub_refresh');
   if (!refresh) return null;
-
   try {
-    const res = await fetch(`${AUTH.authority}/token`, {
+    const res = await fetch(`${getAuthority()}/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id:     HUB_CONFIG.clientId,
         grant_type:    'refresh_token',
         refresh_token: refresh,
-        scope:         AUTH.scopes,
+        scope:         SCOPES,
       }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     AUTH.token = data.access_token;
-    if (data.refresh_token) sessionStorage.setItem('refresh_token', data.refresh_token);
+    if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
     return AUTH.token;
   } catch (e) {
-    sessionStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('hub_refresh');
     return null;
   }
 }
@@ -158,17 +175,10 @@ async function loadUserProfile() {
   }
 }
 
-// ── Sign out ──────────────────────────────────────────────────
-
 function signOut() {
   AUTH.token = null;
-  AUTH.account = null;
   sessionStorage.clear();
-  const params = new URLSearchParams({
-    client_id:   HUB_CONFIG.clientId,
-    post_logout_redirect_uri: AUTH.redirectUri,
-  });
-  window.location.href = `${AUTH.authority}/logout?${params}`;
+  window.location.href = `${getAuthority()}/logout?post_logout_redirect_uri=${encodeURIComponent(getRedirectUri())}`;
 }
 
 // ── Init ──────────────────────────────────────────────────────
@@ -179,27 +189,21 @@ async function initAuth() {
     return false;
   }
 
-  // Check if returning from Microsoft login
-  if (window.location.search.includes('code=')) {
-    const ok = await handleRedirect();
-    if (ok) return true;
+  if (window.location.search.includes('code=') || window.location.search.includes('error=')) {
+    return await handleRedirect();
   }
 
-  // Check for existing refresh token
-  if (sessionStorage.getItem('refresh_token')) {
+  const refresh = sessionStorage.getItem('hub_refresh');
+  if (refresh) {
     const token = await getAccessToken();
-    if (token) {
-      await loadUserProfile();
-      return true;
-    }
+    if (token) { await loadUserProfile(); return true; }
   }
 
-  // Not signed in
   showAuthOverlay();
   return false;
 }
 
-// ── UI ────────────────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────────
 
 function showAuthOverlay() {
   const el = document.getElementById('auth-overlay');
@@ -207,65 +211,35 @@ function showAuthOverlay() {
 }
 
 function showSignedIn(user) {
-  const overlay = document.getElementById('auth-overlay');
-  if (overlay) overlay.classList.add('hidden');
-
+  document.getElementById('auth-overlay')?.classList.add('hidden');
   const info = document.getElementById('nav-user-info');
   if (info) info.style.display = 'flex';
-
   const name = user.displayName || user.mail || 'You';
-  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   const avatar = document.getElementById('nav-user-avatar');
   const nameEl = document.getElementById('nav-user-name');
   if (avatar) avatar.textContent = initials;
-  if (nameEl) nameEl.textContent = name.split(' ')[0];
+  if (nameEl)  nameEl.textContent = name.split(' ')[0];
 }
 
 function showDemoMode() {
-  const overlay = document.getElementById('auth-overlay');
-  if (overlay) overlay.classList.add('hidden');
+  document.getElementById('auth-overlay')?.classList.add('hidden');
   const banner = document.getElementById('demo-banner');
   if (banner) banner.style.display = 'flex';
   window.HUB_DEMO_MODE = true;
 }
 
-function showAuthError(msg) {
-  const sub = document.querySelector('.auth-sub');
-  if (sub) {
-    sub.textContent = msg;
-    sub.style.color = '#DC2626';
+function showStatus(msg, isError) {
+  // Show status in the auth card so it's always visible
+  let el = document.getElementById('hub-auth-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'hub-auth-status';
+    el.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0A0A0A;color:#fff;padding:10px 18px;border-radius:10px;font-size:12px;z-index:99999;max-width:90vw;text-align:center';
+    document.body.appendChild(el);
   }
-  console.error('[Auth]', msg);
-}
-
-// ── Pre-build the sign-in URL so the button works as a real link ──
-
-async function setupSignInButton() {
-  try {
-    const { verifier, challenge } = await generatePKCE();
-    const state = Math.random().toString(36).slice(2);
-    sessionStorage.setItem('pkce_verifier', verifier);
-    sessionStorage.setItem('pkce_state', state);
-
-    const params = new URLSearchParams({
-      client_id:             HUB_CONFIG.clientId,
-      response_type:         'code',
-      redirect_uri:          AUTH.redirectUri,
-      scope:                 AUTH.scopes,
-      code_challenge:        challenge,
-      code_challenge_method: 'S256',
-      state,
-      prompt:                'select_account',
-    });
-
-    const url = `https://login.microsoftonline.com/${HUB_CONFIG.tenantId}/oauth2/v2.0/authorize?${params}`;
-    const btn = document.getElementById('signin-link');
-    if (btn) {
-      btn.href = url;
-      btn.onclick = null; // remove onclick, just use the href
-    }
-  } catch(e) {
-    console.error('Could not build sign-in URL:', e);
-  }
+  el.textContent = msg;
+  el.style.background = isError ? '#DC2626' : '#0A0A0A';
+  el.style.display = 'block';
+  if (!isError) setTimeout(() => { if (el) el.style.display = 'none'; }, 4000);
 }
