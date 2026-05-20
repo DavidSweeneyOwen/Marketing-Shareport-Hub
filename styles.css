@@ -1798,3 +1798,235 @@ image-slot{
 .wp-news-date { font-size:11px; font-weight:600; color:var(--red); text-transform:uppercase; letter-spacing:0.05em; }
 .wp-news-title { font-size:14px; font-weight:700; color:var(--ink); line-height:1.35; }
 .wp-news-excerpt { font-size:12px; color:var(--muted); line-height:1.5; margin-top:2px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SHOWROOM BOOKING MODAL
+   ═══════════════════════════════════════════════════════════════ */
+
+body.modal-open { overflow: hidden; }
+
+.bk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: bk-fade-in 0.2s ease;
+}
+
+.bk-overlay.hidden {
+  display: none;
+}
+
+@keyframes bk-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.bk-modal {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.15);
+  width: 100%;
+  max-width: 640px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: bk-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bk-slide-up {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+/* Header */
+.bk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid #E8E8E8;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.bk-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bk-logo {
+  width: 32px;
+  height: 32px;
+  background: #D1242B;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bk-logo svg { display: block; }
+
+.bk-title-group {}
+.bk-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0A0A0A;
+  line-height: 1.2;
+  letter-spacing: -0.2px;
+}
+.bk-subtitle {
+  font-size: 11px;
+  color: #888;
+  margin-top: 1px;
+  line-height: 1;
+}
+
+.bk-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #F5F5F5;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #555;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.bk-close:hover {
+  background: #EBEBEB;
+  color: #0A0A0A;
+}
+
+/* Iframe body */
+.bk-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+.bk-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  min-height: 560px;
+}
+
+/* Loading shimmer while iframe loads */
+.bk-body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #f5f5f5 25%, #ececec 50%, #f5f5f5 75%);
+  background-size: 200% 100%;
+  animation: bk-shimmer 1.4s infinite;
+  z-index: -1;
+  border-radius: 0;
+}
+
+@keyframes bk-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Success state */
+.bk-success {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+  animation: bk-fade-in 0.3s ease;
+}
+
+.bk-success.hidden { display: none; }
+
+.bk-success-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #16A34A;
+  color: #fff;
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bk-success h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0A0A0A;
+  margin: 0;
+}
+
+.bk-success p {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.bk-success .btn {
+  margin-top: 8px;
+}
+
+/* Footer strip */
+.bk-footer {
+  padding: 10px 20px;
+  border-top: 1px solid #F0F0F0;
+  background: #FAFAFA;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.bk-footer-note {
+  font-size: 11px;
+  color: #AAA;
+}
+
+.bk-footer-note a {
+  color: #D1242B;
+  text-decoration: none;
+}
+
+/* Showroom diary dynamic calendar fix */
+.sd-cal-container { width: 100%; }
+.sd-free-count {
+  font-size: 11px;
+  color: #888;
+  margin-top: 8px;
+  text-align: center;
+}
+.sd-empty {
+  font-size: 12px;
+  color: #AAA;
+  padding: 16px 0;
+  text-align: center;
+}
+
+/* Backdrop click to close */
+.bk-overlay > :not(.bk-modal) { display: none; }
