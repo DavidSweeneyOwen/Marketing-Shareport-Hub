@@ -12,17 +12,140 @@ function escHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+// ── Global nav injection ──────────────────────────────────────
+
+function injectGlobalNav() {
+  // Inject CSS
+  const style = document.createElement('style');
+  style.textContent = `
+    #global-nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 8px;
+      z-index: 9000;
+      font-family: 'Manrope', sans-serif;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    #global-nav .gnav-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      color: #111;
+      cursor: pointer;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    #global-nav .gnav-brand span { color: #D72B2B; }
+    #global-nav .gnav-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 16px;
+      flex: 1;
+    }
+    #global-nav .gnav-link {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #444;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    #global-nav .gnav-link:hover,
+    #global-nav .gnav-link.active { background: #f3f4f6; color: #111; }
+    #global-nav .gnav-user {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    #global-nav .gnav-avatar {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      background: #D72B2B;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #global-nav .gnav-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #111;
+    }
+    #global-nav .gnav-signout {
+      font-size: 12px;
+      color: #888;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    #global-nav .gnav-signout:hover { background: #f3f4f6; color: #333; }
+    /* Push all pages down so nav doesn't cover content */
+    main.page { padding-top: 52px !important; }
+  `;
+  document.head.appendChild(style);
+
+  // Inject nav HTML
+  const nav = document.createElement('nav');
+  nav.id = 'global-nav';
+  nav.innerHTML = `
+    <div class="gnav-brand" onclick="showPage('home')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2C8 7 6 10 6 14a6 6 0 0 0 12 0c0-4-2-7-6-12z" fill="#D72B2B"/>
+        <path d="M12 10c-1 2.5-2 4-2 5.5a2 2 0 0 0 4 0c0-1.5-1-3-2-5.5z" fill="#fff" opacity="0.7"/>
+      </svg>
+      Check<span>Fire</span> Marketing Hub
+    </div>
+    <div class="gnav-links">
+      <a class="gnav-link active" id="gnav-home"      onclick="showPage('home')">Home</a>
+      <a class="gnav-link"       id="gnav-launches"   onclick="showPage('launches')">Launches</a>
+      <a class="gnav-link"       id="gnav-campaigns"  onclick="showPage('campaigns')">Campaigns</a>
+      <a class="gnav-link"       id="gnav-trade"      onclick="showPage('trade')">Trade &amp; Events</a>
+      <a class="gnav-link"       id="gnav-training"   onclick="showPage('training')">Resources</a>
+    </div>
+    <div id="nav-user-info" class="gnav-user">
+      <div id="nav-user-avatar" class="gnav-avatar">?</div>
+      <span id="nav-user-name" class="gnav-name">User</span>
+      <button class="gnav-signout" onclick="signOut()">Sign out</button>
+    </div>
+  `;
+  document.body.insertBefore(nav, document.body.firstChild);
+}
+
 // ── Navigation ────────────────────────────────────────────────
 
 let currentPage = 'home';
 const loadedPages = new Set();
 
-function showPage(name) {
+// Accepts optional second arg for backward-compat with onclick="showPage('x',2)"
+function showPage(name, _idx) {
   document.querySelectorAll('main.page').forEach(p => p.classList.remove('active'));
   const target = document.getElementById('page-' + name);
   if (target) target.classList.add('active');
   currentPage = name;
   window.scrollTo(0, 0);
+
+  // Update active nav link
+  document.querySelectorAll('#global-nav .gnav-link').forEach(l => l.classList.remove('active'));
+  const activeLink = document.getElementById('gnav-' + name);
+  if (activeLink) activeLink.classList.add('active');
 
   // Load data for this page if signed in and not already loaded
   if (AUTH.token && !loadedPages.has(name)) {
@@ -44,8 +167,7 @@ async function loadPageData(name) {
 // ── Data loaders ──────────────────────────────────────────────
 
 async function loadHomeData() {
-  // WordPress news is loaded separately (no auth needed)
-  // Nothing extra needed on home for now
+  // WordPress news loaded separately (no auth required)
 }
 
 async function loadLaunchData() {
@@ -61,7 +183,7 @@ async function loadLaunchData() {
     el.innerHTML = items.map(item => `
       <div class="sp-card">
         <div class="sp-card-title">${escHtml(item.Title || 'Untitled')}</div>
-        ${item.Status    ? `<span class="sp-badge">${escHtml(item.Status)}</span>` : ''}
+        ${item.Status      ? `<span class="sp-badge">${escHtml(item.Status)}</span>` : ''}
         ${item.Description ? `<p class="sp-card-desc">${escHtml(item.Description)}</p>` : ''}
       </div>`).join('');
   } catch (e) {
@@ -82,7 +204,7 @@ async function loadCampaignData() {
     el.innerHTML = items.map(item => `
       <div class="sp-card">
         <div class="sp-card-title">${escHtml(item.Title || 'Untitled')}</div>
-        ${item.Status    ? `<span class="sp-badge">${escHtml(item.Status)}</span>` : ''}
+        ${item.Status      ? `<span class="sp-badge">${escHtml(item.Status)}</span>` : ''}
         ${item.Description ? `<p class="sp-card-desc">${escHtml(item.Description)}</p>` : ''}
       </div>`).join('');
   } catch (e) {
@@ -107,7 +229,7 @@ async function loadEventsData() {
       return `
         <div class="sp-card">
           <div class="sp-card-title">${escHtml(item.Title || 'Untitled')}</div>
-          ${dateStr      ? `<span class="sp-badge">${escHtml(dateStr)}</span>` : ''}
+          ${dateStr       ? `<span class="sp-badge">${escHtml(dateStr)}</span>` : ''}
           ${item.Location ? `<p class="sp-card-desc">📍 ${escHtml(item.Location)}</p>` : ''}
         </div>`;
     }).join('');
@@ -148,7 +270,6 @@ async function loadWordPressNews() {
   const container = document.getElementById('sp-wp-news');
   if (!container) return;
 
-  // Skeleton while loading
   container.innerHTML = `
     <div class="wp-news-grid">
       ${Array(3).fill('<div class="wp-news-card skeleton" style="height:200px;border-radius:12px"></div>').join('')}
@@ -181,20 +302,21 @@ async function loadWordPressNews() {
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // WordPress news loads immediately — no sign-in needed
+  // Inject persistent top navigation bar
+  injectGlobalNav();
+
+  // Load WordPress news immediately — no auth needed
   loadWordPressNews();
 
-  // Set up sign-in button href ONLY when not returning from Microsoft
-  // (returning pages have ?code= in the URL — don't overwrite stored state)
+  // Set up sign-in button ONLY when not returning from Microsoft
   if (!window.location.search.includes('code=') && !window.location.search.includes('error=')) {
     if (typeof setupSignInButton === 'function') setupSignInButton();
   }
 
-  // Run auth — handles redirect, refresh, or shows overlay
+  // Run auth flow
   const signedIn = await initAuth();
 
   if (signedIn) {
-    // Load data for the home page on first sign-in
     loadedPages.add('home');
     loadHomeData();
   }
