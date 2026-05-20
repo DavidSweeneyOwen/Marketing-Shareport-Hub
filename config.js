@@ -29,3 +29,11 @@ HUB_CONFIG.wordpress = {
   apiUrl: 'https://www.checkfire.co.uk/wp-json/wp/v2',
   postsPerPage: 6,
 };
+
+// ── Jotform — Showroom Booking ────────────────────────────────
+// EU API key from your Jotform account (My Account → API Keys)
+HUB_CONFIG.jotform = {
+  apiKey:  'YOUR_JOTFORM_API_KEY',   // ← paste your EU API key here
+  formId:  '240422414566047',
+  apiBase: 'https://eu-api.jotform.com',
+};
