@@ -41,7 +41,6 @@ async function buildAuthUrl(prompt = 'none') {
 
   sessionStorage.setItem('hub_pkce_verifier', verifier);
   sessionStorage.setItem('hub_pkce_state', state);
-  if (prompt === 'none') sessionStorage.setItem('hub_silent_attempted', '1');
 
   const params = new URLSearchParams({
     client_id:             HUB_CONFIG.clientId,
@@ -67,14 +66,6 @@ async function handleRedirect() {
 
   // Clean URL immediately
   window.history.replaceState({}, document.title, window.location.pathname);
-
-  // Silent SSO failed — user needs to sign in interactively
-  const silentErrors = ['login_required', 'interaction_required', 'consent_required', 'access_denied'];
-  if (error && silentErrors.includes(error)) {
-    sessionStorage.removeItem('hub_silent_attempted');
-    showSignInPage();
-    return false;
-  }
 
   if (error) {
     showSignInPage('Something went wrong — please try signing in again.');
@@ -204,18 +195,9 @@ async function initAuth() {
     if (token) { await loadUserProfile(); return true; }
   }
 
-  // No session — try silent SSO first (uses existing Microsoft browser session)
-  // Most CheckFire employees will be signed into Microsoft already
-  const silentAttempted = sessionStorage.getItem('hub_silent_attempted');
-  if (!silentAttempted) {
-    showStatus('Signing you in…');
-    const url = await buildAuthUrl('none'); // prompt=none = silent
-    window.location.href = url;
-    return false; // page is navigating away
-  }
-
-  // Silent failed — show sign-in page
-  sessionStorage.removeItem('hub_silent_attempted');
+  // No existing session — show the sign-in page
+  // CheckFire employees click once; Microsoft recognises their Windows session
+  // and signs them in immediately without a password prompt
   showSignInPage();
   return false;
 }

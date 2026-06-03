@@ -1402,6 +1402,9 @@
 
 <!-- ── App init ── -->
 <script>
+  // Clear any stuck silent-auth flags from previous sessions
+  sessionStorage.removeItem('hub_silent_attempted');
+
   // Boot the hub on page load
   document.addEventListener('DOMContentLoaded', async () => {
     // Kick off auth (handles OAuth redirect, session refresh, or shows sign-in overlay)
