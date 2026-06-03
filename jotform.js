@@ -38,7 +38,12 @@ async function fetchShowroomSubmissions() {
     const res  = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return data.content || [];
+    // Jotform returns content as array (or {} when empty — normalise to array)
+    const raw = data.content;
+    if (!raw || (typeof raw === 'object' && !Array.isArray(raw) && Object.keys(raw).length === 0)) {
+      return [];
+    }
+    return Array.isArray(raw) ? raw : Object.values(raw);
   } catch (e) {
     console.warn('[Jotform] Failed to fetch submissions:', e.message);
     // Surface error to visits panel
@@ -57,30 +62,30 @@ async function fetchShowroomSubmissions() {
  */
 function parseSubmission(sub) {
   const answers = sub.answers || {};
-  let bookingDate  = null;
-  let companyName  = '';
-  let amEmail      = '';
+  let bookingDate   = null;
+  let companyName   = '';
+  let amEmail       = '';
   let customerNames = '';
   let numCustomers  = '';
   let arrivalTime   = '';
 
   for (const key of Object.keys(answers)) {
-    const a = answers[key];
+    const a    = answers[key];
+    const name = a.name || '';
     const text = (a.text || '').toLowerCase();
 
-    if (text.includes('appointment') || text.includes('date')) {
+    // Appointment field: answer.date = "2026-06-10 03:30" — take first 10 chars
+    if (name === 'appointment' || a.type === 'control_appointment') {
       const ans = a.answer;
       if (ans && typeof ans === 'object' && ans.date) {
-        bookingDate = ans.date; // "YYYY-MM-DD"
-      } else if (typeof ans === 'string' && /\d{4}-\d{2}-\d{2}/.test(ans)) {
-        bookingDate = ans.match(/\d{4}-\d{2}-\d{2}/)[0];
+        bookingDate = String(ans.date).slice(0, 10); // → "2026-06-10"
       }
     }
-    if (text.includes('company')) companyName = a.answer || '';
-    if (text.includes('account manager')) amEmail = a.answer || '';
-    if (text.includes('customer name')) customerNames = a.answer || '';
-    if (text.includes('number of customer')) numCustomers = a.answer || '';
-    if (text.includes('arrival')) arrivalTime = a.answer || '';
+    if (name === 'companyName'  || text === 'company name')         companyName   = a.answer || '';
+    if (name === 'pleaseConfirm'|| text.includes('account manager')) amEmail       = a.answer || '';
+    if (name === 'customerNames12' || text === 'customer names')     customerNames = a.answer || '';
+    if (name === 'numberOf'     || text === 'number of customers')   numCustomers  = a.answer || '';
+    if (name === 'arrivalTime'  || text === 'arrival time')          arrivalTime   = a.answer || '';
   }
 
   return { bookingDate, companyName, amEmail, customerNames, numCustomers, arrivalTime, id: sub.id };
@@ -325,34 +330,33 @@ function onBookingSubmitted() {
 async function loadShowroomData() {
   const submissions = await fetchShowroomSubmissions();
 
-  if (submissions === null) {
-    // API unavailable — show a soft message in visits panel
-    const vc = document.getElementById('sd-visits-container');
-    if (vc) vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">Could not connect to booking system.<br><span style="color:#AAA;font-size:11px">Check your Jotform API key in config.js</span></p>';
-  } else if (submissions.length === 0) {
-    const vc = document.getElementById('sd-visits-container');
-    if (vc) vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">No bookings found in Jotform yet.</p>';
-  }
-
-  if (submissions && submissions.length > 0) {
+  // Parse whatever came back
+  if (Array.isArray(submissions) && submissions.length > 0) {
     const { dates, parsed } = parseBookedDates(submissions);
-    JF.bookedDates  = dates;
-    JF.submissions  = parsed;
+    JF.bookedDates = dates;
+    JF.submissions = parsed;
     JF.loaded = true;
   }
-  // If API not configured (demo mode), bookedDates stays empty — calendar still renders cleanly
 
-  // Render home page showroom calendar
+  // Always render the calendar (works fine with empty bookedDates)
   if (document.getElementById('sd-cal-container')) {
     renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.bookedDates);
   }
-  // Render home page upcoming visits — only if we got real data
-  if (JF.loaded && document.getElementById('sd-visits-container')) {
-    renderUpcomingVisits('sd-visits-container', JF.submissions);
+
+  // Always update visits — one of four states
+  const vc = document.getElementById('sd-visits-container');
+  if (vc) {
+    if (submissions === null) {
+      vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">Could not connect to Jotform.<br><span style="font-size:11px;color:#AAA">Check your API key in config.js</span></p>';
+    } else if (JF.loaded) {
+      renderUpcomingVisits('sd-visits-container', JF.submissions);
+    } else {
+      vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">No showroom bookings yet.</p>';
+    }
   }
-  // Render Trade page mini calendar sidebar
+
+  // Trade page mini calendar + free count
   renderMiniShowroomCalendar(JF.bookedDates);
-  // Update quick-action free count
   updateFreeCount();
 }
 
