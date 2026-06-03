@@ -1,5 +1,9 @@
 /**
- * CheckFire Marketing Hub — Auth (lightweight PKCE, no library)
+ * CheckFire Marketing Hub — Auth
+ * ─────────────────────────────────────────────────────────────
+ * Silent SSO first — CheckFire employees on their work devices
+ * sign in automatically via their existing Microsoft session.
+ * Only shows a login screen if no Microsoft session exists.
  */
 
 const AUTH = { token: null, account: null };
@@ -12,8 +16,8 @@ function getRedirectUri() {
   return HUB_CONFIG.redirectUri || (window.location.origin + window.location.pathname);
 }
 
-// Start with minimal scopes — no admin consent required
-const SCOPES = 'User.Read openid profile offline_access';
+// Scopes — includes SharePoint read for live list data
+const SCOPES = 'User.Read openid profile offline_access Sites.Read.All Files.Read.All';
 
 // ── PKCE ─────────────────────────────────────────────────────
 
@@ -29,38 +33,31 @@ async function generatePKCE() {
   return { verifier, challenge };
 }
 
-// ── Sign in button setup ──────────────────────────────────────
+// ── Build auth URL ────────────────────────────────────────────
 
-async function setupSignInButton() {
-  try {
-    const { verifier, challenge } = await generatePKCE();
-    const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
+async function buildAuthUrl(prompt = 'none') {
+  const { verifier, challenge } = await generatePKCE();
+  const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
 
-    sessionStorage.setItem('hub_pkce_verifier', verifier);
-    sessionStorage.setItem('hub_pkce_state', state);
+  sessionStorage.setItem('hub_pkce_verifier', verifier);
+  sessionStorage.setItem('hub_pkce_state', state);
+  if (prompt === 'none') sessionStorage.setItem('hub_silent_attempted', '1');
 
-    const params = new URLSearchParams({
-      client_id:             HUB_CONFIG.clientId,
-      response_type:         'code',
-      redirect_uri:          getRedirectUri(),
-      scope:                 SCOPES,
-      code_challenge:        challenge,
-      code_challenge_method: 'S256',
-      state,
-      prompt:                'select_account',
-    });
+  const params = new URLSearchParams({
+    client_id:             HUB_CONFIG.clientId,
+    response_type:         'code',
+    redirect_uri:          getRedirectUri(),
+    scope:                 SCOPES,
+    code_challenge:        challenge,
+    code_challenge_method: 'S256',
+    state,
+    prompt,
+  });
 
-    const url = `${getAuthority()}/authorize?${params}`;
-    const btn = document.getElementById('signin-link');
-    if (btn) { btn.href = url; btn.onclick = null; }
-
-    showStatus('Ready to sign in');
-  } catch (e) {
-    showStatus('Setup error: ' + e.message, true);
-  }
+  return `${getAuthority()}/authorize?${params}`;
 }
 
-// ── Handle redirect back ──────────────────────────────────────
+// ── Handle redirect back from Microsoft ──────────────────────
 
 async function handleRedirect() {
   const params = new URLSearchParams(window.location.search);
@@ -68,28 +65,33 @@ async function handleRedirect() {
   const state  = params.get('state');
   const error  = params.get('error');
 
+  // Clean URL immediately
+  window.history.replaceState({}, document.title, window.location.pathname);
+
+  // Silent SSO failed — user needs to sign in interactively
+  const silentErrors = ['login_required', 'interaction_required', 'consent_required', 'access_denied'];
+  if (error && silentErrors.includes(error)) {
+    sessionStorage.removeItem('hub_silent_attempted');
+    showSignInPage();
+    return false;
+  }
+
   if (error) {
-    showStatus('Microsoft error: ' + (params.get('error_description') || error), true);
-    showAuthOverlay();
+    showSignInPage('Something went wrong — please try signing in again.');
     return false;
   }
 
   if (!code) return false;
 
-  showStatus('Got code — verifying state...');
-
   const savedState    = sessionStorage.getItem('hub_pkce_state');
   const savedVerifier = sessionStorage.getItem('hub_pkce_verifier');
 
   if (!savedState || state !== savedState) {
-    showStatus('State mismatch — please try signing in again. (saved: ' + (savedState ? 'yes' : 'missing') + ')', true);
-    // Clean URL and show sign-in
-    window.history.replaceState({}, document.title, window.location.pathname);
-    showAuthOverlay();
+    showSignInPage('Session error — please try again.');
     return false;
   }
 
-  showStatus('Exchanging code for token...');
+  showStatus('Signing you in…');
 
   try {
     const res = await fetch(`${getAuthority()}/token`, {
@@ -107,27 +109,21 @@ async function handleRedirect() {
     const data = await res.json();
 
     if (data.error) {
-      showStatus('Token error: ' + (data.error_description || data.error), true);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      showAuthOverlay();
+      showSignInPage('Sign-in failed — please try again.');
       return false;
     }
 
     AUTH.token = data.access_token;
     if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
-
     sessionStorage.removeItem('hub_pkce_verifier');
     sessionStorage.removeItem('hub_pkce_state');
+    sessionStorage.removeItem('hub_silent_attempted');
 
-    window.history.replaceState({}, document.title, window.location.pathname);
-    showStatus('Signed in!');
     await loadUserProfile();
     return true;
 
   } catch (e) {
-    showStatus('Fetch error: ' + e.message, true);
-    window.history.replaceState({}, document.title, window.location.pathname);
-    showAuthOverlay();
+    showSignInPage('Connection error — please try again.');
     return false;
   }
 }
@@ -181,6 +177,13 @@ function signOut() {
   window.location.href = `${getAuthority()}/logout?post_logout_redirect_uri=${encodeURIComponent(getRedirectUri())}`;
 }
 
+// ── Sign-in trigger (called by button) ───────────────────────
+
+async function signIn() {
+  const url = await buildAuthUrl('login');
+  window.location.href = url;
+}
+
 // ── Init ──────────────────────────────────────────────────────
 
 async function initAuth() {
@@ -189,25 +192,46 @@ async function initAuth() {
     return false;
   }
 
+  // Coming back from Microsoft redirect
   if (window.location.search.includes('code=') || window.location.search.includes('error=')) {
     return await handleRedirect();
   }
 
+  // Already have a valid refresh token — silently renew
   const refresh = sessionStorage.getItem('hub_refresh');
   if (refresh) {
     const token = await getAccessToken();
     if (token) { await loadUserProfile(); return true; }
   }
 
-  showAuthOverlay();
+  // No session — try silent SSO first (uses existing Microsoft browser session)
+  // Most CheckFire employees will be signed into Microsoft already
+  const silentAttempted = sessionStorage.getItem('hub_silent_attempted');
+  if (!silentAttempted) {
+    showStatus('Signing you in…');
+    const url = await buildAuthUrl('none'); // prompt=none = silent
+    window.location.href = url;
+    return false; // page is navigating away
+  }
+
+  // Silent failed — show sign-in page
+  sessionStorage.removeItem('hub_silent_attempted');
+  showSignInPage();
   return false;
 }
 
 // ── UI helpers ────────────────────────────────────────────────
 
-function showAuthOverlay() {
-  const el = document.getElementById('auth-overlay');
-  if (el) el.classList.remove('hidden');
+function showSignInPage(message) {
+  const overlay = document.getElementById('auth-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+
+  // Update message if provided
+  if (message) {
+    const sub = overlay.querySelector('.auth-sub');
+    if (sub) sub.textContent = message;
+  }
 }
 
 function showSignedIn(user) {
@@ -220,8 +244,7 @@ function showSignedIn(user) {
   const nameEl = document.getElementById('nav-user-name');
   if (avatar) avatar.textContent = initials;
   if (nameEl)  nameEl.textContent = name.split(' ')[0];
-  // Load showroom booking data once signed in
-  if (typeof loadShowroomData === 'function') loadShowroomData();
+  if (typeof loadShowroomData  === 'function') loadShowroomData();
   if (typeof loadWordPressNews === 'function') loadWordPressNews();
 }
 
@@ -230,22 +253,19 @@ function showDemoMode() {
   const banner = document.getElementById('demo-banner');
   if (banner) banner.style.display = 'flex';
   window.HUB_DEMO_MODE = true;
-  // Load showroom calendar in demo mode (no API data, just renders structure)
-  if (typeof loadShowroomData === 'function') loadShowroomData();
+  if (typeof loadShowroomData  === 'function') loadShowroomData();
   if (typeof loadWordPressNews === 'function') loadWordPressNews();
 }
 
-function showStatus(msg, isError) {
-  // Show status in the auth card so it's always visible
+function showStatus(msg) {
   let el = document.getElementById('hub-auth-status');
   if (!el) {
     el = document.createElement('div');
     el.id = 'hub-auth-status';
-    el.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0A0A0A;color:#fff;padding:10px 18px;border-radius:10px;font-size:12px;z-index:99999;max-width:90vw;text-align:center';
+    el.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0A0A0A;color:#fff;padding:10px 18px;border-radius:10px;font-size:12px;z-index:99999;max-width:90vw;text-align:center;pointer-events:none';
     document.body.appendChild(el);
   }
   el.textContent = msg;
-  el.style.background = isError ? '#DC2626' : '#0A0A0A';
   el.style.display = 'block';
-  if (!isError) setTimeout(() => { if (el) el.style.display = 'none'; }, 4000);
+  setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
 }
