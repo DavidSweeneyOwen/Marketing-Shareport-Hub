@@ -45,227 +45,216 @@
 </div>
 
 
-<main id="page-home" class="page active" data-screen-label="01 Overview">
+<!-- ══════════════════════════════════════════════════════════
+     INTRANET NAVIGATION
+     ══════════════════════════════════════════════════════════ -->
+<div id="intranet-header">
 
-  <!-- ════ HERO — MAGAZINE 3-UP WITH IMAGE SLOTS ════ -->
-  <section class="hero-mag">
-    <div class="container hero-mag-grid">
-      <a class="hmag big" onclick="showPage('campaigns',2)">
-        <image-slot id="hero-main" class="hmag-img" shape="rect" placeholder="Drop your Summer Drive hero photo" src="https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=1400&amp;q=80"></image-slot>
-        <div class="hmag-overlay">
-          <div class="hmag-pill"><span class="status-dot red"></span> Live Campaign</div>
-          <div class="hmag-date">Featured · 19 May 2026</div>
-          <h1 class="hmag-title">Summer Safety Drive 2026 is now live across every region.</h1>
-          <div class="hmag-meta">
-            <span class="avatar small bg-teal">TJ</span>
-            <span>Toria Jones · Marketing Director</span>
-            <span class="dot"></span>
-            <span>3 min read</span>
-          </div>
+  <!-- Top utility bar -->
+  <div class="inh-top">
+    <div class="inh-top-inner">
+      <!-- Logo -->
+      <a class="inh-logo" onclick="showPage('home',0)">
+        <svg viewBox="0 0 28 28" fill="none" width="28" height="28">
+          <rect width="28" height="28" rx="6" fill="#D1242B"/>
+          <path d="M14 4L5 10v14h6v-6h6v6h6V10L14 4z" fill="white"/>
+        </svg>
+        <span class="inh-logo-text">CheckFire <strong>Hub</strong></span>
+      </a>
+
+      <!-- Search -->
+      <div class="inh-search-wrap">
+        <svg class="inh-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="inh-search" type="text" placeholder="Search the hub…" id="hub-search-input">
+      </div>
+
+      <!-- User actions -->
+      <div class="inh-user-actions">
+        <button class="inh-action-btn" onclick="showToast('Quick links coming soon')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          My Links
+        </button>
+        <div id="nav-user-info" class="inh-user-pill" style="display:none">
+          <span class="inh-avatar" id="nav-user-avatar">?</span>
+          <span class="inh-user-name" id="nav-user-name">You</span>
+          <button class="inh-signout" onclick="signOut()" title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main navigation -->
+  <nav class="inh-nav" role="navigation">
+    <div class="inh-nav-inner">
+      <a class="inh-nav-link active" id="navl-home"      onclick="showPage('home',0)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </a>
+      <a class="inh-nav-link" id="navl-launches"   onclick="showPage('launches',1)">Products &amp; Launches</a>
+      <a class="inh-nav-link" id="navl-campaigns"  onclick="showPage('campaigns',2)">Campaigns</a>
+      <a class="inh-nav-link" id="navl-trade"      onclick="showPage('trade',3)">Trade &amp; Events</a>
+      <a class="inh-nav-link" id="navl-training"   onclick="showPage('training',4)">Resources</a>
+      <a class="inh-nav-link inh-nav-showroom"     onclick="openBookingModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Book Showroom
+      </a>
+    </div>
+  </nav>
+
+</div>
+
+
+
+<main id="page-home" class="page active" data-screen-label="Home">
+
+  <!-- ══ HERO NEWS GRID ══════════════════════════════════════ -->
+  <section class="inh-hero-section">
+    <div class="inh-hero-grid" id="home-hero-grid">
+
+      <!-- Feature article (large) — populated from WordPress -->
+      <a class="inh-hero-feature skeleton-card" id="hero-feature" href="#" target="_blank" rel="noopener">
+        <div class="inh-hero-img" id="hero-feature-img"></div>
+        <div class="inh-hero-overlay">
+          <span class="inh-tag red">Feature</span>
+          <h2 class="inh-hero-title" id="hero-feature-title">Loading latest news…</h2>
+          <div class="inh-hero-date" id="hero-feature-date"></div>
         </div>
       </a>
-      <a class="hmag" onclick="showPage('launches',1)">
-        <image-slot id="hero-side-1" class="hmag-img" shape="rect" placeholder="Drop a launch / product photo" src="https://images.unsplash.com/photo-1581094288338-2314dddb7ece?w=900&amp;q=80"></image-slot>
-        <div class="hmag-overlay">
-          <div class="hmag-pill light">Product Launch</div>
-          <div class="hmag-date">02 Jun 2026 · 14 days to go</div>
-          <h2 class="hmag-title small">ProGuard 6kg CO₂ — sales kit ready.</h2>
-        </div>
-      </a>
-      <a class="hmag" onclick="showPage('trade',3)">
-        <image-slot id="hero-side-2" class="hmag-img" shape="rect" placeholder="Drop a trade-show photo" src="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=900&amp;q=80"></image-slot>
-        <div class="hmag-overlay">
-          <div class="hmag-pill light">Trade &amp; Events</div>
-          <div class="hmag-date">08 Jul 2026 · ExCeL London</div>
-          <h2 class="hmag-title small">Southern Trade Show — booth confirmed, brief published.</h2>
-        </div>
-      </a>
+
+      <!-- Side articles grid -->
+      <div class="inh-hero-side" id="hero-side-articles">
+        <div class="inh-hero-side-item skeleton-card"></div>
+        <div class="inh-hero-side-item skeleton-card"></div>
+        <div class="inh-hero-side-item skeleton-card"></div>
+      </div>
+
     </div>
   </section>
 
-  <!-- ════ SHOWROOM DIARY ════ -->
-  <section class="container" style="margin-top:32px">
-    <div class="showroom-diary">
-      <div class="sd-cal sd-cal-container" id="sd-cal-container"><div class="sd-cal-loading">Loading calendar…</div></div>
+  <!-- ══ THREE COLUMN CONTENT ROW ════════════════════════════ -->
+  <section class="inh-content-row">
 
-      <div class="sd-visits" id="sd-visits-container"><div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">Loading…</p></div>
-
-      <div class="sd-cta">
-        <div class="sd-eyebrow">Quick actions</div>
-        <div class="sd-stat" id="sd-free-stat">
-          <span class="sd-stat-num">–<span class="sd-stat-of">/ –</span></span>
-          <div class="sd-stat-lbl">days free this month</div>
-        </div>
-        <button class="btn primary block" onclick="openBookingModal()">Book a slot</button>
-        <button class="btn ghost block" onclick="showToast('Opening invite tool')">Invite a customer</button>
-        <a class="sd-link" onclick="showPage('trade',3)">Full diary in Trade &amp; Events →</a>
+    <!-- Col 1: Latest Product News -->
+    <div class="inh-col-card">
+      <div class="inh-col-head red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        Latest Product News
       </div>
-    </div>
-  </section>
-
-  <!-- ════ WHAT'S ON AT CHECKFIRE — UNIFIED TIMELINE ════ -->
-  <section class="container" style="margin-top:48px">
-    <div class="section-head tight">
-      <div>
-        <h2 class="section-title">What's on at CheckFire</h2>
-        <p class="section-sub">Every launch, campaign and event in the next 90 days, in one place.</p>
+      <div id="home-product-news" class="inh-product-list">
+        <div class="inh-product-item skeleton-line"></div>
+        <div class="inh-product-item skeleton-line"></div>
+        <div class="inh-product-item skeleton-line"></div>
       </div>
-      <div class="whats-filter">
-        <button class="wf-pill active" data-cat="all" onclick="filterWhats('all',this)">All <span>9</span></button>
-        <button class="wf-pill launch" data-cat="launch" onclick="filterWhats('launch',this)"><span class="wf-dot"></span>Launches <span>3</span></button>
-        <button class="wf-pill campaign" data-cat="campaign" onclick="filterWhats('campaign',this)"><span class="wf-dot"></span>Campaigns <span>3</span></button>
-        <button class="wf-pill event" data-cat="event" onclick="filterWhats('event',this)"><span class="wf-dot"></span>Events <span>3</span></button>
-      </div>
+      <a class="inh-col-footer-link" onclick="showPage('launches',1)">View all products →</a>
     </div>
 
-    <div class="whats-grid">
-      <!-- MAY -->
-      <div class="whats-col">
-        <div class="whats-col-head">
-          <span class="whats-mon">May</span>
-          <span class="whats-yr">2026</span>
-          <span class="whats-tag now">Now</span>
-        </div>
-        <div class="whats-items">
-          <article class="whats-item campaign" data-cat="campaign" onclick="showPage('campaigns',2)">
-            <div class="whats-date"><span class="d">23</span><span class="m">May</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Campaign · Sign-off</div>
-              <div class="whats-name">Summer Drive creative sign-off</div>
-              <div class="whats-meta">11:00 · All-team</div>
-            </div>
-            <span class="whats-when">4 days</span>
-          </article>
-          <article class="whats-item event" data-cat="event" onclick="showToast('Opening distributor open day')">
-            <div class="whats-date"><span class="d">29</span><span class="m">May</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Event · CheckFire Showroom</div>
-              <div class="whats-name">Q2 distributor open day</div>
-              <div class="whats-meta">09:30 – 16:00 · ~25 visitors</div>
-            </div>
-            <span class="whats-when">10 days</span>
-          </article>
-          <article class="whats-item campaign" data-cat="campaign" onclick="showToast('Distributor newsletter')">
-            <div class="whats-date"><span class="d">30</span><span class="m">May</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Campaign · Email</div>
-              <div class="whats-name">Q2 distributor newsletter send</div>
-              <div class="whats-meta">Aneta · 1,840 subscribers</div>
-            </div>
-            <span class="whats-when">11 days</span>
-          </article>
-        </div>
+    <!-- Col 2: Calendar -->
+    <div class="inh-col-card">
+      <div class="inh-col-head red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Showroom Calendar
       </div>
-
-      <!-- JUNE -->
-      <div class="whats-col">
-        <div class="whats-col-head">
-          <span class="whats-mon">June</span>
-          <span class="whats-yr">2026</span>
-        </div>
-        <div class="whats-items">
-          <article class="whats-item launch hero" data-cat="launch" onclick="showPage('launches',1)">
-            <div class="whats-date hero"><span class="d">02</span><span class="m">Jun</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Launch · Trade + Online</div>
-              <div class="whats-name">ProGuard 6kg CO₂</div>
-              <div class="whats-meta">£89.50 RRP · Sales kit ready</div>
-            </div>
-            <span class="whats-when red">14 days</span>
-          </article>
-          <article class="whats-item campaign" data-cat="campaign" onclick="showPage('campaigns',2)">
-            <div class="whats-date"><span class="d">01</span><span class="m">Jun</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Campaign · UK-wide</div>
-              <div class="whats-name">Summer Safety Drive goes live</div>
-              <div class="whats-meta">8 weeks · 4 channels · £42k</div>
-            </div>
-            <span class="whats-when">13 days</span>
-          </article>
-          <article class="whats-item launch" data-cat="launch" onclick="showPage('launches',1)">
-            <div class="whats-date"><span class="d">19</span><span class="m">Jun</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Launch · Trade + Digital</div>
-              <div class="whats-name">FireShield Premium Kit</div>
-              <div class="whats-meta">Bundle launch · Distributor first</div>
-            </div>
-            <span class="whats-when">31 days</span>
-          </article>
-        </div>
+      <div class="sd-cal sd-cal-container" id="sd-cal-container">
+        <div class="inh-loading">Loading calendar…</div>
       </div>
-
-      <!-- JULY -->
-      <div class="whats-col">
-        <div class="whats-col-head">
-          <span class="whats-mon">July</span>
-          <span class="whats-yr">2026</span>
-        </div>
-        <div class="whats-items">
-          <article class="whats-item event hero" data-cat="event" onclick="showPage('trade',3)">
-            <div class="whats-date hero"><span class="d">08</span><span class="m">Jul</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Event · Trade Show</div>
-              <div class="whats-name">Southern Trade Show</div>
-              <div class="whats-meta">ExCeL London · Booth B14</div>
-            </div>
-            <span class="whats-when">50 days</span>
-          </article>
-          <article class="whats-item launch" data-cat="launch" onclick="showToast('Opening Commander v2')">
-            <div class="whats-date"><span class="d">15</span><span class="m">Jul</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Launch · Range refresh</div>
-              <div class="whats-name">Commander Stand v2 — bulk</div>
-              <div class="whats-meta">New pricing tiers from 10+ units</div>
-            </div>
-            <span class="whats-when">57 days</span>
-          </article>
-          <article class="whats-item event" data-cat="event" onclick="showToast('Opening regional day')">
-            <div class="whats-date"><span class="d">22</span><span class="m">Jul</span></div>
-            <div class="whats-body">
-              <div class="whats-type">Event · CheckFire Showroom</div>
-              <div class="whats-name">Northern installer day</div>
-              <div class="whats-meta">09:30 – 16:00 · 18 confirmed</div>
-            </div>
-            <span class="whats-when">64 days</span>
-          </article>
-        </div>
-      </div>
-    </div>
-
-    <div class="whats-foot">
-      <a class="section-link" onclick="showPage('launches',1)">All launches →</a>
-      <a class="section-link" onclick="showPage('campaigns',2)">All campaigns →</a>
-      <a class="section-link" onclick="showPage('trade',3)">All events →</a>
-      <button class="btn ghost" style="margin-left:auto" onclick="showToast('Subscribed to calendar feed')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
-        Subscribe to calendar
+      <button class="inh-book-btn" onclick="openBookingModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="13" height="13"><path d="M12 5v14M5 12h14"/></svg>
+        Book a slot
       </button>
     </div>
+
+    <!-- Col 3: Quick Links + Upcoming -->
+    <div class="inh-col-stack">
+
+      <!-- Quick links -->
+      <div class="inh-col-card">
+        <div class="inh-col-head dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Quick Links
+        </div>
+        <div class="inh-quicklinks">
+          <a class="inh-ql" href="https://3873456.app.netsuite.com" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#0070C0">NS</span>NetSuite
+          </a>
+          <a class="inh-ql" href="https://checkfireltd.sharepoint.com" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#0078D4">SP</span>SharePoint
+          </a>
+          <a class="inh-ql" href="https://www.checkfire.co.uk/wp-admin" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#21759B">WP</span>WordPress
+          </a>
+          <a class="inh-ql" href="https://eu.jotform.com/240422414566047" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#D1242B">JF</span>Showroom Form
+          </a>
+          <a class="inh-ql" href="https://teams.microsoft.com" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#6264A7">MS</span>Teams
+          </a>
+          <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#D1242B">MP</span>Media Portal
+          </a>
+        </div>
+      </div>
+
+      <!-- Upcoming visits -->
+      <div class="inh-col-card" id="sd-visits-container">
+        <div class="inh-col-head dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Upcoming Showroom Visits
+        </div>
+        <p class="sd-empty">Fetching bookings…</p>
+      </div>
+
+    </div>
+
   </section>
 
-  <!-- ════ VIDEO FEATURE + NEWS MAGAZINE ════ -->
-  
-  <!-- ── WordPress News Feed ── -->
-  <section class="container py-lg" id="news-section">
-    <div class="section-head tight">
-      <div>
-        <h2 class="section-title">Latest from CheckFire</h2>
-        <p class="section-sub" style="font-size:12px;color:var(--muted);margin-top:2px">Live from <a href="https://www.checkfire.co.uk/news" target="_blank" style="color:var(--red)">checkfire.co.uk</a></p>
+  <!-- ══ BOTTOM ROW: NEWS FEED + COUNTDOWN ═══════════════════ -->
+  <section class="inh-bottom-row">
+
+    <!-- More news from WordPress -->
+    <div class="inh-bottom-news">
+      <div class="inh-section-head">
+        <h3 class="inh-section-title">More from CheckFire</h3>
+        <a class="inh-section-link" href="https://www.checkfire.co.uk/news" target="_blank">View all →</a>
       </div>
-      <a href="https://www.checkfire.co.uk/news" target="_blank" class="btn ghost" style="font-size:12px">All news →</a>
-    </div>
-    <div id="sp-wp-news">
-      <div class="wp-news-grid">
-        <div class="skeleton" style="height:200px;border-radius:12px"></div>
-        <div class="skeleton" style="height:200px;border-radius:12px"></div>
-        <div class="skeleton" style="height:200px;border-radius:12px"></div>
+      <div id="sp-wp-news" class="inh-more-news-grid">
+        <div class="skeleton-card" style="height:120px;border-radius:12px"></div>
+        <div class="skeleton-card" style="height:120px;border-radius:12px"></div>
+        <div class="skeleton-card" style="height:120px;border-radius:12px"></div>
       </div>
     </div>
+
+    <!-- Countdown + survey -->
+    <div class="inh-bottom-side">
+
+      <!-- Next event countdown -->
+      <div class="inh-countdown-card" id="home-countdown">
+        <div class="inh-countdown-label">Next Major Event</div>
+        <div class="inh-countdown-name" id="countdown-name">Southern Trade Show</div>
+        <div class="inh-countdown-date" id="countdown-date">08 Jul 2026 · ExCeL London</div>
+        <div class="inh-countdown-timer" id="countdown-timer">
+          <div class="inh-cd-unit"><span id="cd-days">--</span><span>days</span></div>
+          <div class="inh-cd-unit"><span id="cd-hours">--</span><span>hrs</span></div>
+          <div class="inh-cd-unit"><span id="cd-mins">--</span><span>min</span></div>
+        </div>
+      </div>
+
+      <!-- Survey / feedback -->
+      <div class="inh-survey-card">
+        <div class="inh-survey-eyebrow">Open survey</div>
+        <div class="inh-survey-title">Q2 2026 Trade Customer Pulse</div>
+        <div class="inh-survey-meta">4 min · closes 30 Jun · 312 responses so far</div>
+        <button class="btn primary block" onclick="showToast('Opening survey')">Take the survey</button>
+      </div>
+
+    </div>
+
   </section>
 
 </main>
 
-<!-- ─── LAUNCHES ─────────────────────────────────────────────── -->
+
 <main id="page-launches" class="page" data-screen-label="02 Launches">
   <section class="lhero">
     <div class="container lhero-grid">
@@ -1415,11 +1404,19 @@
 <script>
   // Boot the hub on page load
   document.addEventListener('DOMContentLoaded', async () => {
-    // Set up navigation active state
-    if (typeof showPage === 'function') showPage('home', 0);
     // Kick off auth (handles OAuth redirect, session refresh, or shows sign-in overlay)
     if (typeof initAuth === 'function') await initAuth();
+    // Load homepage data
+    if (typeof loadHomePage === 'function') loadHomePage();
+    if (typeof updateNavActive === 'function') updateNavActive('home');
   });
+
+  // Wrap showPage to keep nav active state in sync
+  const _basShowPage = window.showPage;
+  window.showPage = function(id, idx) {
+    if (typeof _basShowPage === 'function') _basShowPage(id, idx);
+    if (typeof updateNavActive === 'function') updateNavActive(id);
+  };
 
   // Sign-in handler (called by the auth overlay button)
   async function signIn() {
