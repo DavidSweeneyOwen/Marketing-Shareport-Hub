@@ -1,4 +1,8 @@
-
+/**
+ * CheckFire Marketing Hub — Homepage & news rendering
+ * Hardened: all WordPress values pass through safeUrl/safeCssUrl/
+ * escHtml/escAttr (ui.js) — including attribute and CSS contexts.
+ */
 
 // ── WordPress News Rendering ──────────────────────────────────
 
@@ -19,17 +23,21 @@ async function loadWordPressNews() {
       return;
     }
 
-    container.innerHTML = `<div class="wp-news-grid">${posts.map(post => `
-      <a class="wp-news-card" href="${post.link}" target="_blank" rel="noopener">
-        ${post.image
-          ? `<div class="wp-news-img" style="background-image:url('${post.image}')"></div>`
+    container.innerHTML = `<div class="wp-news-grid">${posts.map(post => {
+      const link  = safeUrl(post.link);
+      const image = safeCssUrl(post.image);
+      return `
+      <a class="wp-news-card" href="${escAttr(link)}" target="_blank" rel="noopener">
+        ${image
+          ? `<div class="wp-news-img" style="background-image:url('${image}')"></div>`
           : `<div class="wp-news-img wp-news-img-placeholder"></div>`}
         <div class="wp-news-body">
-          <div class="wp-news-date">${post.date}</div>
+          <div class="wp-news-date">${escHtml(post.date)}</div>
           <h3 class="wp-news-title">${escHtml(post.title)}</h3>
           <p class="wp-news-excerpt">${escHtml(post.excerpt)}</p>
         </div>
-      </a>`).join('')}
+      </a>`;
+    }).join('')}
     </div>`;
   } catch (e) {
     container.innerHTML = `<p class="sp-error">Couldn't load news: ${escHtml(e.message)}</p>`;
@@ -56,9 +64,10 @@ async function loadHeroNews() {
     const feature = posts[0];
     const featureEl = document.getElementById('hero-feature');
     if (featureEl) {
-      featureEl.href = feature.link;
+      featureEl.href = safeUrl(feature.link);
       const img = document.getElementById('hero-feature-img');
-      if (img && feature.image) img.style.backgroundImage = `url('${feature.image}')`;
+      const featureImg = safeCssUrl(feature.image);
+      if (img && featureImg) img.style.backgroundImage = `url('${featureImg}')`;
       const title = document.getElementById('hero-feature-title');
       if (title) title.textContent = feature.title;
       const date = document.getElementById('hero-feature-date');
@@ -69,18 +78,21 @@ async function loadHeroNews() {
     // Side articles (posts 1-3)
     const sideContainer = document.getElementById('hero-side-articles');
     if (sideContainer && posts.length > 1) {
-      sideContainer.innerHTML = posts.slice(1, 4).map(post => `
-        <a class="inh-hero-side-item" href="${post.link}" target="_blank" rel="noopener">
-          <div class="inh-hero-img" ${post.image ? `style="background-image:url('${post.image}')"` : 'style="background:#2A2A2A"'}></div>
+      sideContainer.innerHTML = posts.slice(1, 4).map(post => {
+        const link  = safeUrl(post.link);
+        const image = safeCssUrl(post.image);
+        return `
+        <a class="inh-hero-side-item" href="${escAttr(link)}" target="_blank" rel="noopener">
+          <div class="inh-hero-img" ${image ? `style="background-image:url('${image}')"` : 'style="background:#2A2A2A"'}></div>
           <div class="inh-hero-overlay">
             <span class="inh-tag blue" style="font-size:9px">News</span>
             <div class="inh-hero-title">${escHtml(post.title)}</div>
-            <div class="inh-hero-date">${post.date}</div>
+            <div class="inh-hero-date">${escHtml(post.date)}</div>
           </div>
-        </a>
-      `).join('');
+        </a>`;
+      }).join('');
     }
-  } catch(e) {
+  } catch (e) {
     console.warn('Hero news load failed:', e.message);
   }
 }
@@ -100,9 +112,9 @@ function loadProductNewsList() {
     <div class="inh-product-item" onclick="${item.onclick}">
       <div class="inh-product-img-placeholder">CF</div>
       <div class="inh-product-info">
-        <div class="inh-product-tag">${item.tag}</div>
-        <div class="inh-product-name">${item.name}</div>
-        <div class="inh-product-date">${item.date}</div>
+        <div class="inh-product-tag">${escHtml(item.tag)}</div>
+        <div class="inh-product-name">${escHtml(item.name)}</div>
+        <div class="inh-product-date">${escHtml(item.date)}</div>
       </div>
     </div>
   `).join('');
@@ -121,16 +133,15 @@ function startCountdown() {
     const d = document.getElementById('cd-days');
     const h = document.getElementById('cd-hours');
     const m = document.getElementById('cd-mins');
-    if (d) d.textContent = String(days).padStart(2,'0');
-    if (h) h.textContent = String(hours).padStart(2,'0');
-    if (m) m.textContent = String(mins).padStart(2,'0');
+    if (d) d.textContent = String(days).padStart(2, '0');
+    if (h) h.textContent = String(hours).padStart(2, '0');
+    if (m) m.textContent = String(mins).padStart(2, '0');
   }
   tick();
   setInterval(tick, 30000);
 }
 
 // Update nav active state when switching pages
-const _origShowPage = typeof showPage === 'function' ? showPage : null;
 function updateNavActive(id) {
   document.querySelectorAll('.inh-nav-link[id]').forEach(el => el.classList.remove('active'));
   const map = { home: 'navl-home', launches: 'navl-launches', campaigns: 'navl-campaigns', trade: 'navl-trade', training: 'navl-training' };

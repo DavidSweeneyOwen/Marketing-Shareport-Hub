@@ -4,11 +4,20 @@
  * Fetches showroom booking submissions from Jotform EU API and
  * renders live calendar data + upcoming visits.
  * Also handles the booking modal with Jotform iframe embed.
+ *
+ * Hardened: every Jotform answer value is escaped before
+ * rendering (escHtml from ui.js). escHtml/escAttr/safeUrl now
+ * live in ui.js — the local copy has been removed.
+ *
+ * ⚠ SECURITY NOTE: calling the Jotform API with a full account
+ * API key from the browser exposes the key to anyone who views
+ * source. Before go-live, move this call behind the Azure
+ * Function proxy (see hub-app-prompts.md, Prompt 4) and point
+ * fetchShowroomSubmissions at /api/showroom-bookings instead.
  */
 
 // Immediate proof-of-life — runs synchronously as scripts load at bottom of <body>
-// If this line runs, DOM above the script tags is already parsed
-(function() {
+(function () {
   const vc = document.getElementById('sd-visits-container');
   if (vc) {
     vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">Fetching bookings…</p>';
@@ -34,8 +43,8 @@ async function fetchShowroomSubmissions() {
     return null;
   }
   try {
-    const url = `${apiBase}/form/${formId}/submissions?apiKey=${apiKey}&limit=100&orderby=created_at&direction=DESC`;
-    const res  = await fetch(url);
+    const url = `${apiBase}/form/${encodeURIComponent(formId)}/submissions?apiKey=${encodeURIComponent(apiKey)}&limit=100&orderby=created_at&direction=DESC`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     // Jotform returns content as array (or {} when empty — normalise to array)
@@ -46,20 +55,14 @@ async function fetchShowroomSubmissions() {
     return Array.isArray(raw) ? raw : Object.values(raw);
   } catch (e) {
     console.warn('[Jotform] Failed to fetch submissions:', e.message);
-    // Surface error to visits panel
     const vc = document.getElementById('sd-visits-container');
-    if (vc) vc.innerHTML = `<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">API error: ${e.message}</p>`;
+    if (vc) vc.innerHTML = `<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">API error: ${escHtml(e.message)}</p>`;
     return null;
   }
 }
 
 // ─── Parse Submissions ───────────────────────────────────────
 
-/**
- * Extracts booking date and key info from a Jotform submission.
- * The Appointment field answer comes back as an object with a "date" key
- * (e.g. { date: "2026-05-20", time: "10:00 AM" }) or as a plain date string.
- */
 function parseSubmission(sub) {
   const answers = sub.answers || {};
   let bookingDate   = null;
@@ -81,11 +84,11 @@ function parseSubmission(sub) {
         bookingDate = String(ans.date).slice(0, 10); // → "2026-06-10"
       }
     }
-    if (name === 'companyName'  || text === 'company name')         companyName   = a.answer || '';
-    if (name === 'pleaseConfirm'|| text.includes('account manager')) amEmail       = a.answer || '';
-    if (name === 'customerNames12' || text === 'customer names')     customerNames = a.answer || '';
-    if (name === 'numberOf'     || text === 'number of customers')   numCustomers  = a.answer || '';
-    if (name === 'arrivalTime'  || text === 'arrival time')          arrivalTime   = a.answer || '';
+    if (name === 'companyName'  || text === 'company name')          companyName   = a.answer || '';
+    if (name === 'pleaseConfirm' || text.includes('account manager')) amEmail       = a.answer || '';
+    if (name === 'customerNames12' || text === 'customer names')      customerNames = a.answer || '';
+    if (name === 'numberOf'     || text === 'number of customers')    numCustomers  = a.answer || '';
+    if (name === 'arrivalTime'  || text === 'arrival time')           arrivalTime   = a.answer || '';
   }
 
   return { bookingDate, companyName, amEmail, customerNames, numCustomers, arrivalTime, id: sub.id };
@@ -116,14 +119,12 @@ function renderShowroomCalendar(containerId, year, month, bookedDates) {
 
   const today    = new Date();
   const firstDay = new Date(year, month, 1);
-  // Jotform day: Monday = 0
   let startDow = firstDay.getDay() - 1; // JS Sunday=0, we want Mon=0
   if (startDow < 0) startDow = 6;
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrev  = new Date(year, month, 0).getDate();
 
-  // Build day cells
   let cells = '';
 
   // Previous month overflow
@@ -133,7 +134,7 @@ function renderShowroomCalendar(containerId, year, month, bookedDates) {
 
   // Current month days
   for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dow     = new Date(year, month, d).getDay(); // 0=Sun
     const isWknd  = dow === 0 || dow === 6;
     const isToday = (d === today.getDate() && month === today.getMonth() && year === today.getFullYear());
@@ -161,7 +162,7 @@ function renderShowroomCalendar(containerId, year, month, bookedDates) {
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month, d).getDay();
     const isWknd = dow === 0 || dow === 6;
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const isFuture = new Date(year, month, d) > today;
     if (!isWknd && !bookedDates.has(dateStr) && isFuture) freeDays++;
   }
@@ -203,7 +204,7 @@ function renderUpcomingVisits(containerId, parsedBookings) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  const today    = new Date(); today.setHours(0,0,0,0);
+  const today    = new Date(); today.setHours(0, 0, 0, 0);
   const upcoming = parsedBookings
     .filter(b => b.bookingDate && new Date(b.bookingDate) >= today)
     .sort((a, b) => a.bookingDate.localeCompare(b.bookingDate))
@@ -217,21 +218,23 @@ function renderUpcomingVisits(containerId, parsedBookings) {
   const html = upcoming.map(b => {
     const d    = new Date(b.bookingDate + 'T00:00:00');
     const day  = d.getDate();
-    const mon  = MONTH_NAMES[d.getMonth()].slice(0,3);
+    const mon  = MONTH_NAMES[d.getMonth()].slice(0, 3);
     const name = b.companyName || 'Showroom visit';
     const amInitials = amEmailToInitials(b.amEmail);
-    const visitors = b.numCustomers ? `${b.numCustomers} visitor${b.numCustomers > 1 ? 's' : ''}` : '';
+    const numVisitors = parseInt(b.numCustomers, 10);
+    const visitors = numVisitors > 0 ? `${numVisitors} visitor${numVisitors > 1 ? 's' : ''}` : '';
     const time = b.arrivalTime || '';
 
+    // All Jotform-sourced values escaped — they're user-submitted form data
     return `
       <li class="sd-visit">
         <div class="sd-date"><span class="sd-day">${day}</span><span class="sd-mon">${mon}</span></div>
         <div class="sd-info">
           <div class="sd-name">${escHtml(name)}</div>
-          <div class="sd-meta">${[time, amInitials, visitors].filter(Boolean).join(' · ')}</div>
+          <div class="sd-meta">${[time, amInitials, visitors].filter(Boolean).map(escHtml).join(' · ')}</div>
         </div>
         <div class="sd-avatars">
-          ${amInitials ? `<span class="avatar small bg-red">${amEmailToInitials(b.amEmail, true)}</span>` : ''}
+          ${amInitials ? `<span class="avatar small bg-red">${escHtml(amEmailToInitials(b.amEmail, true))}</span>` : ''}
         </div>
       </li>`;
   }).join('');
@@ -244,9 +247,9 @@ function renderUpcomingVisits(containerId, parsedBookings) {
 
 function amEmailToInitials(email, short = false) {
   if (!email) return '';
-  const local = email.split('@')[0].replace(/[._]/g, ' ');
+  const local = String(email).split('@')[0].replace(/[._]/g, ' ');
   const parts = local.split(' ').filter(Boolean);
-  if (short) return parts.map(p => p[0]).join('').slice(0,2).toUpperCase();
+  if (short) return parts.map(p => p[0]).join('').slice(0, 2).toUpperCase();
   return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
 }
 
@@ -266,12 +269,10 @@ function openBookingModal() {
 
   // Build iframe src — pre-fill account manager email if user is signed in
   const { formId } = HUB_CONFIG.jotform || {};
-  let iframeSrc = `https://eu.jotform.com/${formId}?isIframe=1`;
+  let iframeSrc = `https://eu.jotform.com/${encodeURIComponent(formId)}?isIframe=1`;
 
   // Pre-fill the account manager email from logged-in user
-  // Field name from Jotform: "accountManagersEmail" (dropdown)
-  // Jotform pre-fill format: ?q{fieldOrder}_{fieldName}={value}
-  // We match against the dropdown options by passing the email value
+  // (window.AUTH is set explicitly by auth.js — this now works)
   const userEmail = (window.AUTH && window.AUTH.account && window.AUTH.account.mail)
     ? window.AUTH.account.mail.toLowerCase()
     : null;
@@ -303,7 +304,8 @@ function closeBookingModal() {
 }
 
 function onJotformMessage(e) {
-  // Jotform posts a message when the form is submitted
+  // Only trust messages from Jotform's EU domain
+  if (typeof e.origin === 'string' && !/^https:\/\/([a-z0-9-]+\.)?jotform\.com$/.test(e.origin)) return;
   if (typeof e.data !== 'string') return;
   try {
     const data = JSON.parse(e.data);
@@ -330,7 +332,6 @@ function onBookingSubmitted() {
 async function loadShowroomData() {
   const submissions = await fetchShowroomSubmissions();
 
-  // Parse whatever came back
   if (Array.isArray(submissions) && submissions.length > 0) {
     const { dates, parsed } = parseBookedDates(submissions);
     JF.bookedDates = dates;
@@ -363,34 +364,24 @@ async function loadShowroomData() {
 function updateFreeCount() {
   const el = document.getElementById('sd-free-stat');
   if (!el) return;
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   const year  = JF.calendarYear;
   const month = JF.calendarMonth;
   let free = 0;
+  let weekdays = 0;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month, d).getDay();
     if (dow === 0 || dow === 6) continue;
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    weekdays++;
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     if (!JF.bookedDates.has(dateStr) && new Date(year, month, d) >= today) free++;
   }
-  el.innerHTML = `<span class="sd-stat-num">${free}<span class="sd-stat-of">/ 22</span></span><div class="sd-stat-lbl">days free this month</div>`;
-}
-
-// ─── Utility ─────────────────────────────────────────────────
-
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  el.innerHTML = `<span class="sd-stat-num">${free}<span class="sd-stat-of">/ ${weekdays}</span></span><div class="sd-stat-lbl">days free this month</div>`;
 }
 
 // ─── Trade Page Mini Calendar ─────────────────────────────────
 
-/**
- * Renders the compact 4-row week-view in the Trade & Events sidebar card.
- * Shows the current month with today highlighted and booked days marked.
- */
 function renderMiniShowroomCalendar(bookedDates) {
   const weekContainer = document.getElementById('trade-showroom-week');
   const titleEl       = document.getElementById('trade-showroom-title');
@@ -418,7 +409,7 @@ function renderMiniShowroomCalendar(bookedDates) {
     const dow = new Date(year, month, d).getDay();
     const isWknd  = dow === 0 || dow === 6;
     const isToday = d === today.getDate();
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const isBooked = bookedDates.has(dateStr);
     const isFuture = new Date(year, month, d) >= today;
 
@@ -453,5 +444,5 @@ function renderMiniShowroomCalendar(bookedDates) {
 
 // ─── Self-boot ────────────────────────────────────────────────
 // Script tags are at the bottom of <body> so the DOM above is
-// already parsed — call directly, no event listener needed.
+// already parsed — short delay lets auth/demo mode settle first.
 setTimeout(loadShowroomData, 500);

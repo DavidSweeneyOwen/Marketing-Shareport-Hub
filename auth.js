@@ -1,205 +1,153 @@
 /**
- * CheckFire Marketing Hub — Auth
+ * CheckFire Marketing Hub — Auth (MSAL.js)
  * ─────────────────────────────────────────────────────────────
- * Silent SSO first — CheckFire employees on their work devices
- * sign in automatically via their existing Microsoft session.
- * Only shows a login screen if no Microsoft session exists.
+ * Silent SSO first: ssoSilent without a hint only works reliably
+ * when the browser holds exactly one Microsoft session, so we
+ * store the last signed-in username as a loginHint — making
+ * silent sign-in deterministic on work devices from the second
+ * visit onwards. First-ever visit falls back to one click.
+ *
+ * Public surface (unchanged from the previous implementation):
+ *   initAuth() · getAccessToken() · signIn() · signOut()
+ *   window.AUTH = { token, account }
+ *
+ * Requires msal-browser.min.js loaded BEFORE this file.
  */
 
 const AUTH = { token: null, account: null };
+window.AUTH = AUTH; // const declarations don't attach to window — do it explicitly
 
-function getAuthority() {
-  return `https://login.microsoftonline.com/${HUB_CONFIG.tenantId}/oauth2/v2.0`;
-}
+const SCOPES = ['User.Read', 'Sites.Read.All', 'Files.Read.All'];
+const LOGIN_HINT_KEY = 'hub_login_hint';
 
-function getRedirectUri() {
-  return HUB_CONFIG.redirectUri || (window.location.origin + window.location.pathname);
-}
+let _msalApp = null;
 
-// Scopes — includes SharePoint read for live list data
-const SCOPES = 'User.Read openid profile offline_access Sites.Read.All Files.Read.All';
-
-// ── PKCE ─────────────────────────────────────────────────────
-
-async function generatePKCE() {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  const verifier = btoa(String.fromCharCode(...array))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  const data = new TextEncoder().encode(verifier);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  const challenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  return { verifier, challenge };
-}
-
-// ── Build auth URL ────────────────────────────────────────────
-
-async function buildAuthUrl(prompt = 'none') {
-  const { verifier, challenge } = await generatePKCE();
-  const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
-
-  sessionStorage.setItem('hub_pkce_verifier', verifier);
-  sessionStorage.setItem('hub_pkce_state', state);
-
-  const params = new URLSearchParams({
-    client_id:             HUB_CONFIG.clientId,
-    response_type:         'code',
-    redirect_uri:          getRedirectUri(),
-    scope:                 SCOPES,
-    code_challenge:        challenge,
-    code_challenge_method: 'S256',
-    state,
-    prompt,
+function getMsal() {
+  if (_msalApp) return _msalApp;
+  _msalApp = new msal.PublicClientApplication({
+    auth: {
+      clientId:    HUB_CONFIG.clientId,
+      authority:   'https://login.microsoftonline.com/' + HUB_CONFIG.tenantId,
+      redirectUri: HUB_CONFIG.redirectUri || (window.location.origin + window.location.pathname),
+    },
+    cache: { cacheLocation: 'sessionStorage' },
   });
-
-  return `${getAuthority()}/authorize?${params}`;
-}
-
-// ── Handle redirect back from Microsoft ──────────────────────
-
-async function handleRedirect() {
-  const params = new URLSearchParams(window.location.search);
-  const code   = params.get('code');
-  const state  = params.get('state');
-  const error  = params.get('error');
-
-  // Clean URL immediately
-  window.history.replaceState({}, document.title, window.location.pathname);
-
-  if (error) {
-    showSignInPage('Something went wrong — please try signing in again.');
-    return false;
-  }
-
-  if (!code) return false;
-
-  const savedState    = sessionStorage.getItem('hub_pkce_state');
-  const savedVerifier = sessionStorage.getItem('hub_pkce_verifier');
-
-  if (!savedState || state !== savedState) {
-    showSignInPage('Session error — please try again.');
-    return false;
-  }
-
-  showStatus('Signing you in…');
-
-  try {
-    const res = await fetch(`${getAuthority()}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id:     HUB_CONFIG.clientId,
-        grant_type:    'authorization_code',
-        code,
-        redirect_uri:  getRedirectUri(),
-        code_verifier: savedVerifier,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (data.error) {
-      showSignInPage('Sign-in failed — please try again.');
-      return false;
-    }
-
-    AUTH.token = data.access_token;
-    if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
-    sessionStorage.removeItem('hub_pkce_verifier');
-    sessionStorage.removeItem('hub_pkce_state');
-    sessionStorage.removeItem('hub_silent_attempted');
-
-    await loadUserProfile();
-    return true;
-
-  } catch (e) {
-    showSignInPage('Connection error — please try again.');
-    return false;
-  }
-}
-
-// ── Token refresh ─────────────────────────────────────────────
-
-async function getAccessToken() {
-  if (AUTH.token) return AUTH.token;
-  const refresh = sessionStorage.getItem('hub_refresh');
-  if (!refresh) return null;
-  try {
-    const res = await fetch(`${getAuthority()}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id:     HUB_CONFIG.clientId,
-        grant_type:    'refresh_token',
-        refresh_token: refresh,
-        scope:         SCOPES,
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    AUTH.token = data.access_token;
-    if (data.refresh_token) sessionStorage.setItem('hub_refresh', data.refresh_token);
-    return AUTH.token;
-  } catch (e) {
-    sessionStorage.removeItem('hub_refresh');
-    return null;
-  }
-}
-
-// ── User profile ──────────────────────────────────────────────
-
-async function loadUserProfile() {
-  try {
-    const res = await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,mail', {
-      headers: { Authorization: `Bearer ${AUTH.token}` },
-    });
-    const user = await res.json();
-    AUTH.account = user;
-    showSignedIn(user);
-  } catch (e) {
-    showSignedIn({ displayName: 'Signed in' });
-  }
-}
-
-function signOut() {
-  AUTH.token = null;
-  sessionStorage.clear();
-  window.location.href = `${getAuthority()}/logout?post_logout_redirect_uri=${encodeURIComponent(getRedirectUri())}`;
-}
-
-// ── Sign-in trigger (called by button) ───────────────────────
-
-async function signIn() {
-  const url = await buildAuthUrl('login');
-  window.location.href = url;
+  return _msalApp;
 }
 
 // ── Init ──────────────────────────────────────────────────────
 
 async function initAuth() {
-  if (HUB_CONFIG.clientId === 'YOUR_CLIENT_ID') {
+  // Demo mode — config not filled in yet
+  if (!HUB_CONFIG.clientId || HUB_CONFIG.clientId === 'YOUR_CLIENT_ID') {
     showDemoMode();
     return false;
   }
 
-  // Coming back from Microsoft redirect
-  if (window.location.search.includes('code=') || window.location.search.includes('error=')) {
-    return await handleRedirect();
+  if (typeof msal === 'undefined') {
+    console.error('[Auth] MSAL not loaded — check the msal-browser.min.js script tag in index.html');
+    showSignInPage('Sign-in is unavailable — please contact IT.');
+    return false;
   }
 
-  // Already have a valid refresh token — silently renew
-  const refresh = sessionStorage.getItem('hub_refresh');
-  if (refresh) {
-    const token = await getAccessToken();
-    if (token) { await loadUserProfile(); return true; }
+  const app = getMsal();
+  if (typeof app.initialize === 'function') await app.initialize();
+
+  // 1. Returning from a redirect sign-in?
+  try {
+    const result = await app.handleRedirectPromise();
+    if (result && result.account) {
+      return finishSignIn(result.account, result.accessToken);
+    }
+  } catch (e) {
+    console.warn('[Auth] Redirect handling failed:', e.message);
+    showSignInPage('Sign-in failed — please try again.');
+    return false;
   }
 
-  // No existing session — show the sign-in page
-  // CheckFire employees click once; Microsoft recognises their Windows session
-  // and signs them in immediately without a password prompt
+  // 2. Account already cached this session?
+  const accounts = app.getAllAccounts();
+  if (accounts.length > 0) {
+    return finishSignIn(accounts[0]);
+  }
+
+  // 3. Silent SSO — no clicks if the device already has a Microsoft session
+  let hint = null;
+  try { hint = localStorage.getItem(LOGIN_HINT_KEY); } catch (_) {}
+  try {
+    const result = await app.ssoSilent({
+      scopes: SCOPES,
+      ...(hint ? { loginHint: hint } : {}),
+    });
+    if (result && result.account) {
+      return finishSignIn(result.account, result.accessToken);
+    }
+  } catch (_) {
+    // InteractionRequired — expected on first visit or multi-session devices
+  }
+
+  // 4. Nothing worked silently — show the sign-in page
   showSignInPage();
   return false;
+}
+
+async function finishSignIn(account, accessToken) {
+  const app = getMsal();
+  app.setActiveAccount(account);
+
+  AUTH.account = {
+    displayName: account.name || account.username || 'Signed in',
+    mail:        account.username || '',
+  };
+
+  try { localStorage.setItem(LOGIN_HINT_KEY, account.username || ''); } catch (_) {}
+
+  AUTH.token = accessToken || await getAccessToken();
+
+  showSignedIn(AUTH.account);
+  return true;
+}
+
+// ── Token acquisition ─────────────────────────────────────────
+
+async function getAccessToken() {
+  if (window.HUB_DEMO_MODE) return null;
+  if (typeof msal === 'undefined') return null;
+
+  const app = getMsal();
+  const account = app.getActiveAccount() || app.getAllAccounts()[0];
+  if (!account) return null;
+
+  try {
+    const result = await app.acquireTokenSilent({ scopes: SCOPES, account });
+    AUTH.token = result.accessToken;
+    return result.accessToken;
+  } catch (e) {
+    if (e instanceof msal.InteractionRequiredAuthError) {
+      // Session genuinely expired — one redirect re-establishes it
+      await app.acquireTokenRedirect({ scopes: SCOPES });
+    } else {
+      console.warn('[Auth] Token acquisition failed:', e.message);
+    }
+    return null;
+  }
+}
+
+// ── Sign in / out ─────────────────────────────────────────────
+
+function signIn() {
+  if (typeof msal === 'undefined') return;
+  getMsal().loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
+}
+
+function signOut() {
+  AUTH.token = null;
+  AUTH.account = null;
+  try { localStorage.removeItem(LOGIN_HINT_KEY); } catch (_) {}
+  if (typeof msal === 'undefined') { window.location.reload(); return; }
+  getMsal().logoutRedirect({
+    postLogoutRedirectUri: HUB_CONFIG.redirectUri || (window.location.origin + window.location.pathname),
+  });
 }
 
 // ── UI helpers ────────────────────────────────────────────────
@@ -209,7 +157,6 @@ function showSignInPage(message) {
   if (!overlay) return;
   overlay.classList.remove('hidden');
 
-  // Update message if provided
   if (message) {
     const sub = overlay.querySelector('.auth-sub');
     if (sub) sub.textContent = message;
@@ -218,16 +165,21 @@ function showSignInPage(message) {
 
 function showSignedIn(user) {
   document.getElementById('auth-overlay')?.classList.add('hidden');
+
   const info = document.getElementById('nav-user-info');
   if (info) info.style.display = 'flex';
+
   const name = user.displayName || user.mail || 'You';
-  const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const avatar = document.getElementById('nav-user-avatar');
   const nameEl = document.getElementById('nav-user-name');
   if (avatar) avatar.textContent = initials;
-  if (nameEl)  nameEl.textContent = name.split(' ')[0];
-  if (typeof loadShowroomData  === 'function') loadShowroomData();
-  if (typeof loadWordPressNews === 'function') loadWordPressNews();
+  if (nameEl) nameEl.textContent = name.split(' ')[0];
+
+  // Kick off live data
+  if (typeof loadShowroomData    === 'function') loadShowroomData();
+  if (typeof loadWordPressNews   === 'function') loadWordPressNews();
+  if (typeof loadSharePointData  === 'function') loadSharePointData();
 }
 
 function showDemoMode() {
@@ -237,17 +189,4 @@ function showDemoMode() {
   window.HUB_DEMO_MODE = true;
   if (typeof loadShowroomData  === 'function') loadShowroomData();
   if (typeof loadWordPressNews === 'function') loadWordPressNews();
-}
-
-function showStatus(msg) {
-  let el = document.getElementById('hub-auth-status');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'hub-auth-status';
-    el.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0A0A0A;color:#fff;padding:10px 18px;border-radius:10px;font-size:12px;z-index:99999;max-width:90vw;text-align:center;pointer-events:none';
-    document.body.appendChild(el);
-  }
-  el.textContent = msg;
-  el.style.display = 'block';
-  setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
 }

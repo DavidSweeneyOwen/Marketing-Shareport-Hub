@@ -14,7 +14,8 @@
   <!-- Hub styles -->
   <link rel="stylesheet" href="styles.css">
 
-  <!-- MSAL.js — Microsoft Authentication Library -->
+  <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
+  <script src="msal-browser.min.js"></script>
 </head>
 <body>
 
@@ -1402,43 +1403,24 @@
 
 <!-- ── App init ── -->
 <script>
-  // Clear any stuck silent-auth flags from previous sessions
-  sessionStorage.removeItem('hub_silent_attempted');
-
-  // Boot the hub on page load
+  // Boot the hub once the DOM is ready. By the time DOMContentLoaded
+  // fires, all the script files below have loaded (parser-blocking),
+  // so initAuth/loadHomePage/updateNavActive are all defined.
   document.addEventListener('DOMContentLoaded', async () => {
-    // Kick off auth (handles OAuth redirect, session refresh, or shows sign-in overlay)
     if (typeof initAuth === 'function') await initAuth();
-    // Load homepage data
     if (typeof loadHomePage === 'function') loadHomePage();
     if (typeof updateNavActive === 'function') updateNavActive('home');
   });
-
-  // Wrap showPage to keep nav active state in sync
-  const _basShowPage = window.showPage;
-  window.showPage = function(id, idx) {
-    if (typeof _basShowPage === 'function') _basShowPage(id, idx);
-    if (typeof updateNavActive === 'function') updateNavActive(id);
-  };
-
-  // Sign-in handler (called by the auth overlay button)
-  async function signIn() {
-    if (typeof setupSignInButton === 'function') {
-      await setupSignInButton();
-      // After setup, follow the href
-      const btn = document.getElementById('signin-link');
-      if (btn && btn.href && btn.href !== '#') window.location.href = btn.href;
-    }
-  }
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
 <script src="config.js"></script>
 
-<!-- Hub scripts -->
+<!-- Hub scripts (order matters: ui.js defines shared helpers) -->
+<script src="ui.js"></script>
 <script src="auth.js"></script>
 <script src="graph.js"></script>
 <script src="app.js"></script>
-<script src="jotform.js?v=4"></script>
+<script src="jotform.js?v=5"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->

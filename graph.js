@@ -1,111 +1,372 @@
 /**
- * CheckFire Marketing Hub — Microsoft Graph & WordPress API calls
+ * CheckFire Marketing Hub — Data layer
+ * ─────────────────────────────────────────────────────────────
+ * 1. WordPress public feed (no auth) — cached so the hero grid
+ *    and news section share a single network request.
+ * 2. Microsoft Graph → SharePoint lists & document library.
+ *    Requires getAccessToken() from auth.js.
+ *
+ * All dynamic values are escaped via escHtml/escAttr/safeUrl
+ * (defined in ui.js) before touching innerHTML.
  */
 
-// ── Core Graph fetch ──────────────────────────────────────────
+// ═══ WordPress News ══════════════════════════════════════════
 
-async function graphFetch(path, params) {
+let _wpPromise = null;
+
+function fetchWordPressNews() {
+  if (_wpPromise) return _wpPromise;
+
+  _wpPromise = (async () => {
+    const { apiUrl, postsPerPage } = HUB_CONFIG.wordpress;
+    const url = `${apiUrl}/posts?per_page=${postsPerPage}&_fields=id,title,excerpt,date,link,jetpack_featured_media_url,_links&_embed=wp:featuredmedia`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`WordPress API returned ${res.status}`);
+    const posts = await res.json();
+
+    return posts.map(post => {
+      let image = post.jetpack_featured_media_url || null;
+      if (!image && post._embedded?.['wp:featuredmedia']?.[0]?.source_url) {
+        image = post._embedded['wp:featuredmedia'][0].source_url;
+      }
+
+      const excerpt = (post.excerpt?.rendered || '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\[&hellip;\]/g, '…')
+        .replace(/&#8217;/g, "'")
+        .trim()
+        .slice(0, 160);
+
+      return {
+        id:      post.id,
+        title:   (post.title?.rendered || 'Untitled').replace(/&#8217;/g, "'").replace(/&amp;/g, '&'),
+        excerpt,
+        date:    post.date ? new Date(post.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '',
+        link:    post.link || '#',
+        image,
+      };
+    });
+  })();
+
+  // A failed fetch shouldn't poison the cache — allow retry
+  _wpPromise.catch(() => { _wpPromise = null; });
+
+  return _wpPromise;
+}
+
+// ═══ Microsoft Graph — shared plumbing ═══════════════════════
+
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const GRAPH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function _cacheGet(key) {
+  try {
+    const raw = sessionStorage.getItem('hubcache_' + key);
+    if (!raw) return null;
+    const { t, v } = JSON.parse(raw);
+    return (Date.now() - t < GRAPH_CACHE_TTL) ? v : null;
+  } catch (_) { return null; }
+}
+
+function _cacheSet(key, v) {
+  try { sessionStorage.setItem('hubcache_' + key, JSON.stringify({ t: Date.now(), v })); }
+  catch (_) { /* storage full / private mode — fine, just uncached */ }
+}
+
+async function graphFetch(path) {
   const token = await getAccessToken();
   if (!token) throw new Error('Not signed in');
 
-  let url = `https://graph.microsoft.com/v1.0${path}`;
-  if (params) url += '?' + new URLSearchParams(params);
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
+  const res = await fetch(GRAPH_BASE + path, {
+    headers: { Authorization: 'Bearer ' + token },
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    const msg = err?.error?.message || `Graph API error ${res.status}`;
-    throw new Error(msg);
-  }
-
+  if (res.status === 404) throw new Error('NOT_FOUND');
+  if (res.status === 403) throw new Error('Permission denied — has admin consent been granted?');
+  if (!res.ok) throw new Error('Graph returned ' + res.status);
   return res.json();
 }
 
-// ── SharePoint site resolution ────────────────────────────────
+// Resolve the SharePoint site ID once per session
+let _siteIdPromise = null;
 
-let _siteId = null;
+function getSiteId() {
+  if (_siteIdPromise) return _siteIdPromise;
 
-async function getSiteId() {
-  if (_siteId) return _siteId;
-  // Extract hostname and path from the SharePoint site URL
-  const url = new URL(HUB_CONFIG.sharepointSite);
-  const hostname = url.hostname;                     // checkfireltd.sharepoint.com
-  const sitePath = url.pathname.replace(/^\//, ''); // sites/CheckFireMediaPortal
-  const data = await graphFetch(`/sites/${hostname}:/${sitePath}`);
-  _siteId = data.id;
-  return _siteId;
+  _siteIdPromise = (async () => {
+    const cached = _cacheGet('siteId');
+    if (cached) return cached;
+
+    const u = new URL(HUB_CONFIG.sharepointSite);
+    const data = await graphFetch(`/sites/${u.hostname}:${u.pathname}`);
+    _cacheSet('siteId', data.id);
+    return data.id;
+  })();
+
+  _siteIdPromise.catch(() => { _siteIdPromise = null; });
+  return _siteIdPromise;
 }
 
-// ── SharePoint list fetch helper ──────────────────────────────
+// ═══ Fetchers ════════════════════════════════════════════════
 
-async function fetchListItems(listName, selectFields) {
+async function fetchListItems(listName) {
+  const cacheKey = 'list_' + listName;
+  const cached = _cacheGet(cacheKey);
+  if (cached) return cached;
+
   const siteId = await getSiteId();
-  const data = await graphFetch(
-    `/sites/${siteId}/lists/${encodeURIComponent(listName)}/items`,
-    { expand: 'fields', $select: 'fields', $top: 50 }
-  );
-  return (data.value || []).map(item => item.fields || {});
-}
-
-// ── SharePoint data loaders ───────────────────────────────────
-
-async function fetchLaunches() {
-  return fetchListItems(HUB_CONFIG.lists.launches);
-}
-
-async function fetchCampaigns() {
-  return fetchListItems(HUB_CONFIG.lists.campaigns);
-}
-
-async function fetchEvents() {
-  return fetchListItems(HUB_CONFIG.lists.events);
-}
-
-async function fetchDocuments() {
-  const siteId = await getSiteId();
-  const data = await graphFetch(
-    `/sites/${siteId}/drive/root/children`,
-    { $select: 'name,webUrl,lastModifiedDateTime,file', $top: 50 }
-  );
-  // Only return actual files (not folders)
-  return (data.value || []).filter(item => item.file);
-}
-
-// ── WordPress News (no auth required) ────────────────────────
-
-async function fetchWordPressNews() {
-  const { apiUrl, postsPerPage } = HUB_CONFIG.wordpress;
-  const url = `${apiUrl}/posts?per_page=${postsPerPage}&_fields=id,title,excerpt,date,link,jetpack_featured_media_url,_links&_embed=wp:featuredmedia`;
-
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`WordPress API returned ${res.status}`);
-  const posts = await res.json();
-
-  return posts.map(post => {
-    // Try to get featured image from embed or jetpack field
-    let image = post.jetpack_featured_media_url || null;
-    if (!image && post._embedded?.['wp:featuredmedia']?.[0]?.source_url) {
-      image = post._embedded['wp:featuredmedia'][0].source_url;
+  try {
+    const data = await graphFetch(
+      `/sites/${siteId}/lists/${encodeURIComponent(listName)}/items?expand=fields&$top=100`
+    );
+    const items = (data.value || []).map(i => i.fields || {});
+    _cacheSet(cacheKey, items);
+    return items;
+  } catch (e) {
+    if (e.message === 'NOT_FOUND') {
+      throw new Error(`List "${listName}" not found — check the name in config.js (case-sensitive)`);
     }
+    throw e;
+  }
+}
 
-    // Strip HTML tags from excerpt
-    const excerpt = (post.excerpt?.rendered || '')
-      .replace(/<[^>]+>/g, '')
-      .replace(/\[&hellip;\]/g, '…')
-      .replace(/&#8217;/g, "'")
-      .trim()
-      .slice(0, 160);
+async function fetchLibraryFiles() {
+  const cached = _cacheGet('library');
+  if (cached) return cached;
 
-    return {
-      id:      post.id,
-      title:   (post.title?.rendered || 'Untitled').replace(/&#8217;/g, "'").replace(/&amp;/g, '&'),
-      excerpt,
-      date:    post.date ? new Date(post.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '',
-      link:    post.link || '#',
-      image,
-    };
-  });
+  const siteId = await getSiteId();
+  const drives = await graphFetch(`/sites/${siteId}/drives?$select=id,name`);
+  const wanted = (HUB_CONFIG.documentsLibrary || 'Documents').toLowerCase();
+  const drive  = (drives.value || []).find(d => (d.name || '').toLowerCase() === wanted)
+              || (drives.value || [])[0];
+  if (!drive) throw new Error(`Document library "${HUB_CONFIG.documentsLibrary}" not found`);
+
+  const data = await graphFetch(
+    `/drives/${drive.id}/root/children?$select=name,size,lastModifiedDateTime,webUrl,file,folder&$top=100`
+  );
+  const files = data.value || [];
+  _cacheSet('library', files);
+  return files;
+}
+
+// ═══ Formatting helpers ══════════════════════════════════════
+
+function fmtSpDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function fmtMoney(v) {
+  const n = Number(v);
+  if (isNaN(n)) return escHtml(v);
+  return '£' + n.toLocaleString('en-GB');
+}
+
+function humanSize(bytes) {
+  const n = Number(bytes);
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+// SharePoint hyperlink columns arrive as { Url, Description }
+function linkOf(v) {
+  return (v && typeof v === 'object') ? v.Url : v;
+}
+
+function statusBadge(status) {
+  const s = String(status || '').toLowerCase();
+  let tone = '';
+  if (/live|complete|confirmed|available|launched/.test(s))      tone = 'green';
+  else if (/planning|review|upcoming|draft/.test(s))             tone = 'amber';
+  else if (/pending|delayed|cancelled|blocked/.test(s))          tone = 'red';
+  if (!status) return '';
+  return `<span class="badge ${tone}">${tone ? `<span class="status-dot ${tone}"></span>` : ''}${escHtml(status)}</span>`;
+}
+
+function fileIcon(name, isFolder) {
+  if (isFolder) return { cls: 'doc', label: 'DIR' };
+  const ext = String(name).split('.').pop().toLowerCase();
+  if (['png','jpg','jpeg','gif','svg','webp'].includes(ext)) return { cls: 'img', label: 'IMG' };
+  if (['mp4','mov','avi','webm'].includes(ext))              return { cls: 'vid', label: ext.toUpperCase() };
+  return { cls: 'doc', label: ext.slice(0, 4).toUpperCase() || 'FILE' };
+}
+
+// ═══ Renderers ═══════════════════════════════════════════════
+
+function renderLaunches(items) {
+  const el = document.getElementById('sp-launches-list');
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = '<p class="prose dim">No launches in SharePoint yet — add items to the Product Launches list.</p>';
+    return;
+  }
+
+  const sorted = [...items].sort((a, b) => String(a.LaunchDate || '').localeCompare(String(b.LaunchDate || '')));
+
+  el.innerHTML = `<div class="asset-grid">${sorted.map(f => {
+    const url = safeUrl(linkOf(f.LinkURL), '');
+    return `
+    <div class="asset">
+      <div class="asset-info">
+        <div class="asset-name">${escHtml(f.Title || 'Untitled')}</div>
+        <div class="asset-meta">${[
+          escHtml(f.SKU || ''),
+          fmtSpDate(f.LaunchDate),
+          f.RRP != null && f.RRP !== '' ? fmtMoney(f.RRP) : '',
+        ].filter(Boolean).join(' · ')}</div>
+      </div>
+      ${statusBadge(f.Status)}
+      ${url ? `<a class="link" href="${escAttr(url)}" target="_blank" rel="noopener">Open →</a>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderCampaigns(items) {
+  const grid = document.getElementById('sp-campaigns-grid');
+  if (!grid || !items.length) return; // keep the demo cards if the list is empty
+
+  const tones = ['tone-red', 'tone-teal', 'tone-amber', 'tone-blue', 'tone-gold', 'tone-slate'];
+
+  grid.innerHTML = items.map((f, i) => {
+    const s = String(f.Status || '').toLowerCase();
+    const pill = /live/.test(s)
+      ? '<span class="pill live"><span class="status-dot green"></span>Live</span>'
+      : /complete/.test(s)
+        ? '<span class="pill done">Completed</span>'
+        : `<span class="pill planning">${escHtml(f.Status || 'Planning')}</span>`;
+    const channels = Array.isArray(f.Channels) ? f.Channels.join(' · ') : (f.Channels || '');
+    const url = safeUrl(linkOf(f.LinkURL), '');
+
+    return `
+    <article class="camp-card" ${url ? `onclick="window.open('${escAttr(url)}','_blank','noopener')"` : ''}>
+      <div class="camp-thumb ${tones[i % tones.length]}">${pill}</div>
+      <div class="camp-body">
+        <div class="camp-cat">${escHtml(f.CampaignType || 'Campaign')}</div>
+        <h3 class="camp-name">${escHtml(f.Title || 'Untitled')}</h3>
+        <div class="camp-dates">${[fmtSpDate(f.StartDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ')}${f.Region ? ' · ' + escHtml(f.Region) : ''}</div>
+        <div class="camp-kpis">
+          ${f.Budget != null && f.Budget !== '' ? `<div><div class="k">${fmtMoney(f.Budget)}</div><div class="l">Budget</div></div>` : ''}
+          ${channels ? `<div><div class="k">${escHtml(channels)}</div><div class="l">Channels</div></div>` : ''}
+        </div>
+      </div>
+    </article>`;
+  }).join('');
+
+  // Update the header metrics
+  const count = re => items.filter(f => re.test(String(f.Status || '').toLowerCase())).length;
+  const live = document.getElementById('sp-metric-live');
+  const plan = document.getElementById('sp-metric-planning');
+  const done = document.getElementById('sp-metric-completed');
+  if (live) live.textContent = count(/live/);
+  if (plan) plan.textContent = count(/planning|draft/);
+  if (done) done.textContent = count(/complete/);
+}
+
+function renderEvents(items) {
+  const el = document.getElementById('sp-events-list');
+  if (!el || !items.length) return; // keep the demo cards if the list is empty
+
+  const sorted = [...items].sort((a, b) => String(a.EventDate || '').localeCompare(String(b.EventDate || '')));
+
+  el.innerHTML = sorted.map(f => {
+    const d = f.EventDate ? new Date(f.EventDate) : null;
+    const day = d && !isNaN(d) ? String(d.getDate()).padStart(2, '0') : '—';
+    const mon = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '';
+    const isUpcoming = d && d >= new Date();
+    const url = safeUrl(linkOf(f.LinkURL), '');
+
+    return `
+    <article class="show" ${url ? `onclick="window.open('${escAttr(url)}','_blank','noopener')"` : ''}>
+      <div class="show-date ${isUpcoming ? 'upcoming' : ''}">
+        <div class="d">${day}</div><div class="m">${escHtml(mon)}</div>
+      </div>
+      <div class="show-body">
+        <div class="show-top">
+          <div>
+            <h3 class="show-name">${escHtml(f.Title || 'Untitled')}</h3>
+            <div class="show-where">${escHtml([f.Location, f.EventType].filter(Boolean).join(' · '))}</div>
+          </div>
+          ${statusBadge(f.Status)}
+        </div>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+function renderDocuments(files) {
+  const grid = document.getElementById('sp-documents-grid');
+  if (!grid) return;
+
+  if (!files.length) {
+    grid.innerHTML = '<p class="prose dim">The library is empty — upload files to SharePoint and they\'ll appear here.</p>';
+    return;
+  }
+
+  grid.innerHTML = `<div class="asset-grid">${files.map(f => {
+    const icon = fileIcon(f.name, !!f.folder);
+    const url = safeUrl(f.webUrl, '');
+    const meta = [
+      f.folder ? `${f.folder.childCount ?? ''} items`.trim() : humanSize(f.size),
+      fmtSpDate(f.lastModifiedDateTime),
+    ].filter(Boolean).join(' · ');
+
+    return `
+    <a class="asset" ${url ? `href="${escAttr(url)}" target="_blank" rel="noopener"` : ''}>
+      <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
+      <div class="asset-info">
+        <div class="asset-name">${escHtml(f.name)}</div>
+        <div class="asset-meta">${escHtml(meta)}</div>
+      </div>
+    </a>`;
+  }).join('')}</div>`;
+}
+
+// ═══ Orchestrators ═══════════════════════════════════════════
+
+function _renderListError(containerId, message, keepExisting) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const html = `<p class="sp-error" style="color:#D1242B;font-size:13px;padding:8px 0">${escHtml(message)}</p>`;
+  if (keepExisting) el.insertAdjacentHTML('afterbegin', html);
+  else el.innerHTML = html;
+}
+
+async function loadSharePointData() {
+  if (window.HUB_DEMO_MODE) return;
+  if (typeof getAccessToken !== 'function') return;
+
+  const [launches, campaigns, events] = await Promise.allSettled([
+    fetchListItems(HUB_CONFIG.lists.launches),
+    fetchListItems(HUB_CONFIG.lists.campaigns),
+    fetchListItems(HUB_CONFIG.lists.events),
+  ]);
+
+  if (launches.status === 'fulfilled') renderLaunches(launches.value);
+  else _renderListError('sp-launches-list', `Couldn't load launches: ${launches.reason.message}`);
+
+  if (campaigns.status === 'fulfilled') renderCampaigns(campaigns.value);
+  else _renderListError('sp-campaigns-grid', `Couldn't load campaigns: ${campaigns.reason.message}`, true);
+
+  if (events.status === 'fulfilled') renderEvents(events.value);
+  else _renderListError('sp-events-list', `Couldn't load events: ${events.reason.message}`, true);
+}
+
+async function loadSharePointDocuments() {
+  const grid = document.getElementById('sp-documents-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="skeleton sk-line med"></div><div class="skeleton sk-line"></div><div class="skeleton sk-line short"></div>';
+
+  try {
+    const files = await fetchLibraryFiles();
+    renderDocuments(files);
+  } catch (e) {
+    _renderListError('sp-documents-grid', `Couldn't load the document library: ${e.message}`);
+  }
 }
