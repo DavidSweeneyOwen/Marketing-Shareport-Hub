@@ -9,8 +9,8 @@ const HUB_CONFIG = {
 
   // ── Azure AD ─────────────────────────────────────────────────
   // From your App Registration in Azure Portal > Azure Active Directory
-  tenantId:   'YOUR_TENANT_ID',   // e.g. 'a865e107-f1f1-4c83-b773-130146f1deff'
-  clientId:   'YOUR_CLIENT_ID',   // e.g. '0cae2c21-b578-446e-8518-0855ad12d494'
+  tenantId:   'YOUR_TENANT_ID', 'a865e107-f1f1-4c83-b773-130146f1deff'
+  clientId:   'YOUR_CLIENT_ID', '0cae2c21-b578-446e-8518-0855ad12d494'
 
   // ── SharePoint ───────────────────────────────────────────────
   // The URL of your SharePoint marketing site (no trailing slash)
