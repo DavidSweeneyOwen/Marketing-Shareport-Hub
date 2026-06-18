@@ -1,39 +1,43 @@
 /**
  * CheckFire Marketing Hub — Configuration
+ * ─────────────────────────────────────────
+ * Fill in these values once during setup.
+ * See DEPLOY.md for step-by-step instructions.
  */
 
 const HUB_CONFIG = {
 
-  tenantId:   'a865e107-f1f1-4c83-b773-130146f1deff',
-  clientId:   '0cae2c21-b578-446e-8518-0855ad12d494',
+  // ── Azure AD ─────────────────────────────────────────────────
+  // From your App Registration in Azure Portal > Azure Active Directory
+  tenantId:   'YOUR_TENANT_ID',   // e.g. 'a865e107-f1f1-4c83-b773-130146f1deff'
+  clientId:   'YOUR_CLIENT_ID',   // e.g. '0cae2c21-b578-446e-8518-0855ad12d494'
 
-  sharepointSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
+  // ── SharePoint ───────────────────────────────────────────────
+  // The URL of your SharePoint marketing site (no trailing slash)
+  sharepointSite: 'https://checkfireltd.sharepoint.com/sites/MarketingHub',
 
+  // ── SharePoint List Names ────────────────────────────────────
+  // These must match the exact list names in your SharePoint site.
   lists: {
     launches:  'Product Launches',
     campaigns: 'Campaigns',
     events:    'Events',
   },
 
+  // ── Document Library ─────────────────────────────────────────
+  // The display name of the document library (default SharePoint library is 'Documents')
   documentsLibrary: 'Documents',
 
-  redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
+  // ── Document Library Folders ─────────────────────────────────
+  // Sub-folder paths within the library for each content type.
+  // Update these to match the folder names you've created in SharePoint.
+  folders: {
+    campaigns: 'Campaigns',   // confirmed: Shared Documents/Campaigns
+    launches:  'Launches',    // update if named differently
+    events:    'Events',      // update if named differently
+  },
 
-};
+  // ── Redirect URI (leave blank to auto-detect) ────────────────
+  redirectUri: '',
 
-
-// ── WordPress News Feed ───────────────────────────────────────
-// Pulls latest posts directly from the CheckFire website.
-// No authentication needed — uses the public WordPress REST API.
-HUB_CONFIG.wordpress = {
-  apiUrl: 'https://www.checkfire.co.uk/wp-json/wp/v2',
-  postsPerPage: 6,
-};
-
-// ── Jotform — Showroom Booking ────────────────────────────────
-// EU API key from your Jotform account (My Account → API Keys)
-HUB_CONFIG.jotform = {
-  apiKey:  'd60aa0a76de3c7b4120dd4fee9f79500',   // ← paste your EU API key here
-  formId:  '240422414566047',
-  apiBase: 'https://eu-api.jotform.com',
 };
