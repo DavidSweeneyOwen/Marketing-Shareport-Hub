@@ -1,108 +1,73 @@
 /**
- * CheckFire Marketing Hub — Jotform Showroom Integration
+ * CheckFire Marketing Hub — Showroom Calendar + Booking
  * ────────────────────────────────────────────────────────
- * Fetches showroom booking submissions from Jotform EU API and
- * renders live calendar data + upcoming visits.
- * Also handles the booking modal with Jotform iframe embed.
+ * Two jobs:
+ *  1. Booking modal — embeds the public Jotform booking form (iframe).
+ *  2. Showroom calendar + "upcoming visits" — reads bookings from a
+ *     SharePoint list ("Showroom Bookings") via fetchListItems() in
+ *     graph.js, using the signed-in user's token.
  *
- * Hardened: every Jotform answer value is escaped before
- * rendering (escHtml from ui.js). escHtml/escAttr/safeUrl now
- * live in ui.js — the local copy has been removed.
+ * SECURITY: this file uses NO Jotform API key. The booking form is a
+ * public iframe (no key needed). The "who's coming in" data is read
+ * from SharePoint with the user's own login — exactly how the hub
+ * reads Campaigns/Events. Nothing secret lives in the browser.
  *
- * ⚠ SECURITY NOTE: calling the Jotform API with a full account
- * API key from the browser exposes the key to anyone who views
- * source. Before go-live, move this call behind the Azure
- * Function proxy (see hub-app-prompts.md, Prompt 4) and point
- * fetchShowroomSubmissions at /api/showroom-bookings instead.
+ * Bookings get INTO the SharePoint list automatically via a Power
+ * Automate flow on each Jotform submission — see
+ * SHOWROOM-CALENDAR-SETUP.md. Jotform stays the booking system of
+ * record; SharePoint is just the safe read-back path for the hub.
  */
 
 // Immediate proof-of-life — runs synchronously as scripts load at bottom of <body>
 (function () {
   const vc = document.getElementById('sd-visits-container');
   if (vc) {
-    vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">Fetching bookings…</p>';
+    vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">Loading showroom…</p>';
   }
 })();
 
 // ─── State ───────────────────────────────────────────────────
 
 const JF = {
-  submissions:  [],
   bookedDates:  new Set(),   // "YYYY-MM-DD" strings
+  visits:       [],          // parsed upcoming visits
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(), // 0-indexed
   loaded: false,
 };
 
-// ─── API Fetch ───────────────────────────────────────────────
+// ─── Read bookings from SharePoint ───────────────────────────
+// SharePoint list items come back as their "fields" object. Column
+// internal names are read defensively so small naming differences
+// (e.g. Title vs CompanyName) still work. Create the list using the
+// names in SHOWROOM-CALENDAR-SETUP.md for a clean match.
 
-async function fetchShowroomSubmissions() {
-  const { apiKey, formId, apiBase } = HUB_CONFIG.jotform || {};
-  if (!apiKey || apiKey === 'YOUR_JOTFORM_API_KEY') {
-    console.info('[Jotform] API key not set — using demo data');
-    return null;
+function _firstField(obj, names) {
+  for (const n of names) {
+    if (obj[n] !== undefined && obj[n] !== null && obj[n] !== '') return obj[n];
   }
-  try {
-    const url = `${apiBase}/form/${encodeURIComponent(formId)}/submissions?apiKey=${encodeURIComponent(apiKey)}&limit=100&orderby=created_at&direction=DESC`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    // Jotform returns content as array (or {} when empty — normalise to array)
-    const raw = data.content;
-    if (!raw || (typeof raw === 'object' && !Array.isArray(raw) && Object.keys(raw).length === 0)) {
-      return [];
-    }
-    return Array.isArray(raw) ? raw : Object.values(raw);
-  } catch (e) {
-    console.warn('[Jotform] Failed to fetch submissions:', e.message);
-    const vc = document.getElementById('sd-visits-container');
-    if (vc) vc.innerHTML = `<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">API error: ${escHtml(e.message)}</p>`;
-    return null;
-  }
+  return '';
 }
 
-// ─── Parse Submissions ───────────────────────────────────────
-
-function parseSubmission(sub) {
-  const answers = sub.answers || {};
-  let bookingDate   = null;
-  let companyName   = '';
-  let amEmail       = '';
-  let customerNames = '';
-  let numCustomers  = '';
-  let arrivalTime   = '';
-
-  for (const key of Object.keys(answers)) {
-    const a    = answers[key];
-    const name = a.name || '';
-    const text = (a.text || '').toLowerCase();
-
-    // Appointment field: answer.date = "2026-06-10 03:30" — take first 10 chars
-    if (name === 'appointment' || a.type === 'control_appointment') {
-      const ans = a.answer;
-      if (ans && typeof ans === 'object' && ans.date) {
-        bookingDate = String(ans.date).slice(0, 10); // → "2026-06-10"
-      }
-    }
-    if (name === 'companyName'  || text === 'company name')          companyName   = a.answer || '';
-    if (name === 'pleaseConfirm' || text.includes('account manager')) amEmail       = a.answer || '';
-    if (name === 'customerNames12' || text === 'customer names')      customerNames = a.answer || '';
-    if (name === 'numberOf'     || text === 'number of customers')    numCustomers  = a.answer || '';
-    if (name === 'arrivalTime'  || text === 'arrival time')           arrivalTime   = a.answer || '';
-  }
-
-  return { bookingDate, companyName, amEmail, customerNames, numCustomers, arrivalTime, id: sub.id };
-}
-
-function parseBookedDates(submissions) {
-  const dates = new Set();
+function parseSpBookings(items) {
+  const dates  = new Set();
   const parsed = [];
-  for (const sub of submissions) {
-    const p = parseSubmission(sub);
-    if (p.bookingDate) {
-      dates.add(p.bookingDate);
-      parsed.push(p);
-    }
+
+  for (const it of (items || [])) {
+    const rawDate = _firstField(it, ['BookingDate', 'Booking_x0020_Date', 'Date', 'VisitDate']);
+    if (!rawDate) continue;
+    const dateStr = String(rawDate).slice(0, 10);       // ISO → "YYYY-MM-DD"
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+    dates.add(dateStr);
+    parsed.push({
+      bookingDate:   dateStr,
+      companyName:   _firstField(it, ['Title', 'CompanyName', 'Company']) || 'Showroom visit',
+      accountMgr:    _firstField(it, ['AccountManager', 'AccountManagerEmail', 'AM', 'Owner']),
+      customerNames: _firstField(it, ['CustomerNames', 'Customers', 'Visitors']),
+      numVisitors:   _firstField(it, ['NumberOfVisitors', 'NumVisitors', 'VisitorCount']),
+      arrivalTime:   _firstField(it, ['ArrivalTime', 'Time']),
+    });
   }
   return { dates, parsed };
 }
@@ -200,41 +165,41 @@ function shiftShowroomMonth(delta) {
 
 // ─── Upcoming Visits ─────────────────────────────────────────
 
-function renderUpcomingVisits(containerId, parsedBookings) {
+function renderUpcomingVisits(containerId, visits) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
   const today    = new Date(); today.setHours(0, 0, 0, 0);
-  const upcoming = parsedBookings
+  const upcoming = (visits || [])
     .filter(b => b.bookingDate && new Date(b.bookingDate) >= today)
     .sort((a, b) => a.bookingDate.localeCompare(b.bookingDate))
     .slice(0, 5);
 
   if (!upcoming.length) {
-    container.innerHTML = '<p class="sd-empty">No upcoming visits — calendar is clear.</p>';
+    container.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">No upcoming visits — calendar is clear.</p>';
     return;
   }
 
+  // All values come from SharePoint (staff-entered) but are still escaped.
   const html = upcoming.map(b => {
     const d    = new Date(b.bookingDate + 'T00:00:00');
     const day  = d.getDate();
     const mon  = MONTH_NAMES[d.getMonth()].slice(0, 3);
     const name = b.companyName || 'Showroom visit';
-    const amInitials = amEmailToInitials(b.amEmail);
-    const numVisitors = parseInt(b.numCustomers, 10);
-    const visitors = numVisitors > 0 ? `${numVisitors} visitor${numVisitors > 1 ? 's' : ''}` : '';
+    const amName = personName(b.accountMgr);
+    const n = parseInt(b.numVisitors, 10);
+    const visitors = n > 0 ? `${n} visitor${n > 1 ? 's' : ''}` : '';
     const time = b.arrivalTime || '';
 
-    // All Jotform-sourced values escaped — they're user-submitted form data
     return `
       <li class="sd-visit">
-        <div class="sd-date"><span class="sd-day">${day}</span><span class="sd-mon">${mon}</span></div>
+        <div class="sd-date"><span class="sd-day">${day}</span><span class="sd-mon">${escHtml(mon)}</span></div>
         <div class="sd-info">
           <div class="sd-name">${escHtml(name)}</div>
-          <div class="sd-meta">${[time, amInitials, visitors].filter(Boolean).map(escHtml).join(' · ')}</div>
+          <div class="sd-meta">${[time, amName, visitors].filter(Boolean).map(escHtml).join(' · ')}</div>
         </div>
         <div class="sd-avatars">
-          ${amInitials ? `<span class="avatar small bg-red">${escHtml(amEmailToInitials(b.amEmail, true))}</span>` : ''}
+          ${amName ? `<span class="avatar small bg-red">${escHtml(personInitials(b.accountMgr))}</span>` : ''}
         </div>
       </li>`;
   }).join('');
@@ -245,12 +210,17 @@ function renderUpcomingVisits(containerId, parsedBookings) {
   `;
 }
 
-function amEmailToInitials(email, short = false) {
-  if (!email) return '';
-  const local = String(email).split('@')[0].replace(/[._]/g, ' ');
-  const parts = local.split(' ').filter(Boolean);
-  if (short) return parts.map(p => p[0]).join('').slice(0, 2).toUpperCase();
-  return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+// Account manager may be an email ("jane.doe@checkfire.co.uk") or a name.
+function personName(v) {
+  if (!v) return '';
+  const s = String(v).includes('@') ? String(v).split('@')[0].replace(/[._]/g, ' ') : String(v);
+  return s.split(' ').filter(Boolean).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+}
+
+function personInitials(v) {
+  const name = personName(v);
+  if (!name) return '';
+  return name.split(' ').filter(Boolean).map(p => p[0]).join('').slice(0, 2).toUpperCase();
 }
 
 // ─── Booking Modal ───────────────────────────────────────────
@@ -267,12 +237,11 @@ function openBookingModal() {
   const modal = document.getElementById('booking-modal');
   if (!modal) return;
 
-  // Build iframe src — pre-fill account manager email if user is signed in
+  // Build iframe src — public booking form, no API key involved.
   const { formId } = HUB_CONFIG.jotform || {};
   let iframeSrc = `https://eu.jotform.com/${encodeURIComponent(formId)}?isIframe=1`;
 
-  // Pre-fill the account manager email from logged-in user
-  // (window.AUTH is set explicitly by auth.js — this now works)
+  // Pre-fill the account manager email from the signed-in user
   const userEmail = (window.AUTH && window.AUTH.account && window.AUTH.account.mail)
     ? window.AUTH.account.mail.toLowerCase()
     : null;
@@ -304,7 +273,7 @@ function closeBookingModal() {
 }
 
 function onJotformMessage(e) {
-  // Only trust messages from Jotform's EU domain
+  // Only trust messages from Jotform's domain
   if (typeof e.origin === 'string' && !/^https:\/\/([a-z0-9-]+\.)?jotform\.com$/.test(e.origin)) return;
   if (typeof e.data !== 'string') return;
   try {
@@ -323,40 +292,48 @@ function onBookingSubmitted() {
   if (iframe)  iframe.classList.add('hidden');
   if (success) success.classList.remove('hidden');
 
-  // Refresh booking data after a short delay
-  setTimeout(() => loadShowroomData(), 3000);
+  // Refresh from SharePoint shortly — gives the Power Automate flow a
+  // moment to write the new booking into the list. (Clear cache first.)
+  setTimeout(() => {
+    try { sessionStorage.removeItem('hubcache_list_' + (HUB_CONFIG.showroom?.list || 'Showroom Bookings')); } catch (_) {}
+    loadShowroomData();
+  }, 8000);
 }
 
 // ─── Main Load ───────────────────────────────────────────────
 
 async function loadShowroomData() {
-  const submissions = await fetchShowroomSubmissions();
-
-  if (Array.isArray(submissions) && submissions.length > 0) {
-    const { dates, parsed } = parseBookedDates(submissions);
+  // Pull bookings from SharePoint using the signed-in user's token.
+  // If not signed in yet, or the list isn't created, fall back to a
+  // clean availability view (no scary errors).
+  try {
+    const listName = (HUB_CONFIG.showroom && HUB_CONFIG.showroom.list) || 'Showroom Bookings';
+    const items = await fetchListItems(listName);
+    const { dates, parsed } = parseSpBookings(items);
     JF.bookedDates = dates;
-    JF.submissions = parsed;
+    JF.visits = parsed;
     JF.loaded = true;
+  } catch (e) {
+    console.info('[Showroom] bookings not loaded yet:', e.message);
+    JF.loaded = false;
   }
 
-  // Always render the calendar (works fine with empty bookedDates)
   if (document.getElementById('sd-cal-container')) {
     renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.bookedDates);
   }
 
-  // Always update visits — one of four states
   const vc = document.getElementById('sd-visits-container');
   if (vc) {
-    if (submissions === null) {
-      vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty" style="color:#D1242B">Could not connect to Jotform.<br><span style="font-size:11px;color:#AAA">Check your API key in config.js</span></p>';
-    } else if (JF.loaded) {
-      renderUpcomingVisits('sd-visits-container', JF.submissions);
+    if (JF.loaded) {
+      renderUpcomingVisits('sd-visits-container', JF.visits);
     } else {
-      vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">No showroom bookings yet.</p>';
+      vc.innerHTML =
+        '<div class="sd-eyebrow">Upcoming visits</div>' +
+        '<p class="sd-empty">Sign in to see upcoming showroom visits.<br>' +
+        '<span style="font-size:11px;color:#AAA">Use “Book the showroom” to request a date.</span></p>';
     }
   }
 
-  // Trade page mini calendar + free count
   renderMiniShowroomCalendar(JF.bookedDates);
   updateFreeCount();
 }
@@ -443,6 +420,6 @@ function renderMiniShowroomCalendar(bookedDates) {
 }
 
 // ─── Self-boot ────────────────────────────────────────────────
-// Script tags are at the bottom of <body> so the DOM above is
-// already parsed — short delay lets auth/demo mode settle first.
+// Render an immediate (empty) calendar so the UI isn't blank; the
+// real bookings load is triggered from app.js once sign-in completes.
 setTimeout(loadShowroomData, 500);
