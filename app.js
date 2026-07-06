@@ -32,9 +32,13 @@ async function showPage(id, idx) {
 async function loadPageData(pageId) {
   switch (pageId) {
     case 'home':      await loadHomeData();      break;
-    case 'launches':  await loadLaunchData();    break;
-    case 'campaigns': await loadCampaignData();  break;
-    case 'trade':     await loadEventsData();    break;
+    // Launches / Campaigns / Events all come from loadSharePointData()
+    // in graph.js (fetchListItems + renderers, 5-min cache). The old
+    // per-page loaders below (loadLaunchData etc.) call functions that
+    // no longer exist and must NOT be wired back in.
+    case 'launches':
+    case 'campaigns':
+    case 'trade':     await loadSharePointData(); break;
     case 'training':  await loadResourcesData(); break;
   }
 }
