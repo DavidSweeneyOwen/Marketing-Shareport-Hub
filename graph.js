@@ -344,6 +344,99 @@ function renderDocuments(files) {
   }).join('')}</div>`;
 }
 
+// ═══ Videos — WordPress uploads + SharePoint Media Portal ═════
+
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm)$/i;
+
+async function fetchWordPressVideos() {
+  const cached = _cacheGet('videos_wp');
+  if (cached) return cached;
+  const { apiUrl } = HUB_CONFIG.wordpress;
+  const res = await fetch(`${apiUrl}/media?media_type=video&per_page=12&_fields=id,title,source_url,mime_type,date`);
+  if (!res.ok) throw new Error(`WordPress media API returned ${res.status}`);
+  const items = await res.json();
+  const vids = (items || []).filter(v => VIDEO_EXT.test(v.source_url || '')).map(v => ({
+    title:  String((v.title && v.title.rendered) || 'Untitled').replace(/&#8217;/g, "'").replace(/&amp;/g, '&').trim(),
+    date:   v.date || '',
+    src:    v.source_url,   // public CDN mp4 — plays inline
+    href:   v.source_url,
+    source: 'checkfire.co.uk',
+  }));
+  _cacheSet('videos_wp', vids);
+  return vids;
+}
+
+async function fetchSharePointVideos() {
+  const cached = _cacheGet('videos_sp');
+  if (cached) return cached;
+
+  const u = new URL(HUB_CONFIG.videos.mediaPortalSite);
+  const site = await graphFetch(`/sites/${u.hostname}:${u.pathname}`);
+  const drives = await graphFetch(`/sites/${site.id}/drives?$select=id,name`);
+  const drive = (drives.value || [])[0];
+  if (!drive) return [];
+
+  // Graph drive search matches on name fragments — run one query per
+  // extension and merge (covers files anywhere in the library,
+  // including the "03. Videos" folder).
+  const queries = ['mp4', 'mov', 'webm'].map(q =>
+    graphFetch(`/drives/${drive.id}/root/search(q='${q}')?$select=name,webUrl,lastModifiedDateTime,file&$top=25`)
+      .catch(() => ({ value: [] }))
+  );
+  const results = await Promise.all(queries);
+  const seen = new Set();
+  const vids = [];
+  for (const r of results) {
+    for (const f of (r.value || [])) {
+      if (!VIDEO_EXT.test(f.name || '') || seen.has(f.webUrl)) continue;
+      seen.add(f.webUrl);
+      vids.push({
+        title:  f.name.replace(VIDEO_EXT, '').replace(/[-_]+/g, ' ').trim(),
+        date:   f.lastModifiedDateTime || '',
+        src:    null,          // needs auth — opens in SharePoint's player
+        href:   f.webUrl,
+        source: 'Media Portal',
+      });
+    }
+  }
+  _cacheSet('videos_sp', vids);
+  return vids;
+}
+
+async function loadHomeVideos() {
+  const section = document.getElementById('home-videos');
+  const grid = document.getElementById('home-videos-grid');
+  if (!section || !grid) return;
+
+  const [wp, sp] = await Promise.allSettled([fetchWordPressVideos(), fetchSharePointVideos()]);
+  if (wp.status === 'rejected') console.warn('WordPress videos unavailable:', wp.reason.message);
+  if (sp.status === 'rejected') console.warn('SharePoint videos unavailable:', sp.reason.message);
+
+  const vids = [
+    ...(wp.status === 'fulfilled' ? wp.value : []),
+    ...(sp.status === 'fulfilled' ? sp.value : []),
+  ].sort((a, b) => String(b.date).localeCompare(String(a.date)))
+   .slice(0, (HUB_CONFIG.videos && HUB_CONFIG.videos.max) || 6);
+
+  if (!vids.length) { section.style.display = 'none'; return; }
+
+  grid.innerHTML = vids.map(v => {
+    const href = safeUrl(v.href, '');
+    const media = v.src
+      ? `<video class="vid-player" src="${escAttr(safeUrl(v.src, ''))}" controls preload="metadata" playsinline></video>`
+      : `<a class="vid-thumb-link" href="${escAttr(href)}" target="_blank" rel="noopener"><span class="vid-play">▶</span><span>Watch on SharePoint</span></a>`;
+    return `
+    <div class="vid-card">
+      ${media}
+      <div class="vid-body">
+        <div class="vid-title">${escHtml(v.title)}</div>
+        <div class="vid-meta">${escHtml(v.source)}${v.date ? ' · ' + fmtSpDate(v.date) : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  section.style.display = '';
+}
+
 // ═══ Orchestrators ═══════════════════════════════════════════
 
 function _renderListError(containerId, message, keepExisting) {

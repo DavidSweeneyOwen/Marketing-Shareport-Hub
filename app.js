@@ -51,6 +51,7 @@ async function loadHomeData() {
     loadWordPressNews(),
     loadProductNewsList(),
     startCountdown(),
+    loadHomeVideos(),
   ]);
 }
 

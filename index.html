@@ -13,6 +13,19 @@
 
   <!-- Hub styles -->
   <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ── Latest Videos (home) ─────────────────────────────── */
+    .inh-videos-section{max-width:1280px;margin:0 auto;padding:8px 24px 40px}
+    .vid-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+    .vid-card{background:#fff;border:1px solid #E5E5E5;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s}
+    .vid-card:hover{box-shadow:0 4px 16px rgba(0,0,0,0.08)}
+    .vid-player{width:100%;aspect-ratio:16/9;background:#0A0A0A;display:block;object-fit:cover}
+    .vid-thumb-link{width:100%;aspect-ratio:16/9;background:linear-gradient(135deg,#1e3a5f,#0A0A0A);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:600;text-decoration:none}
+    .vid-play{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-size:15px;padding-left:3px}
+    .vid-body{padding:12px 14px}
+    .vid-title{font-size:13px;font-weight:700;line-height:1.35}
+    .vid-meta{font-size:11px;color:#8A8A8A;margin-top:4px}
+  </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
   <script src="msal-browser.min.js"></script>
@@ -241,6 +254,15 @@
 
   </section>
 
+  <!-- ══ LATEST VIDEOS — WordPress uploads + Media Portal ════ -->
+  <section class="inh-videos-section" id="home-videos" style="display:none">
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">Latest Videos</h3>
+      <a class="inh-section-link" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">Media Portal →</a>
+    </div>
+    <div id="home-videos-grid" class="vid-grid"></div>
+  </section>
+
 </main>
 
 
@@ -455,13 +477,13 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js"></script>
+<script src="config.js?v=2"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js"></script>
-<script src="graph.js?v=2"></script>
-<script src="app.js?v=7"></script>
+<script src="graph.js?v=3"></script>
+<script src="app.js?v=8"></script>
 <script src="jotform.js?v=7"></script>
 
 
