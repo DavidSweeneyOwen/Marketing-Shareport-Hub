@@ -48,15 +48,10 @@ async function loadPageData(pageId) {
 async function loadHomeData() {
   await Promise.all([
     loadHeroNews(),
+    loadWordPressNews(),
     loadProductNewsList(),
     startCountdown(),
   ]);
-  try {
-    const files = await fetchRecentFiles();
-    renderRecentFiles(files);
-  } catch (e) {
-    console.warn('Recent files unavailable:', e.message);
-  }
 }
 
 // ─── WordPress News ───────────────────────────────────────────
@@ -128,273 +123,70 @@ async function loadHeroNews() {
 function loadProductNewsList() {
   const el = document.getElementById('home-product-news');
   if (!el) return;
-  const items = [
-    { tag: 'New Launch',    name: 'ProGuard 6kg CO₂ Extinguisher', date: 'Launching 2 June 2026',  onclick: "showPage('launches',1)" },
-    { tag: 'Coming Soon',   name: 'FireShield Premium Kit',         date: 'Launching 19 June 2026', onclick: "showPage('launches',1)" },
-    { tag: 'Back in Stock', name: 'Commander Stand',                date: 'Available now',           onclick: "showPage('launches',1)" },
-  ];
-  el.innerHTML = items.map(item => `
-    <div class="inh-product-item" onclick="${item.onclick}">
-      <div class="inh-product-img-placeholder">CF</div>
-      <div class="inh-product-info">
-        <div class="inh-product-tag">${escHtml(item.tag)}</div>
-        <div class="inh-product-name">${escHtml(item.name)}</div>
-        <div class="inh-product-date">${escHtml(item.date)}</div>
+  return fetchListItems(HUB_CONFIG.lists.launches).then(items => {
+    if (!items.length) {
+      el.innerHTML = '<p class="prose dim" style="padding:12px 0">No product launches in SharePoint yet — add items to the Product Launches list.</p>';
+      return;
+    }
+    const sorted = [...items].sort((a, b) => String(b.LaunchDate || '').localeCompare(String(a.LaunchDate || '')));
+    el.innerHTML = sorted.slice(0, 3).map(f => `
+      <div class="inh-product-item" onclick="showPage('launches',1)">
+        <div class="inh-product-img-placeholder">CF</div>
+        <div class="inh-product-info">
+          <div class="inh-product-tag">${escHtml(f.Status || 'Launch')}</div>
+          <div class="inh-product-name">${escHtml(f.Title || 'Untitled')}</div>
+          <div class="inh-product-date">${f.LaunchDate ? formatDate(f.LaunchDate) : ''}</div>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+  }).catch(e => {
+    console.warn('Product news unavailable:', e.message);
+    el.innerHTML = '<p class="prose dim" style="padding:12px 0">Sign in to see the latest product launches.</p>';
+  });
 }
+
+// Next Major Event countdown — driven by the SharePoint Events list.
+// Card stays hidden unless there is an upcoming event with a date.
+let _countdownTimer = null;
 
 function startCountdown() {
-  const target = new Date('2026-07-08T09:00:00');
-  function tick() {
-    const diff = target - new Date();
-    if (diff <= 0) return;
-    const d = document.getElementById('cd-days');
-    const h = document.getElementById('cd-hours');
-    const m = document.getElementById('cd-mins');
-    if (d) d.textContent = String(Math.floor(diff / 86400000)).padStart(2, '0');
-    if (h) h.textContent = String(Math.floor((diff % 86400000) / 3600000)).padStart(2, '0');
-    if (m) m.textContent = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
-  }
-  tick();
-  setInterval(tick, 30000);
-}
+  const card = document.getElementById('home-countdown');
+  if (!card) return;
+  return fetchListItems(HUB_CONFIG.lists.events).then(items => {
+    const now = new Date();
+    const upcoming = items
+      .filter(f => f.EventDate && !isNaN(new Date(f.EventDate)) && new Date(f.EventDate) >= now)
+      .sort((a, b) => String(a.EventDate).localeCompare(String(b.EventDate)))[0];
+    if (!upcoming) { card.style.display = 'none'; return; }
 
-function renderRecentFiles(files) {
-  const container = document.getElementById('sp-recent-files');
-  if (!container || !files.length) return;
-  container.innerHTML = files.map(f => `
-    <a class="sp-doc-card" href="${f.url}" target="_blank" rel="noopener">
-      <div class="sp-doc-icon">${fileIcon()}</div>
-      <div>
-        <div class="sp-doc-name">${escHtml(f.name)}</div>
-        <div class="sp-doc-meta">${f.modified}</div>
-      </div>
-    </a>
-  `).join('');
-}
+    const nameEl = document.getElementById('countdown-name');
+    const dateEl = document.getElementById('countdown-date');
+    if (nameEl) nameEl.textContent = upcoming.Title || 'Untitled';
+    if (dateEl) dateEl.textContent = [formatDate(upcoming.EventDate), upcoming.Location].filter(Boolean).join(' · ');
+    card.style.display = '';
 
-// ─── Launches Page Data ───────────────────────────────────────
-
-async function loadLaunchData() {
-  const container = document.getElementById('sp-launches-list');
-  if (!container) return;
-  setSkeleton(container, 3);
-
-  // Try structured list first; fall back to document folder
-  let launches = [];
-  let usedFallback = false;
-  try {
-    launches = await fetchLaunches();
-  } catch (e) {
-    console.warn('Launches list unavailable, trying document folder:', e.message);
-  }
-
-  if (launches.length) {
-    // Rich list-item cards from SharePoint List
-    const featured = launches.find(l => l.status.toLowerCase() !== 'completed') || launches[0];
-    updateLaunchHero(featured);
-
-    container.innerHTML = launches.map(l => {
-      const days = daysUntil(l.launchDate);
-      const badge = statusBadgeClass(l.status);
-      return `
-        <div class="sp-list-item">
-          <div>
-            <div class="sp-list-title">${escHtml(l.title)}</div>
-            <div class="sp-list-sub">${l.sku ? 'SKU: ' + l.sku + ' · ' : ''}${l.launchDate ? formatDate(l.launchDate) : '—'}</div>
-          </div>
-          <span class="sp-badge ${badge}">${days !== null && badge !== 'completed' ? days + 'd' : ucFirst(l.status)}</span>
-        </div>
-      `;
-    }).join('');
-  } else {
-    // Fallback: show files/folders from the Launches document folder
-    try {
-      const folder = HUB_CONFIG.folders?.launches || 'Launches';
-      const docs = await fetchDocuments(folder);
-      if (!docs.length) { container.innerHTML = '<p class="sp-error">No launches found in SharePoint.</p>'; return; }
-      container.innerHTML = docs.map(d => `
-        <a class="sp-list-item" href="${escAttr(d.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-          <div>
-            <div class="sp-list-title">${d.isFolder ? folderIcon() + ' ' : fileIcon(d.ext) + ' '}${escHtml(d.name)}</div>
-            <div class="sp-list-sub">Updated ${escHtml(d.modified)}</div>
-          </div>
-          <span class="sp-badge upcoming">View</span>
-        </a>
-      `).join('');
-    } catch (e2) {
-      container.innerHTML = `<p class="sp-error">Couldn't load launches: ${escHtml(e2.message)}</p>`;
+    const target = new Date(upcoming.EventDate);
+    function tick() {
+      const diff = target - new Date();
+      if (diff <= 0) return;
+      const d = document.getElementById('cd-days');
+      const h = document.getElementById('cd-hours');
+      const m = document.getElementById('cd-mins');
+      if (d) d.textContent = String(Math.floor(diff / 86400000)).padStart(2, '0');
+      if (h) h.textContent = String(Math.floor((diff % 86400000) / 3600000)).padStart(2, '0');
+      if (m) m.textContent = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
     }
-  }
+    tick();
+    clearInterval(_countdownTimer);
+    _countdownTimer = setInterval(tick, 30000);
+  }).catch(e => {
+    console.warn('Countdown unavailable:', e.message);
+    card.style.display = 'none';
+  });
 }
 
-function updateLaunchHero(launch) {
-  const titleEl = document.querySelector('.lhero-title');
-  const ledeEl  = document.querySelector('.lhero-lede');
-  const badgeEl = document.querySelector('.lhero-lead .badge');
-  const daysEl  = document.getElementById('launchDays');
-
-  if (titleEl) titleEl.textContent = launch.title;
-  if (ledeEl && launch.description) ledeEl.textContent = launch.description;
-  if (daysEl && launch.launchDate) daysEl.textContent = daysUntil(launch.launchDate);
-  if (badgeEl && launch.launchDate) {
-    const d = daysUntil(launch.launchDate);
-    badgeEl.innerHTML = `<span class="status-dot ${d > 0 ? 'amber' : 'green'}"></span> ${d > 0 ? 'Launching ' + formatDate(launch.launchDate) + ' · ' + d + ' days to go' : 'Live now'}`;
-  }
-}
-
-// ─── Campaigns Page Data ──────────────────────────────────────
-
-async function loadCampaignData() {
-  const container = document.getElementById('sp-campaigns-grid');
-  if (!container) return;
-  setSkeleton(container, 4, 'sk-card');
-
-  // Try structured list first; fall back to document folder
-  let campaigns = [];
-  try {
-    campaigns = await fetchCampaigns();
-  } catch (e) {
-    console.warn('Campaigns list unavailable, trying document folder:', e.message);
-  }
-
-  if (campaigns.length) {
-    // Rich campaign cards from SharePoint List
-    const live      = campaigns.filter(c => c.status === 'live').length;
-    const planning  = campaigns.filter(c => c.status === 'planning').length;
-    const completed = campaigns.filter(c => c.status === 'completed').length;
-    setMetric('sp-metric-live',      live);
-    setMetric('sp-metric-planning',  planning);
-    setMetric('sp-metric-completed', completed);
-
-    container.innerHTML = campaigns.map(c => `
-      <article class="camp-card" onclick="window.open('${escAttr(c.link)}','_blank')">
-        <div class="camp-thumb tone-${colourForStatus(c.status)}">
-          <span class="pill ${c.status}"><span class="status-dot ${dotColour(c.status)}"></span>${ucFirst(c.status)}</span>
-        </div>
-        <div class="camp-body">
-          <div class="camp-cat">${escHtml(c.type)}</div>
-          <h3 class="camp-name">${escHtml(c.title)}</h3>
-          <div class="camp-dates">${escHtml(c.dates)} · ${escHtml(c.region)}</div>
-          <div class="camp-kpis">
-            <div><div class="k">${c.budget}</div><div class="l">Budget</div></div>
-            <div><div class="k">${c.channels}</div><div class="l">Channels</div></div>
-          </div>
-        </div>
-      </article>
-    `).join('');
-  } else {
-    // Fallback: folders in Shared Documents/Campaigns — one folder per campaign
-    try {
-      const folder = HUB_CONFIG.folders?.campaigns || 'Campaigns';
-      const docs = await fetchDocuments(folder);
-      const items = docs.filter(d => d.isFolder); // each sub-folder is a campaign
-      if (!items.length) { container.innerHTML = '<p class="sp-error">No campaigns found in SharePoint.</p>'; return; }
-
-      // Update metrics based on folder count (all shown as active)
-      setMetric('sp-metric-live',      items.length);
-      setMetric('sp-metric-planning',  0);
-      setMetric('sp-metric-completed', 0);
-
-      // Cycle through accent colours for visual variety
-      const tones = ['red','amber','grey'];
-      container.innerHTML = items.map((d, i) => `
-        <article class="camp-card" onclick="window.open('${escAttr(d.url)}','_blank')">
-          <div class="camp-thumb tone-${tones[i % tones.length]}">
-            <span class="pill live"><span class="status-dot green"></span>Active</span>
-          </div>
-          <div class="camp-body">
-            <div class="camp-cat">Campaign</div>
-            <h3 class="camp-name">${escHtml(d.name)}</h3>
-            <div class="camp-dates">Updated ${escHtml(d.modified)}</div>
-            <div class="camp-kpis">
-              <div><div class="k">—</div><div class="l">Budget</div></div>
-              <div><div class="k">Open folder</div><div class="l">Documents</div></div>
-            </div>
-          </div>
-        </article>
-      `).join('');
-    } catch (e2) {
-      container.innerHTML = `<p class="sp-error">Couldn't load campaigns: ${escHtml(e2.message)}</p>`;
-    }
-  }
-}
-
-// ─── Events Page Data ─────────────────────────────────────────
-
-async function loadEventsData() {
-  const container = document.getElementById('sp-events-list');
-  if (!container) return;
-  setSkeleton(container, 5);
-
-  // Try structured list first; fall back to document folder
-  let events = [];
-  try {
-    events = await fetchEvents();
-  } catch (e) {
-    console.warn('Events list unavailable, trying document folder:', e.message);
-  }
-
-  if (events.length) {
-    // Rich list items from SharePoint List
-    container.innerHTML = events.map(e => `
-      <div class="sp-list-item">
-        <div>
-          <div class="sp-list-title">${escHtml(e.title)}</div>
-          <div class="sp-list-sub">${escHtml(e.date)} · ${escHtml(e.location)}</div>
-        </div>
-        <span class="sp-badge ${statusBadgeClass(e.status)}">${ucFirst(e.status)}</span>
-      </div>
-    `).join('');
-  } else {
-    // Fallback: files/folders from the Events document folder
-    try {
-      const folder = HUB_CONFIG.folders?.events || 'Events';
-      const docs = await fetchDocuments(folder);
-      if (!docs.length) { container.innerHTML = '<p class="sp-error">No events found in SharePoint.</p>'; return; }
-      container.innerHTML = docs.map(d => `
-        <a class="sp-list-item" href="${escAttr(d.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
-          <div>
-            <div class="sp-list-title">${d.isFolder ? folderIcon() + ' ' : fileIcon(d.ext) + ' '}${escHtml(d.name)}</div>
-            <div class="sp-list-sub">Updated ${escHtml(d.modified)}</div>
-          </div>
-          <span class="sp-badge upcoming">View</span>
-        </a>
-      `).join('');
-    } catch (e2) {
-      container.innerHTML = `<p class="sp-error">Couldn't load events: ${escHtml(e2.message)}</p>`;
-    }
-  }
-}
-
-// ─── Resources Page Data ──────────────────────────────────────
-
-async function loadResourcesData() {
-  const container = document.getElementById('sp-documents-grid');
-  if (!container) return;
-  setSkeleton(container, 6);
-  try {
-    // Fetch root of document library — shows Brand, Campaigns, Events, Launches, Products, Reports folders
-    const docs = await fetchDocuments();
-    if (!docs.length) { container.innerHTML = '<p class="sp-error">No files found in the document library.</p>'; return; }
-
-    container.innerHTML = `<div class="sp-doc-grid">${
-      docs.map(d => `
-        <a class="sp-doc-card" href="${escAttr(d.url)}" target="_blank" rel="noopener">
-          <div class="sp-doc-icon">${d.isFolder ? folderIcon() : fileIcon(d.ext)}</div>
-          <div>
-            <div class="sp-doc-name">${escHtml(d.name)}</div>
-            <div class="sp-doc-meta">${escHtml(d.modified)}${d.size ? ' · ' + escHtml(d.size) : ''}</div>
-          </div>
-        </a>
-      `).join('')
-    }</div>`;
-  } catch (e) {
-    container.innerHTML = `<p class="sp-error">Couldn't load documents: ${escHtml(e.message)}</p>`;
-  }
-}
+// (Demo-era loaders removed 7 Jul 2026 — every page now renders live
+// SharePoint data via graph.js. Do not re-add hardcoded content here.)
 
 // ─── Animation helpers (preserved from prototype) ────────────
 
@@ -513,13 +305,6 @@ function fileIcon(ext) {
 
 function folderIcon() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
-}
-
-// ─── Countdown helpers ────────────────────────────────────────
-
-function daysUntilDisplay(dateStr) {
-  const d = daysUntil(dateStr);
-  return d !== null ? d : '—';
 }
 
 // ─── Init ────────────────────────────────────────────────────

@@ -229,7 +229,21 @@ function renderLaunches(items) {
 
 function renderCampaigns(items) {
   const grid = document.getElementById('sp-campaigns-grid');
-  if (!grid || !items.length) return; // keep the demo cards if the list is empty
+  if (!grid) return;
+
+  // Header metrics — always computed from live data (zeros when empty)
+  const count = re => items.filter(f => re.test(String(f.Status || '').toLowerCase())).length;
+  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+  _set('sp-metric-live',      count(/live/));
+  _set('sp-metric-planning',  count(/planning|draft/));
+  _set('sp-metric-completed', count(/complete/));
+  const totalBudget = items.reduce((sum, f) => sum + (Number(f.Budget) || 0), 0);
+  _set('sp-metric-budget', totalBudget ? '£' + totalBudget.toLocaleString('en-GB') : '—');
+
+  if (!items.length) {
+    grid.innerHTML = '<p class="prose dim">No campaigns in SharePoint yet — add items to the Campaigns list and they\'ll appear here.</p>';
+    return;
+  }
 
   const tones = ['tone-red', 'tone-teal', 'tone-amber', 'tone-blue', 'tone-gold', 'tone-slate'];
 
@@ -258,19 +272,22 @@ function renderCampaigns(items) {
     </article>`;
   }).join('');
 
-  // Update the header metrics
-  const count = re => items.filter(f => re.test(String(f.Status || '').toLowerCase())).length;
-  const live = document.getElementById('sp-metric-live');
-  const plan = document.getElementById('sp-metric-planning');
-  const done = document.getElementById('sp-metric-completed');
-  if (live) live.textContent = count(/live/);
-  if (plan) plan.textContent = count(/planning|draft/);
-  if (done) done.textContent = count(/complete/);
 }
 
 function renderEvents(items) {
   const el = document.getElementById('sp-events-list');
-  if (!el || !items.length) return; // keep the demo cards if the list is empty
+  if (!el) return;
+
+  // Header metrics — always computed from live data
+  const count = re => items.filter(f => re.test(String(f.Status || '').toLowerCase())).length;
+  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+  _set('sp-metric-shows-confirmed', count(/confirmed|live/));
+  _set('sp-metric-shows-planning',  count(/planning|draft|upcoming/));
+
+  if (!items.length) {
+    el.innerHTML = '<p class="prose dim">No events in SharePoint yet — add items to the Events list and they\'ll appear here.</p>';
+    return;
+  }
 
   const sorted = [...items].sort((a, b) => String(a.EventDate || '').localeCompare(String(b.EventDate || '')));
 
