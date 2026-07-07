@@ -46,6 +46,16 @@ HUB_CONFIG.showroom = {
   list: 'Showroom Bookings',
 };
 
+// ── Videos — pulled onto the hub home page ────────────────────
+// WordPress: public media API on checkfire.co.uk (video uploads).
+// SharePoint: the Media Portal site's library is searched for video
+// files (e.g. the "03. Videos" folder) using the signed-in user's
+// token — same read-only Graph access as the rest of the hub.
+HUB_CONFIG.videos = {
+  mediaPortalSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
+  max: 6,   // how many to show on the home page
+};
+
 // ── WordPress News Feed (public, no key) ──────────────────────
 HUB_CONFIG.wordpress = {
   apiUrl: 'https://www.checkfire.co.uk/wp-json/wp/v2',
