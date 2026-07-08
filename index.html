@@ -25,6 +25,48 @@
     .vid-body{padding:12px 14px}
     .vid-title{font-size:13px;font-weight:700;line-height:1.35}
     .vid-meta{font-size:11px;color:#8A8A8A;margin-top:4px}
+
+    /* ── Social band (home) ───────────────────────────────── */
+    .inh-social-section{max-width:1280px;margin:0 auto;padding:8px 24px 16px}
+    .soc-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:20px}
+    @media(max-width:900px){.soc-grid{grid-template-columns:1fr}}
+    .soc-col{min-width:0}
+    .soc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .soc-title{font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:#0A0A0A;display:flex;align-items:center;gap:8px}
+    .soc-title .soc-ico{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff}
+    .soc-link{font-size:12px;font-weight:600;color:#D1242B;text-decoration:none}
+    /* In-house comms — Twitter-style cards */
+    .cm-list{display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto;padding-right:4px}
+    .cm-card{display:block;background:#fff;border:1px solid #E5E5E5;border-radius:14px;padding:14px 16px;text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s}
+    .cm-card:hover{box-shadow:0 3px 14px rgba(0,0,0,.07);border-color:#D8D8D8}
+    .cm-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+    .cm-avatar{width:36px;height:36px;border-radius:50%;background:#D1242B;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+    .cm-id{display:flex;flex-direction:column;line-height:1.2;flex:1;min-width:0}
+    .cm-name{font-size:13px;font-weight:700;color:#0A0A0A}
+    .cm-handle{font-size:12px;color:#8A8A8A}
+    .cm-bird{color:#1DA1F2;flex:0 0 auto}
+    .cm-text{font-size:14px;line-height:1.5;color:#1A1A1A;white-space:pre-wrap;word-wrap:break-word}
+    .cm-date{font-size:11px;color:#AAA;margin-top:8px}
+    /* LinkedIn embeds */
+    .li-list{display:flex;flex-direction:column;gap:14px;max-height:520px;overflow-y:auto;padding-right:4px}
+    .li-embed{width:100%;border:1px solid #E5E5E5;border-radius:10px;background:#fff}
+
+    /* ── In-hub document viewer modal ─────────────────────── */
+    .doc-overlay{position:fixed;inset:0;background:rgba(10,10,10,.6);z-index:9996;display:flex;align-items:center;justify-content:center;padding:24px}
+    .doc-overlay.hidden{display:none}
+    .doc-modal{background:#fff;border-radius:14px;width:min(1100px,96vw);height:min(88vh,900px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .doc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #ECECEC}
+    .doc-head-title{font-size:14px;font-weight:700;color:#0A0A0A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .doc-head-actions{display:flex;align-items:center;gap:14px;flex:0 0 auto}
+    .doc-sp{font-size:12px;font-weight:600;color:#0078D4;text-decoration:none}
+    .doc-close{background:none;border:none;cursor:pointer;color:#666;display:flex;padding:4px}
+    .doc-body{position:relative;flex:1;background:#F4F4F4}
+    #doc-frame{width:100%;height:100%;border:0}
+    .doc-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px}
+    .doc-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#555;font-size:14px;padding:24px}
+    .doc-fallback a{color:#0078D4;font-weight:600}
+    .asset-preview{cursor:pointer}
+    .asset-open{margin-left:auto;font-size:11px;font-weight:600;color:#D1242B;white-space:nowrap}
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -119,6 +161,49 @@
 
 <main id="page-home" class="page active" data-screen-label="Home">
 
+  <!-- ══ LATEST VIDEOS (top) — last 3 months only ════════════ -->
+  <section class="inh-videos-section" id="home-videos" style="display:none">
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">Latest Videos</h3>
+      <a class="inh-section-link" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">Media Portal →</a>
+    </div>
+    <div id="home-videos-grid" class="vid-grid"></div>
+  </section>
+
+  <!-- ══ SOCIAL — In-house comms + LinkedIn ═══════════════════ -->
+  <section class="inh-social-section" id="home-social">
+    <div class="soc-grid">
+
+      <!-- In-house comms (Twitter-style) -->
+      <div class="soc-col" id="home-comms" style="display:none">
+        <div class="soc-head">
+          <div class="soc-title">
+            <span class="soc-ico" style="background:#1DA1F2">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M23 4.9c-.8.4-1.7.6-2.6.8a4.5 4.5 0 0 0 2-2.5c-.9.5-1.8.9-2.9 1.1a4.5 4.5 0 0 0-7.7 4.1A12.8 12.8 0 0 1 2.7 3.6a4.5 4.5 0 0 0 1.4 6 4.4 4.4 0 0 1-2-.6v.1a4.5 4.5 0 0 0 3.6 4.4 4.5 4.5 0 0 1-2 .1 4.5 4.5 0 0 0 4.2 3.1A9 9 0 0 1 1 21.5a12.7 12.7 0 0 0 6.9 2c8.3 0 12.8-6.9 12.8-12.8v-.6c.9-.6 1.6-1.4 2.3-2.2z"/></svg>
+            </span>
+            In-house comms
+          </div>
+        </div>
+        <div id="home-comms-list" class="cm-list"></div>
+      </div>
+
+      <!-- LinkedIn -->
+      <div class="soc-col" id="home-linkedin" style="display:none">
+        <div class="soc-head">
+          <div class="soc-title">
+            <span class="soc-ico" style="background:#0A66C2">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4.98 3.5A2.5 2.5 0 1 0 5 8.5a2.5 2.5 0 0 0-.02-5zM3 9h4v12H3zM9 9h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21H20.6v-5.4c0-1.29-.02-2.95-1.8-2.95-1.8 0-2.08 1.4-2.08 2.85V21H12.9z"/></svg>
+            </span>
+            LinkedIn
+          </div>
+          <a class="soc-link" href="https://www.linkedin.com/company/checkfire/" target="_blank" rel="noopener">View page →</a>
+        </div>
+        <div id="home-linkedin-list" class="li-list"></div>
+      </div>
+
+    </div>
+  </section>
+
   <!-- ══ HERO NEWS GRID ══════════════════════════════════════ -->
   <section class="inh-hero-section">
     <div class="inh-hero-grid" id="home-hero-grid">
@@ -185,23 +270,26 @@
           Quick Links
         </div>
         <div class="inh-quicklinks">
-          <a class="inh-ql" href="https://3873456.app.netsuite.com" target="_blank" rel="noopener">
+          <a class="inh-ql" href="https://3810789.app.netsuite.com/app/login/secure/enterpriselogin.nl?c=3810789&amp;redirect=%2Fapp%2Fcenter%2Fcard.nl%3Fsc%3D-29%26whence%3D&amp;whence=" target="_blank" rel="noopener">
             <span class="inh-ql-icon" style="background:#0070C0">NS</span>NetSuite
           </a>
-          <a class="inh-ql" href="https://checkfireltd.sharepoint.com" target="_blank" rel="noopener">
+          <a class="inh-ql" href="https://www.checkfire.co.uk" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#D1242B">CF</span>CheckFire Website
+          </a>
+          <a class="inh-ql" href="https://w3.cezanneondemand.com/CezanneOnDemand/-/CheckFire/Account/LogIn" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#00A19A">HR</span>HR Portal
+          </a>
+          <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">
             <span class="inh-ql-icon" style="background:#0078D4">SP</span>SharePoint
+          </a>
+          <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
+            <span class="inh-ql-icon" style="background:#D1242B">MP</span>Media Portal
           </a>
           <a class="inh-ql" href="https://www.checkfire.co.uk/wp-admin" target="_blank" rel="noopener">
             <span class="inh-ql-icon" style="background:#21759B">WP</span>WordPress
           </a>
-          <a class="inh-ql" href="https://eu.jotform.com/240422414566047" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#D1242B">JF</span>Showroom Form
-          </a>
           <a class="inh-ql" href="https://teams.microsoft.com" target="_blank" rel="noopener">
             <span class="inh-ql-icon" style="background:#6264A7">MS</span>Teams
-          </a>
-          <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#D1242B">MP</span>Media Portal
           </a>
         </div>
       </div>
@@ -254,14 +342,6 @@
 
   </section>
 
-  <!-- ══ LATEST VIDEOS — WordPress uploads + Media Portal ════ -->
-  <section class="inh-videos-section" id="home-videos" style="display:none">
-    <div class="inh-section-head">
-      <h3 class="inh-section-title">Latest Videos</h3>
-      <a class="inh-section-link" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">Media Portal →</a>
-    </div>
-    <div id="home-videos-grid" class="vid-grid"></div>
-  </section>
 
 </main>
 
@@ -438,9 +518,19 @@
           <div class="link-info"><div class="link-name">Media Portal</div><div class="link-desc">Brand assets, hi-res imagery and video library</div></div>
           <svg class="link-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17 17 7M7 7h10v10"></path></svg>
         </a>
-        <a class="link-card" href="https://3873456.app.netsuite.com" target="_blank" rel="noopener">
+        <a class="link-card" href="https://3810789.app.netsuite.com/app/login/secure/enterpriselogin.nl?c=3810789&amp;redirect=%2Fapp%2Fcenter%2Fcard.nl%3Fsc%3D-29%26whence%3D&amp;whence=" target="_blank" rel="noopener">
           <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg></div>
           <div class="link-info"><div class="link-name">NetSuite ERP</div><div class="link-desc">Orders, stock, invoicing, finance · SSO</div></div>
+          <svg class="link-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17 17 7M7 7h10v10"></path></svg>
+        </a>
+        <a class="link-card" href="https://www.checkfire.co.uk" target="_blank" rel="noopener">
+          <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div>
+          <div class="link-info"><div class="link-name">CheckFire website</div><div class="link-desc">checkfire.co.uk — public site, products and news</div></div>
+          <svg class="link-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17 17 7M7 7h10v10"></path></svg>
+        </a>
+        <a class="link-card" href="https://w3.cezanneondemand.com/CezanneOnDemand/-/CheckFire/Account/LogIn" target="_blank" rel="noopener">
+          <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path><circle cx="10" cy="7" r="4"></circle><path d="M21 21v-2a4 4 0 0 0-3-3.87"></path></svg></div>
+          <div class="link-info"><div class="link-name">HR portal (Cezanne)</div><div class="link-desc">Payslips, holiday, absence and personal details</div></div>
           <svg class="link-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17 17 7M7 7h10v10"></path></svg>
         </a>
         <a class="link-card" href="https://www.checkfire.co.uk/wp-admin" target="_blank" rel="noopener">
@@ -477,14 +567,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=2"></script>
+<script src="config.js?v=3"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js"></script>
-<script src="graph.js?v=3"></script>
-<script src="app.js?v=8"></script>
-<script src="jotform.js?v=7"></script>
+<script src="graph.js?v=4"></script>
+<script src="app.js?v=9"></script>
+<script src="jotform.js?v=8"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
@@ -539,6 +629,25 @@
       <button class="bk-close" style="background:none;width:auto;height:auto;font-size:11px;color:#AAA;padding:0" onclick="closeBookingModal()">Cancel</button>
     </div>
 
+  </div>
+</div>
+
+<!-- ═══ IN-HUB DOCUMENT VIEWER ═══════════════════════════════ -->
+<div id="doc-modal" class="doc-overlay hidden" onclick="if(event.target===this)closeDocPreview()">
+  <div class="doc-modal">
+    <div class="doc-head">
+      <div class="doc-head-title" id="doc-modal-title">Document</div>
+      <div class="doc-head-actions">
+        <a class="doc-sp" id="doc-modal-splink" href="#" target="_blank" rel="noopener">Open in SharePoint ↗</a>
+        <button class="doc-close" onclick="closeDocPreview()" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="doc-body" id="doc-modal-body">
+      <div class="doc-loading" id="doc-modal-loading">Loading preview…</div>
+      <iframe id="doc-frame" title="Document preview" allowfullscreen></iframe>
+    </div>
   </div>
 </div>
 
