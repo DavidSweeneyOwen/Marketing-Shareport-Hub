@@ -42,8 +42,9 @@ const HUB_CONFIG = {
 // MarketingHub site. Bookings land here automatically via a Power
 // Automate flow when someone submits the Jotform booking form.
 // See SHOWROOM-CALENDAR-SETUP.md for the list columns + flow steps.
-HUB_CONFIG.showroom = {
-  list: 'Showroom Bookings',
+HUB_CONFIG.jotform = {
+  formId: '240422414566047',
+  proxyUrl: 'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/bookings',   // ends in /api/bookings
 };
 
 // ── Videos — pulled onto the hub home page ────────────────────
