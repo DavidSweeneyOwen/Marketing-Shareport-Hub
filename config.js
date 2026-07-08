@@ -53,7 +53,8 @@ HUB_CONFIG.showroom = {
 // token — same read-only Graph access as the rest of the hub.
 HUB_CONFIG.videos = {
   mediaPortalSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
-  max: 6,   // how many to show on the home page
+  max: 6,            // how many to show on the home page
+  maxAgeMonths: 3,   // only show videos uploaded within the last N months (0 = no limit)
 };
 
 // ── WordPress News Feed (public, no key) ──────────────────────
@@ -67,4 +68,27 @@ HUB_CONFIG.wordpress = {
 // stored anywhere in this app — see the security note in jotform.js.
 HUB_CONFIG.jotform = {
   formId: '240422414566047',
+
+  // Azure Function proxy that holds the Jotform API key server-side.
+  // Leave '' and the hub reads bookings from the SharePoint list only.
+  // When set (e.g. 'https://checkfire-jotform.azurewebsites.net/api/bookings'),
+  // the hub also pulls live submissions straight from Jotform via the proxy.
+  // The key NEVER ships to the browser — see azure-function/README.md.
+  proxyUrl: '',
+};
+
+// ── Social — LinkedIn + in-house comms feed (home page) ───────
+// LinkedIn has no free auto-updating page feed, so we embed specific
+// posts. In LinkedIn: open a post ▸ ••• ▸ "Embed this post" ▸ copy the
+// src="..." from the <iframe> ▸ paste the URLs below (newest first).
+// The in-house comms feed is a Twitter-style stream driven by a
+// SharePoint list on the MarketingHub site (see the setup guide for
+// the list columns). Both panels hide themselves when empty.
+HUB_CONFIG.social = {
+  linkedInPageUrl: 'https://www.linkedin.com/company/checkfire/',
+  linkedInEmbeds: [
+    // 'https://www.linkedin.com/embed/feed/update/urn:li:share:0000000000000000000',
+  ],
+  commsList: 'Comms',   // SharePoint list of in-house announcements
+  commsMax: 8,
 };
