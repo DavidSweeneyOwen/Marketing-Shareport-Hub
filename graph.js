@@ -474,6 +474,21 @@ async function openDocFile(f) {
 
   if (titleEl) titleEl.textContent = f.name || 'Document';
   if (spLink)  spLink.href = safeUrl(f.webUrl, '#');
+
+  // Direct download (e.g. email signatures, images for Outlook). The
+  // short-lived download URL is fetched fresh each time the viewer opens.
+  const dl = document.getElementById('doc-modal-download');
+  if (dl) {
+    dl.style.display = 'none';
+    dl.removeAttribute('href');
+    if (f._driveId && f.id) {
+      graphFetch(`/drives/${f._driveId}/items/${f.id}?$select=id,name,@microsoft.graph.downloadUrl`)
+        .then(it => {
+          const u = it && it['@microsoft.graph.downloadUrl'];
+          if (u) { dl.href = u; dl.setAttribute('download', f.name || ''); dl.style.display = ''; }
+        }).catch(() => {});
+    }
+  }
   const oldFb = document.querySelector('#doc-modal-body .doc-fallback');
   if (oldFb) oldFb.remove();
   frame.removeAttribute('src');
@@ -987,8 +1002,6 @@ function _renderDetail(opts) {
     { label: 'PR activity',       value: _num(f, ['PRActivity', 'PR', 'PRActivities']) },
   ] : [];
 
-  const blocks = (HUB_CONFIG.campaignAssetBlocks || []);
-
   box.innerHTML = `
     <div class="cd-back" role="button" tabindex="0" onclick="${opts.backFn}" onkeydown="if(event.key==='Enter')${opts.backFn}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
@@ -1012,18 +1025,80 @@ function _renderDetail(opts) {
     `).join('')}</div>` : ''}
 
     <p class="cd-blocks-title">Assets &amp; resources</p>
-    <div class="cd-blocks">${blocks.map((bl, bi) => `
-      <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${bi})" onkeydown="if(event.key==='Enter')openDetailAsset(${bi})">
-        <span class="cd-block-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
-        ${escHtml(bl.label)}
-        <span class="cd-block-note">Open in hub</span>
-      </div>`).join('')}</div>
+    <div class="cd-blocks" id="cd-blocks">
+      <div class="skeleton-card" style="height:96px;border-radius:12px"></div>
+      <div class="skeleton-card" style="height:96px;border-radius:12px"></div>
+      <div class="skeleton-card" style="height:96px;border-radius:12px"></div>
+    </div>
 
     <div id="cd-asset-panel" style="margin-top:20px"></div>`;
 
-  // Remember what the asset blocks should resolve against.
+  // Remember what the asset blocks should resolve against, then discover
+  // the item's real sub-folders (nothing hardcoded - whatever folders
+  // marketing creates in SharePoint show up as blocks).
   _detailContext = { folderRoot: opts.folderRoot, campaignFolder: f.CampaignFolder || f.Folder || f.Title };
+  _loadDetailBlocks();
 }
+
+const _CD_BLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
+let _detailBlocks = [];
+
+function _assetFilesHTML(heading, files, listVar) {
+  return `
+      <p class="cd-blocks-title" style="margin-bottom:10px">${escHtml(heading)}</p>
+      <div class="asset-grid">${files.map((f, idx) => {
+        const icon = fileIcon(f.name, false);
+        const meta = [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' \u00b7 ');
+        return `<div class="asset asset-preview" role="button" tabindex="0" onclick="openDocFile(${listVar}[${idx}])" onkeydown="if(event.key==='Enter')openDocFile(${listVar}[${idx}])">
+          <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
+          <div class="asset-info"><div class="asset-name">${escHtml(f.name)}</div><div class="asset-meta">${escHtml(meta)}</div></div>
+          <span class="asset-open">Open in hub \u2192</span>
+        </div>`;
+      }).join('')}</div>`;
+}
+
+async function _loadDetailBlocks() {
+  const ctx  = _detailContext;
+  const wrap = document.getElementById('cd-blocks');
+  if (!ctx || !wrap) return;
+  try {
+    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+    const rootFolder = await _findChildFolder(drive.id, null, ctx.folderRoot);
+    if (!rootFolder) throw new Error(`No "${ctx.folderRoot}" folder in the document library yet.`);
+    const itemFolder = await _findChildFolder(drive.id, rootFolder.id, ctx.campaignFolder);
+    if (!itemFolder) throw new Error(`No folder matching "${ctx.campaignFolder}" inside ${ctx.folderRoot} yet - create one and its asset folders appear here automatically.`);
+    if (_detailContext !== ctx) return; // user navigated away meanwhile
+
+    const kids       = await fetchDriveChildren(drive.id, itemFolder.id);
+    const folders    = kids.filter(k => k.folder);
+    const looseFiles = kids.filter(k => !k.folder);
+
+    _detailBlocks = folders.map(k => ({ label: k.name, id: k.id, driveId: drive.id, count: (k.folder && typeof k.folder.childCount === 'number') ? k.folder.childCount : null }));
+
+    if (!_detailBlocks.length && !looseFiles.length) {
+      wrap.innerHTML = '<p class="prose dim">No asset folders set up for this item yet - add folders inside its Documents folder and they appear here.</p>';
+      return;
+    }
+
+    wrap.innerHTML = _detailBlocks.map((b, i) => `
+      <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${i})" onkeydown="if(event.key==='Enter')openDetailAsset(${i})">
+        <span class="cd-block-ico">${_CD_BLOCK_SVG}</span>
+        ${escHtml(b.label)}
+        <span class="cd-block-note">${b.count !== null ? b.count + (b.count === 1 ? ' item' : ' items') + ' \u00b7 ' : ''}Open in hub</span>
+      </div>`).join('');
+
+    if (looseFiles.length) {
+      _looseDetailFiles = looseFiles;
+      const panel = document.getElementById('cd-asset-panel');
+      if (panel) panel.innerHTML = _assetFilesHTML('Other files', looseFiles, '_looseDetailFiles');
+    }
+  } catch (e) {
+    wrap.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
+  }
+}
+
+let _looseDetailFiles = [];
 
 let _detailContext = null;
 
@@ -1072,56 +1147,82 @@ function closeLaunchDetail() {
 }
 
 // Find a child folder by (case-insensitive) name under a parent item.
+function _nameTokens(s) {
+  return String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
 async function _findChildFolder(driveId, parentId, name) {
   const target = String(name || '').trim().toLowerCase();
   if (!target) return null;
   const items = await fetchDriveChildren(driveId, parentId);
-  return items.find(f => f.folder && String(f.name).trim().toLowerCase() === target)
-      || items.find(f => f.folder && String(f.name).trim().toLowerCase().includes(target));
+  const folders = items.filter(f => f.folder);
+  // 1. exact (case-insensitive)
+  let hit = folders.find(f => String(f.name).trim().toLowerCase() === target);
+  if (hit) return hit;
+  // 2. substring either way
+  hit = folders.find(f => {
+    const n = String(f.name).trim().toLowerCase();
+    return n.includes(target) || target.includes(n);
+  });
+  if (hit) return hit;
+  // 3. word-set match: same words in any order, or one a subset of the
+  //    other. Fixes e.g. list title "Flat-Pack Tubular Black ... Stand range"
+  //    vs folder "Black Flat-Pack Tubular ... Stand Range".
+  const t = _nameTokens(target);
+  if (!t.length) return null;
+  return folders.find(f => {
+    const n = _nameTokens(f.name);
+    if (!n.length) return false;
+    const setN = new Set(n), setT = new Set(t);
+    return t.every(w => setN.has(w)) || n.every(w => setT.has(w));
+  }) || null;
 }
 
-// Resolve  Documents/<folderRoot>/<campaignFolder>/<block.folder>  and open
-// its file(s) in-hub. One file opens straight into the preview; several are
-// listed in a panel; none shows a friendly "not set up yet" note.
-async function openDetailAsset(blockIdx) {
-  const ctx   = _detailContext;
-  const block = (HUB_CONFIG.campaignAssetBlocks || [])[blockIdx];
+// Open a discovered asset block folder in-hub. One file opens straight
+// into the preview; several are listed in a panel underneath the blocks.
+async function openDetailAsset(i) {
+  const block = _detailBlocks[i];
   const panel = document.getElementById('cd-asset-panel');
-  if (!ctx || !block || !panel) return;
+  if (!block || !panel) return;
 
-  panel.innerHTML = `<p class="prose dim">Opening “${escHtml(block.label)}”…</p>`;
+  panel.innerHTML = `<p class="prose dim">Opening \u201c${escHtml(block.label)}\u201d\u2026</p>`;
 
   try {
-    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
-    const rootFolder = await _findChildFolder(drive.id, null, ctx.folderRoot);
-    if (!rootFolder) throw new Error(`No “${ctx.folderRoot}” folder in the document library yet.`);
-    const itemFolder = await _findChildFolder(drive.id, rootFolder.id, ctx.campaignFolder);
-    if (!itemFolder) throw new Error(`No folder named “${ctx.campaignFolder}” inside ${ctx.folderRoot} yet.`);
-    const blockFolder = await _findChildFolder(drive.id, itemFolder.id, block.folder);
-    if (!blockFolder) throw new Error(`No “${block.label}” folder set up for this item yet.`);
+    const kids  = await fetchDriveChildren(block.driveId, block.id);
+    const files = kids.filter(x => !x.folder);
+    const subs  = kids.filter(x => x.folder);
 
-    const files = (await fetchDriveChildren(drive.id, blockFolder.id)).filter(x => !x.folder);
-    if (!files.length) { panel.innerHTML = `<p class="prose dim">No files in “${escHtml(block.label)}” yet.</p>`; return; }
+    if (!files.length && !subs.length) {
+      panel.innerHTML = `<p class="prose dim">No files in \u201c${escHtml(block.label)}\u201d yet.</p>`;
+      return;
+    }
 
-    if (files.length === 1) {
-      _lastAssetFiles = files;
-      openDocFile(files[0]);
-      panel.innerHTML = `<p class="prose dim">Opened <strong>${escHtml(files[0].name)}</strong> — <a class="fb-crumb" onclick="openDocFile(_lastAssetFiles[0])">reopen</a></p>`;
+    // Sub-folders inside a block become extra blocks appended to the grid.
+    if (subs.length) {
+      const wrap = document.getElementById('cd-blocks');
+      const baseIdx = _detailBlocks.length;
+      subs.forEach((s, si) => {
+        _detailBlocks.push({ label: block.label + ' / ' + s.name, id: s.id, driveId: block.driveId, count: (s.folder && typeof s.folder.childCount === 'number') ? s.folder.childCount : null });
+        if (wrap) wrap.insertAdjacentHTML('beforeend', `
+          <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${baseIdx + si})" onkeydown="if(event.key==='Enter')openDetailAsset(${baseIdx + si})">
+            <span class="cd-block-ico">${_CD_BLOCK_SVG}</span>
+            ${escHtml(block.label + ' / ' + s.name)}
+            <span class="cd-block-note">Open in hub</span>
+          </div>`);
+      });
+    }
+
+    if (!files.length) {
+      panel.innerHTML = `<p class="prose dim">\u201c${escHtml(block.label)}\u201d holds sub-folders \u2014 they've been added to the grid above.</p>`;
       return;
     }
 
     _lastAssetFiles = files;
-    panel.innerHTML = `
-      <p class="cd-blocks-title" style="margin-bottom:10px">${escHtml(block.label)} — ${files.length} files</p>
-      <div class="asset-grid">${files.map((f, idx) => {
-        const icon = fileIcon(f.name, false);
-        const meta = [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' · ');
-        return `<div class="asset asset-preview" role="button" tabindex="0" onclick="openDocFile(_lastAssetFiles[${idx}])" onkeydown="if(event.key==='Enter')openDocFile(_lastAssetFiles[${idx}])">
-          <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
-          <div class="asset-info"><div class="asset-name">${escHtml(f.name)}</div><div class="asset-meta">${escHtml(meta)}</div></div>
-          <span class="asset-open">Open in hub →</span>
-        </div>`;
-      }).join('')}</div>`;
+    if (files.length === 1) {
+      openDocFile(files[0]);
+      panel.innerHTML = `<p class="prose dim">Opened <strong>${escHtml(files[0].name)}</strong> \u2014 <a class="fb-crumb" onclick="openDocFile(_lastAssetFiles[0])">reopen</a></p>`;
+      return;
+    }
+    panel.innerHTML = _assetFilesHTML(`${block.label} \u2014 ${files.length} files`, files, '_lastAssetFiles');
   } catch (e) {
     panel.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
   }

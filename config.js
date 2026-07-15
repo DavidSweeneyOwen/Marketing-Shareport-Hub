@@ -45,21 +45,10 @@ const HUB_CONFIG = {
     events:    'Events',
   },
 
-  // Campaign detail asset blocks (see the Campaigns page). Each block maps
-  // to a sub-folder inside  Documents/Campaigns/<Campaign folder>/ . Clicking
-  // a block opens that folder in the in-hub file browser (a single file
-  // opens straight into the preview/download). Rename or add freely — the
-  // label shows on the block; the folder is matched case-insensitively.
-  campaignAssetBlocks: [
-    { label: 'Infographics',        folder: 'Infographics'        },
-    { label: 'Email signature',     folder: 'Email Signature'     },
-    { label: 'Email',               folder: 'Email'               },
-    { label: 'Data cards',          folder: 'Data Cards'          },
-    { label: 'Data sheets',         folder: 'Data Sheets'         },
-    { label: 'Social media assets', folder: 'Social Media Assets' },
-    { label: 'PR activities',       folder: 'PR Activities'       },
-    { label: 'Blogs',               folder: 'Blogs'               },
-  ],
+  // NOTE: campaign/launch asset blocks are no longer configured here.
+  // The detail pages discover the item's real sub-folders in SharePoint
+  // (Documents/Campaigns/<name>/... or Documents/Launches/<name>/...)
+  // and show whatever exists - marketing can add/rename folders freely.
 
   redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
 
