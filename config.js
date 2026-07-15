@@ -26,6 +26,11 @@ const HUB_CONFIG = {
   // the signed-in user has access to the site.
   productPortalSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal',
 
+  // Libraries shown on the Product Portal tab (first = default). The
+  // portal keeps its datasheets in a separate "Data Sheets" library,
+  // so the in-hub browser offers both.
+  productPortalLibraries: ['Data Sheets', 'Documents'],
+
   lists: {
     launches:  'Product Launches',
     campaigns: 'Campaigns',
@@ -46,12 +51,14 @@ const HUB_CONFIG = {
   // opens straight into the preview/download). Rename or add freely — the
   // label shows on the block; the folder is matched case-insensitively.
   campaignAssetBlocks: [
-    { label: 'Infographic',         folder: 'Infographic'         },
-    { label: 'Email signature',     folder: 'Email signature'     },
+    { label: 'Infographics',        folder: 'Infographics'        },
+    { label: 'Email signature',     folder: 'Email Signature'     },
     { label: 'Email',               folder: 'Email'               },
-    { label: 'Data card',           folder: 'Data card'           },
-    { label: 'Social media assets', folder: 'Social media assets' },
-    { label: 'PR activities',       folder: 'PR activities'       },
+    { label: 'Data cards',          folder: 'Data Cards'          },
+    { label: 'Data sheets',         folder: 'Data Sheets'         },
+    { label: 'Social media assets', folder: 'Social Media Assets' },
+    { label: 'PR activities',       folder: 'PR Activities'       },
+    { label: 'Blogs',               folder: 'Blogs'               },
   ],
 
   redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',

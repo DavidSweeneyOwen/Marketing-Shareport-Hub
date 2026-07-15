@@ -776,10 +776,50 @@ async function loadProductPortal() {
     grid.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to browse the Product Portal.</p>';
     return;
   }
-  if (_fbLoaded.product) { renderBrowser('product'); return; }
+  if (_fbLoaded.product) { renderBrowser('product'); _ppRenderSwitch(); return; }
   _fbLoaded.product = true;
-  await fbInit('product', HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary,
+  await fbInit('product', HUB_CONFIG.productPortalSite, _ppCurrentLib(),
                'pp-documents-grid', 'pp-crumbs', 'Product Portal');
+  _ppRenderSwitch();
+}
+
+// The Product Portal keeps files in more than one library (e.g. "Data
+// Sheets" and "Documents"). Pills above the browser switch between them.
+function _ppLibs() {
+  const libs = HUB_CONFIG.productPortalLibraries;
+  return (Array.isArray(libs) && libs.length) ? libs : [HUB_CONFIG.documentsLibrary];
+}
+function _ppCurrentLib() {
+  return window._ppLib || _ppLibs()[0];
+}
+function _ppRenderSwitch() {
+  const libs = _ppLibs();
+  if (libs.length < 2) return;
+  const crumbs = document.getElementById('pp-crumbs');
+  if (!crumbs) return;
+  let bar = document.getElementById('pp-lib-switch');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'pp-lib-switch';
+    bar.style.cssText = 'display:flex;gap:8px;margin:0 0 12px';
+    crumbs.parentNode.insertBefore(bar, crumbs);
+  }
+  const cur = _ppCurrentLib();
+  bar.innerHTML = libs.map(l => {
+    const on = l === cur;
+    const style = on
+      ? 'background:#111;color:#fff;border:1px solid #111'
+      : 'background:#fff;color:#111;border:1px solid #DADADA';
+    return `<button type="button" style="${style};font-size:12px;font-weight:700;border-radius:20px;padding:6px 14px;cursor:pointer" onclick="ppSwitchLib('${escAttr(l)}')">${escHtml(l)}</button>`;
+  }).join('');
+}
+async function ppSwitchLib(lib) {
+  if (lib === _ppCurrentLib()) return;
+  window._ppLib = lib;
+  delete FB.product;
+  await fbInit('product', HUB_CONFIG.productPortalSite, lib,
+               'pp-documents-grid', 'pp-crumbs', 'Product Portal');
+  _ppRenderSwitch();
 }
 
 // ═══ In-hub file browser ═════════════════════════════════════
