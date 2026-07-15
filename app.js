@@ -48,38 +48,80 @@ async function loadPageData(pageId) {
 async function loadHomeData() {
   await Promise.all([
     loadHeroNews(),
-    loadWordPressNews(),
-    loadProductNewsList(),
+    loadBlogsCarousel(),
+    loadLandingPages(),
+    loadHeroLaunch(),
     startCountdown(),
     loadHomeVideos(),
+    (typeof loadSocial === 'function' ? loadSocial() : Promise.resolve()),
   ]);
+}
+
+// ─── Horizontal carousels (blogs / landing pages) ─────────────
+// Scrolls the track by ~one card width. Buttons wired in index.html.
+function scrollCarousel(trackId, dir) {
+  const track = document.getElementById(trackId);
+  if (!track) return;
+  const card = track.querySelector('.cara-card, .cara-skel');
+  const step = card ? card.getBoundingClientRect().width + 16 : 316;
+  track.scrollBy({ left: dir * step * 1.5, behavior: 'smooth' });
+}
+
+// ─── Active nav highlight ─────────────────────────────────────
+// ui.js's showPage() calls updateNavActive(id) if it exists. Map the
+// page id to its nav link so the underline follows the current page.
+function updateNavActive(id) {
+  const map = { home:'navl-home', launches:'navl-launches', campaigns:'navl-campaigns', trade:'navl-trade', training:'navl-training' };
+  document.querySelectorAll('.inh-nav-link').forEach(a => a.classList.remove('active'));
+  const el = document.getElementById(map[id]);
+  if (el) el.classList.add('active');
 }
 
 // ─── WordPress News ───────────────────────────────────────────
 
-async function loadWordPressNews() {
-  const container = document.getElementById('sp-wp-news');
-  if (!container) return;
-  container.innerHTML = `<div class="wp-news-grid">${Array(3).fill('<div class="wp-news-card skeleton" style="height:200px;border-radius:12px"></div>').join('')}</div>`;
+// Build one horizontal carousel card from a WordPress post/page object.
+function _caraCard(item) {
+  const link  = safeUrl(item.link);
+  const image = safeCssUrl(item.image);
+  return `
+    <a class="cara-card" href="${escAttr(link)}" target="_blank" rel="noopener">
+      ${image ? `<div class="cara-img" style="background-image:url('${image}')"></div>`
+              : `<div class="cara-img"></div>`}
+      <div class="cara-body">
+        <div class="cara-date">${escHtml(item.date)}</div>
+        <div class="cara-title">${escHtml(item.title)}</div>
+        ${item.excerpt ? `<p class="cara-excerpt">${escHtml(item.excerpt)}</p>` : ''}
+      </div>
+    </a>`;
+}
+
+// Latest Blogs carousel — WordPress posts.
+async function loadBlogsCarousel() {
+  const track = document.getElementById('home-blogs-track');
+  if (!track) return;
   try {
     const posts = await fetchWordPressNews();
-    if (!posts.length) { container.innerHTML = '<p class="sp-error">No news posts found.</p>'; return; }
-    container.innerHTML = `<div class="wp-news-grid">${posts.map(post => {
-      const link  = safeUrl(post.link);
-      const image = safeCssUrl(post.image);
-      return `
-      <a class="wp-news-card" href="${escAttr(link)}" target="_blank" rel="noopener">
-        ${image ? `<div class="wp-news-img" style="background-image:url('${image}')"></div>`
-                : `<div class="wp-news-img wp-news-img-placeholder"></div>`}
-        <div class="wp-news-body">
-          <div class="wp-news-date">${escHtml(post.date)}</div>
-          <h3 class="wp-news-title">${escHtml(post.title)}</h3>
-          <p class="wp-news-excerpt">${escHtml(post.excerpt)}</p>
-        </div>
-      </a>`;
-    }).join('')}</div>`;
+    if (!posts.length) { track.innerHTML = '<p class="prose dim">No blog posts found.</p>'; return; }
+    track.innerHTML = posts.map(_caraCard).join('');
   } catch (e) {
-    container.innerHTML = `<p class="sp-error">Couldn't load news: ${escHtml(e.message)}</p>`;
+    track.innerHTML = `<p class="sp-error">Couldn't load blogs: ${escHtml(e.message)}</p>`;
+  }
+}
+
+// Updated Landing Pages carousel — WordPress pages, newest-modified.
+// Section hides itself if the pages endpoint returns nothing.
+async function loadLandingPages() {
+  const section = document.getElementById('home-pages-section');
+  const track   = document.getElementById('home-pages-track');
+  if (!track) return;
+  try {
+    const pages = await fetchWordPressPages();
+    if (!pages.length) { if (section) section.style.display = 'none'; return; }
+    track.innerHTML = pages.map(_caraCard).join('');
+    if (section) section.style.display = '';
+  } catch (e) {
+    console.warn('Landing pages unavailable:', e.message);
+    if (section) section.style.display = 'none';
   }
 }
 
@@ -121,28 +163,35 @@ async function loadHeroNews() {
   }
 }
 
-function loadProductNewsList() {
-  const el = document.getElementById('home-product-news');
+// Hero "Upcoming Launch" box — shows the next upcoming launch (or the
+// most recent if none are in the future), from the Product Launches list.
+function loadHeroLaunch() {
+  const el = document.getElementById('home-hero-launch-body');
   if (!el) return;
   return fetchListItems(HUB_CONFIG.lists.launches).then(items => {
     if (!items.length) {
-      el.innerHTML = '<p class="prose dim" style="padding:12px 0">No product launches in SharePoint yet — add items to the Product Launches list.</p>';
+      el.innerHTML = '<p class="prose dim">No product launches in SharePoint yet.</p>';
       return;
     }
-    const sorted = [...items].sort((a, b) => String(b.LaunchDate || '').localeCompare(String(a.LaunchDate || '')));
-    el.innerHTML = sorted.slice(0, 3).map(f => `
-      <div class="inh-product-item" onclick="showPage('launches',1)">
-        <div class="inh-product-img-placeholder">CF</div>
-        <div class="inh-product-info">
-          <div class="inh-product-tag">${escHtml(f.Status || 'Launch')}</div>
-          <div class="inh-product-name">${escHtml(f.Title || 'Untitled')}</div>
-          <div class="inh-product-date">${f.LaunchDate ? formatDate(f.LaunchDate) : ''}</div>
-        </div>
+    const now = new Date();
+    const withDate = items.filter(f => f.LaunchDate && !isNaN(new Date(f.LaunchDate)));
+    const upcoming = withDate
+      .filter(f => new Date(f.LaunchDate) >= now)
+      .sort((a, b) => String(a.LaunchDate).localeCompare(String(b.LaunchDate)));
+    const past = withDate
+      .sort((a, b) => String(b.LaunchDate).localeCompare(String(a.LaunchDate)));
+    const f = upcoming[0] || past[0] || items[0];
+    const isFuture = f.LaunchDate && new Date(f.LaunchDate) >= now;
+    el.innerHTML = `
+      <div class="hbox-launch" onclick="showPage('launches',1)">
+        <span class="hbox-launch-tag">${escHtml(f.Status || (isFuture ? 'Upcoming' : 'Latest'))}</span>
+        <div class="hbox-launch-title">${escHtml(f.Title || 'Untitled')}</div>
+        <div class="hbox-launch-date">${f.LaunchDate ? formatDate(f.LaunchDate) : ''}</div>
       </div>
-    `).join('');
+      <a class="hbox-more" onclick="showPage('launches',1)">View all launches →</a>`;
   }).catch(e => {
-    console.warn('Product news unavailable:', e.message);
-    el.innerHTML = '<p class="prose dim" style="padding:12px 0">Sign in to see the latest product launches.</p>';
+    console.warn('Hero launch unavailable:', e.message);
+    el.innerHTML = '<p class="prose dim">Sign in to see the latest product launch.</p>';
   });
 }
 
@@ -298,10 +347,6 @@ function dotColour(status) {
   if (s === 'live') return 'green';
   if (s === 'planning') return 'amber';
   return 'grey';
-}
-
-function fileIcon(ext) {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>`;
 }
 
 function folderIcon() {

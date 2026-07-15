@@ -19,6 +19,13 @@ const HUB_CONFIG = {
   // Internal marketing-updates site (Launches / Campaigns / Events lists)
   sharepointSite: 'https://checkfireltd.sharepoint.com/sites/MarketingHub',
 
+  // Product Portal — a second SharePoint site whose library is browsed
+  // and previewed INSIDE the hub (it never bounces out to SharePoint).
+  // Reachable with the same delegated Sites.Read.All / Files.Read.All
+  // scopes the hub already uses — no new admin consent needed as long as
+  // the signed-in user has access to the site.
+  productPortalSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal',
+
   lists: {
     launches:  'Product Launches',
     campaigns: 'Campaigns',
@@ -33,6 +40,20 @@ const HUB_CONFIG = {
     events:    'Events',
   },
 
+  // Campaign detail asset blocks (see the Campaigns page). Each block maps
+  // to a sub-folder inside  Documents/Campaigns/<Campaign folder>/ . Clicking
+  // a block opens that folder in the in-hub file browser (a single file
+  // opens straight into the preview/download). Rename or add freely — the
+  // label shows on the block; the folder is matched case-insensitively.
+  campaignAssetBlocks: [
+    { label: 'Infographic',         folder: 'Infographic'         },
+    { label: 'Email signature',     folder: 'Email signature'     },
+    { label: 'Email',               folder: 'Email'               },
+    { label: 'Data card',           folder: 'Data card'           },
+    { label: 'Social media assets', folder: 'Social media assets' },
+    { label: 'PR activities',       folder: 'PR activities'       },
+  ],
+
   redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
 
 };
@@ -42,9 +63,8 @@ const HUB_CONFIG = {
 // MarketingHub site. Bookings land here automatically via a Power
 // Automate flow when someone submits the Jotform booking form.
 // See SHOWROOM-CALENDAR-SETUP.md for the list columns + flow steps.
-HUB_CONFIG.jotform = {
-  formId: '240422414566047',
-  proxyUrl: 'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/bookings',   // ends in /api/bookings
+HUB_CONFIG.showroom = {
+  list: 'Showroom Bookings',
 };
 
 // ── Videos — pulled onto the hub home page ────────────────────
@@ -59,9 +79,27 @@ HUB_CONFIG.videos = {
 };
 
 // ── WordPress News Feed (public, no key) ──────────────────────
+// posts  → "Latest blogs" carousel on the home page.
+// pages  → "Updated landing pages" carousel (public WordPress pages,
+//          newest-modified first). Set landingPageParent to a page ID
+//          to only show its children, or leave 0 for all pages.
 HUB_CONFIG.wordpress = {
   apiUrl: 'https://www.checkfire.co.uk/wp-json/wp/v2',
-  postsPerPage: 6,
+  postsPerPage: 8,
+  pagesPerPage: 8,
+  landingPageParent: 0,
+};
+
+// ── Showroom / marketing calendar ─────────────────────────────
+// The home-page calendar marks three kinds of date: showroom visits
+// (red), product launches (blue) and campaign runs (amber). Users can
+// "Subscribe" to it. On a static site the Subscribe button downloads an
+// .ics containing every marked date, which imports into Outlook/Google.
+// If you later publish a live SharePoint/Outlook calendar, paste its
+// webcal:// or https .ics feed URL below and Subscribe will use that
+// instead (a true auto-updating subscription).
+HUB_CONFIG.calendar = {
+  feedUrl: '',   // e.g. 'webcal://outlook.office365.com/owa/calendar/.../reachcalendar.ics'
 };
 
 // ── Jotform — Showroom Booking form ───────────────────────────

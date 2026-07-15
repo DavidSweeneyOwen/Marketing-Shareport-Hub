@@ -29,7 +29,8 @@
 // ─── State ───────────────────────────────────────────────────
 
 const JF = {
-  bookedDates:  new Set(),   // "YYYY-MM-DD" strings
+  bookedDates:  new Set(),   // "YYYY-MM-DD" showroom-booked days (mini calendar)
+  marks:        new Map(),   // "YYYY-MM-DD" → { types:Set, labels:[] } (main calendar)
   visits:       [],          // parsed upcoming visits
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(), // 0-indexed
@@ -49,6 +50,20 @@ function _firstField(obj, names) {
   return '';
 }
 
+
+// Accepts a SharePoint Date column value (ISO) OR a text value written
+// by Jotform's SharePoint integration (e.g. "2026-07-15 10:30" or UK
+// "15/07/2026 10:30") and returns "YYYY-MM-DD", or '' if unreadable.
+function _toIsoDate(raw) {
+  const s = String(raw).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);               // ISO first
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/); // UK day/month/year
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  const d = new Date(s);                                     // last resort
+  return isNaN(d) ? '' : d.toISOString().slice(0, 10);
+}
+
 function parseSpBookings(items) {
   const dates  = new Set();
   const parsed = [];
@@ -56,8 +71,8 @@ function parseSpBookings(items) {
   for (const it of (items || [])) {
     const rawDate = _firstField(it, ['BookingDate', 'Booking_x0020_Date', 'Date', 'VisitDate']);
     if (!rawDate) continue;
-    const dateStr = String(rawDate).slice(0, 10);       // ISO → "YYYY-MM-DD"
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+    const dateStr = _toIsoDate(rawDate);
+    if (!dateStr) continue;
 
     dates.add(dateStr);
     parsed.push({
@@ -78,9 +93,11 @@ const MONTH_NAMES = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December'];
 const DOW_SHORT   = ['M','T','W','T','F','S','S'];
 
-function renderShowroomCalendar(containerId, year, month, bookedDates) {
+// marks: Map "YYYY-MM-DD" → { types:Set('showroom'|'launch'|'campaign'), labels:[] }
+function renderShowroomCalendar(containerId, year, month, marks) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  marks = marks || new Map();
 
   const today    = new Date();
   const firstDay = new Date(year, month, 1);
@@ -97,22 +114,27 @@ function renderShowroomCalendar(containerId, year, month, bookedDates) {
     cells += `<div class="sd-d muted">${daysInPrev - i}</div>`;
   }
 
-  // Current month days
+  // Current month days. A day may carry showroom / launch / campaign
+  // markers; showroom (booked) takes visual priority, then campaign,
+  // then launch. The title shows what's on that day.
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dow     = new Date(year, month, d).getDay(); // 0=Sun
     const isWknd  = dow === 0 || dow === 6;
     const isToday = (d === today.getDate() && month === today.getMonth() && year === today.getFullYear());
-    const isBooked = bookedDates.has(dateStr);
+    const mk      = marks.get(dateStr);
     const isFuture = new Date(year, month, d) > today;
 
     let cls = 'sd-d';
-    if (isToday)       cls += ' today';
-    else if (isBooked) cls += ' booked';
-    else if (isWknd)   cls += ' wknd';
-    else if (isFuture) cls += ' free';
+    if (isToday)                              cls += ' today';
+    else if (mk && mk.types.has('showroom'))  cls += ' booked';
+    else if (mk && mk.types.has('campaign'))  cls += ' camp';
+    else if (mk && mk.types.has('launch'))    cls += ' launch';
+    else if (isWknd)                          cls += ' wknd';
+    else if (isFuture)                        cls += ' free';
 
-    cells += `<div class="${cls}">${d}</div>`;
+    const title = mk ? escHtml(mk.labels.join(' · ')) : '';
+    cells += `<div class="${cls}"${title ? ` title="${title}"` : ''}>${d}</div>`;
   }
 
   // Next month overflow (fill to complete last row)
@@ -122,20 +144,21 @@ function renderShowroomCalendar(containerId, year, month, bookedDates) {
     cells += `<div class="sd-d muted wknd">${d}</div>`;
   }
 
-  // Count free weekdays this month (not booked, not weekend, not past)
+  // Count free weekdays this month (no showroom booking, not weekend/past)
   let freeDays = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const dow = new Date(year, month, d).getDay();
     const isWknd = dow === 0 || dow === 6;
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const mk = marks.get(dateStr);
     const isFuture = new Date(year, month, d) > today;
-    if (!isWknd && !bookedDates.has(dateStr) && isFuture) freeDays++;
+    if (!isWknd && !(mk && mk.types.has('showroom')) && isFuture) freeDays++;
   }
 
   container.innerHTML = `
     <div class="sd-cal-head">
       <div>
-        <div class="sd-eyebrow">CHECKFIRE SHOWROOM</div>
+        <div class="sd-eyebrow">CHECKFIRE MARKETING</div>
         <div class="sd-cal-title">${MONTH_NAMES[month]} ${year}</div>
       </div>
       <div class="sd-nav">
@@ -148,11 +171,12 @@ function renderShowroomCalendar(containerId, year, month, bookedDates) {
       ${cells}
     </div>
     <div class="sd-legend">
-      <span><span class="sw red"></span>Visit booked</span>
-      <span><span class="sw green"></span>Available</span>
+      <span><span class="sw red"></span>Showroom</span>
+      <span><span class="sw blue"></span>Launch</span>
+      <span><span class="sw amber"></span>Campaign</span>
       <span><span class="sw today-sw"></span>Today</span>
     </div>
-    <div class="sd-free-count">${freeDays} day${freeDays !== 1 ? 's' : ''} available this month</div>
+    <div class="sd-free-count">${freeDays} showroom day${freeDays !== 1 ? 's' : ''} free this month</div>
   `;
 }
 
@@ -160,7 +184,7 @@ function shiftShowroomMonth(delta) {
   JF.calendarMonth += delta;
   if (JF.calendarMonth > 11) { JF.calendarMonth = 0; JF.calendarYear++; }
   if (JF.calendarMonth < 0)  { JF.calendarMonth = 11; JF.calendarYear--; }
-  renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.bookedDates);
+  renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.marks);
 }
 
 // ─── Upcoming Visits ─────────────────────────────────────────
@@ -302,24 +326,102 @@ function onBookingSubmitted() {
 
 // ─── Main Load ───────────────────────────────────────────────
 
+// Pull live submissions from the Azure Function proxy (if configured).
+// The proxy holds the Jotform API key server-side; this call is
+// anonymous and works even before the user signs in. Returns an array
+// of booking objects in the same shape as parseSpBookings().
+async function fetchProxyBookings(url) {
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('Proxy returned ' + res.status);
+  const data = await res.json();
+  const rows = Array.isArray(data) ? data : (data.bookings || data.value || []);
+  return rows.map(r => ({
+    bookingDate:   _toIsoDate(r.bookingDate || r.date || r.BookingDate || ''),
+    companyName:   r.companyName || r.company || r.Title || 'Showroom visit',
+    accountMgr:    r.accountMgr || r.accountManager || r.AccountManager || '',
+    customerNames: r.customerNames || r.customers || '',
+    numVisitors:   r.numVisitors || r.visitors || '',
+    arrivalTime:   r.arrivalTime || r.time || '',
+  })).filter(b => b.bookingDate);
+}
+
+function _dedupeBookings(list) {
+  const seen = new Set();
+  const out = [];
+  for (const b of list) {
+    const key = b.bookingDate + '|' + String(b.companyName).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(b);
+  }
+  return out;
+}
+
 async function loadShowroomData() {
-  // Pull bookings from SharePoint using the signed-in user's token.
-  // If not signed in yet, or the list isn't created, fall back to a
-  // clean availability view (no scary errors).
+  // Two sources, merged: (1) the SharePoint "Showroom Bookings" list
+  // (needs sign-in) and (2) the Jotform proxy (anonymous, if a proxyUrl
+  // is set in config.js). Either can be absent without breaking the UI.
+  let dates  = new Set();
+  let parsed = [];
+  let loaded = false;
+
+  // 1) SharePoint list — read with the signed-in user's token.
   try {
     const listName = (HUB_CONFIG.showroom && HUB_CONFIG.showroom.list) || 'Showroom Bookings';
     const items = await fetchListItems(listName);
-    const { dates, parsed } = parseSpBookings(items);
-    JF.bookedDates = dates;
-    JF.visits = parsed;
-    JF.loaded = true;
+    const sp = parseSpBookings(items);
+    sp.dates.forEach(d => dates.add(d));
+    parsed.push(...sp.parsed);
+    loaded = true;
   } catch (e) {
-    console.info('[Showroom] bookings not loaded yet:', e.message);
-    JF.loaded = false;
+    console.info('[Showroom] SharePoint bookings not loaded yet:', e.message);
   }
 
+  // 2) Jotform proxy — live submissions straight from Jotform.
+  const proxyUrl = HUB_CONFIG.jotform && HUB_CONFIG.jotform.proxyUrl;
+  if (proxyUrl) {
+    try {
+      const extra = await fetchProxyBookings(proxyUrl);
+      extra.forEach(b => { if (b.bookingDate) dates.add(b.bookingDate); });
+      parsed = _dedupeBookings(parsed.concat(extra));
+      loaded = true;
+    } catch (e) {
+      console.info('[Showroom] Jotform proxy unavailable:', e.message);
+    }
+  }
+
+  JF.bookedDates = dates;
+  JF.visits = parsed;
+  JF.loaded = loaded;
+
+  // Build the combined marker map: showroom (red) + launches (blue) +
+  // campaign runs (amber). List reads are cached (5 min) and any that
+  // fail (e.g. before sign-in) are skipped without breaking the calendar.
+  const marks = new Map();
+  const addMark = (dateStr, type, label) => {
+    if (!dateStr) return;
+    const m = marks.get(dateStr) || { types: new Set(), labels: [] };
+    m.types.add(type);
+    if (label) m.labels.push(label);
+    marks.set(dateStr, m);
+  };
+  parsed.forEach(b => addMark(b.bookingDate, 'showroom', b.companyName || 'Showroom visit'));
+  try {
+    const launches = await fetchListItems(HUB_CONFIG.lists.launches);
+    launches.forEach(f => { const ds = _toIsoDate(f.LaunchDate); if (ds) addMark(ds, 'launch', 'Launch: ' + (f.Title || 'Untitled')); });
+  } catch (e) { console.info('[Calendar] launches not marked:', e.message); }
+  try {
+    const camps = await fetchListItems(HUB_CONFIG.lists.campaigns);
+    camps.forEach(f => {
+      const s = _toIsoDate(f.StartDate), e = _toIsoDate(f.EndDate);
+      if (s) addMark(s, 'campaign', 'Campaign starts: ' + (f.Title || 'Untitled'));
+      if (e && e !== s) addMark(e, 'campaign', 'Campaign ends: ' + (f.Title || 'Untitled'));
+    });
+  } catch (e) { console.info('[Calendar] campaigns not marked:', e.message); }
+  JF.marks = marks;
+
   if (document.getElementById('sd-cal-container')) {
-    renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.bookedDates);
+    renderShowroomCalendar('sd-cal-container', JF.calendarYear, JF.calendarMonth, JF.marks);
   }
 
   const vc = document.getElementById('sd-visits-container');
@@ -417,6 +519,73 @@ function renderMiniShowroomCalendar(bookedDates) {
     badgeEl.innerHTML = `<span class="status-dot ${freeDays > 0 ? 'green' : 'red'}"></span>${freeDays} free`;
     badgeEl.className = `badge ${freeDays > 0 ? 'green' : 'red'}`;
   }
+}
+
+// ─── Calendar subscribe / export ─────────────────────────────
+// If a live feed URL is configured (published Outlook/SharePoint
+// calendar), Subscribe opens it (a true auto-updating subscription).
+// Otherwise it builds and downloads an .ics of the current marked
+// dates, which imports into Outlook / Google / Apple Calendar.
+function _icsDate(dateStr) {
+  return String(dateStr).replace(/-/g, '');           // YYYYMMDD
+}
+function _icsNextDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+function _icsEscape(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+
+function buildCalendarICS() {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0',
+    'PRODID:-//CheckFire//Marketing Hub//EN',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'X-WR-CALNAME:CheckFire Marketing',
+  ];
+  let n = 0;
+  for (const [dateStr, mk] of JF.marks.entries()) {
+    const summary = mk.labels.length ? mk.labels.join(' · ')
+                  : (mk.types.has('showroom') ? 'Showroom visit' : mk.types.has('campaign') ? 'Campaign' : 'Product launch');
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:cf-${_icsDate(dateStr)}-${n++}@checkfire-hub`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${_icsDate(dateStr)}`,
+      `DTEND;VALUE=DATE:${_icsNextDay(dateStr)}`,
+      `SUMMARY:${_icsEscape(summary)}`,
+      'END:VEVENT'
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+function subscribeCalendar() {
+  const feed = HUB_CONFIG.calendar && HUB_CONFIG.calendar.feedUrl;
+  if (feed) {
+    // Live subscription: hand the webcal/https feed to the OS calendar.
+    window.open(feed, '_blank', 'noopener');
+    if (typeof showToast === 'function') showToast('Opening your calendar app to subscribe…');
+    return;
+  }
+  if (!JF.marks || JF.marks.size === 0) {
+    if (typeof showToast === 'function') showToast('No calendar dates to export yet');
+    return;
+  }
+  const blob = new Blob([buildCalendarICS()], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = 'checkfire-marketing-calendar.ics';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  if (typeof showToast === 'function') showToast('Calendar downloaded — open it to add to Outlook');
 }
 
 // ─── Self-boot ────────────────────────────────────────────────

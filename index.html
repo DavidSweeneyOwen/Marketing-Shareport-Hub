@@ -67,6 +67,88 @@
     .doc-fallback a{color:#0078D4;font-weight:600}
     .asset-preview{cursor:pointer}
     .asset-open{margin-left:auto;font-size:11px;font-weight:600;color:#D1242B;white-space:nowrap}
+
+    /* ── Home hero right-column boxes ─────────────────────── */
+    .hero-side-boxes{display:flex;flex-direction:column;gap:16px}
+    .hbox{background:#fff;border:1px solid #E5E5E5;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;flex:1;min-height:0}
+    .hbox-head{display:flex;align-items:center;gap:8px;padding:11px 14px;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#fff}
+    .hbox-head.red{background:#D1242B}
+    .hbox-head.dark{background:#111}
+    .hbox-body{padding:12px 14px;flex:1;overflow:hidden}
+    .hbox-launch{display:flex;flex-direction:column;gap:6px;cursor:pointer}
+    .hbox-launch:hover .hbox-launch-title{color:#D1242B}
+    .hbox-launch-tag{display:inline-block;align-self:flex-start;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:20px;background:#FDECEC;color:#D1242B}
+    .hbox-launch-title{font-family:'Fraunces',serif;font-size:17px;font-weight:600;line-height:1.25;color:#0A0A0A;transition:color .15s}
+    .hbox-launch-date{font-size:12px;color:#8A8A8A}
+    .hbox-vid{display:flex;gap:10px;align-items:center;padding:7px 0;text-decoration:none;color:inherit;border-bottom:1px solid #F0F0F0}
+    .hbox-vid:last-child{border-bottom:0}
+    .hbox-vid-thumb{width:52px;height:34px;border-radius:6px;background:linear-gradient(135deg,#1e3a5f,#0A0A0A);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;flex:0 0 auto}
+    .hbox-vid-title{font-size:12px;font-weight:600;line-height:1.3;color:#1A1A1A;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .hbox-more{display:block;margin-top:8px;font-size:12px;font-weight:600;color:#D1242B;text-decoration:none;cursor:pointer}
+
+    /* ── Calendar markers (launch / campaign) ─────────────── */
+    .sd-d.launch{background:#E7F0FB;color:#0A66C2;font-weight:700}
+    .sd-d.camp{background:#FBF1DD;color:#8a6d1f;font-weight:700}
+    .sd-legend .sw.blue{background:#0A66C2}
+    .sd-legend .sw.amber{background:#E0A320}
+
+    /* ── Three equal boxes row ────────────────────────────── */
+    .inh-content-row.three-equal{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+    .inh-content-row.three-equal .inh-col-card{display:flex;flex-direction:column;height:100%}
+    @media(max-width:900px){.inh-content-row.three-equal{grid-template-columns:1fr}}
+    .cal-actions{display:flex;gap:8px;margin-top:auto;padding-top:10px}
+    .cal-actions .inh-book-btn,.cal-actions .inh-sub-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;cursor:pointer;font-size:12px;font-weight:700;border-radius:9px;padding:9px 10px}
+    .cal-actions .inh-book-btn{background:#D1242B;color:#fff}
+    .cal-actions .inh-sub-btn{background:#fff;color:#111;border:1px solid #DADADA}
+    .cal-actions .inh-sub-btn:hover{border-color:#111}
+
+    /* ── Carousels (blogs / landing pages) ────────────────── */
+    .inh-carousel-section{max-width:1280px;margin:0 auto;padding:8px 24px 12px}
+    .carousel-nav{display:flex;align-items:center;gap:8px}
+    .carousel-arrow{width:30px;height:30px;border-radius:50%;border:1px solid #DADADA;background:#fff;color:#111;font-size:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s}
+    .carousel-arrow:hover{background:#111;color:#fff}
+    .carousel-track{display:flex;gap:16px;overflow-x:auto;scroll-behavior:smooth;padding:4px 2px 12px;scrollbar-width:thin}
+    .carousel-track::-webkit-scrollbar{height:6px}
+    .carousel-track::-webkit-scrollbar-thumb{background:#D5D5D5;border-radius:3px}
+    .cara-card{flex:0 0 300px;max-width:300px;background:#fff;border:1px solid #E5E5E5;border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;transition:box-shadow .15s}
+    .cara-card:hover{box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    .cara-img{width:100%;aspect-ratio:16/9;background:#EEE center/cover no-repeat}
+    .cara-body{padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+    .cara-date{font-size:11px;color:#8A8A8A;text-transform:uppercase;letter-spacing:.03em}
+    .cara-title{font-size:14px;font-weight:700;line-height:1.35;color:#0A0A0A}
+    .cara-excerpt{font-size:12.5px;line-height:1.5;color:#5A5A5A;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .cara-skel{flex:0 0 300px;height:230px;border-radius:14px}
+
+    /* ── In-hub folder browser (Resources / Product Portal) ─ */
+    .fb-crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px;margin:0 0 14px}
+    .fb-crumb{color:#D1242B;cursor:pointer;font-weight:600}
+    .fb-crumb.current{color:#555;cursor:default;font-weight:500}
+    .fb-sep{color:#BBB}
+
+    /* ── Campaign / launch detail view ────────────────────── */
+    .cd-back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#D1242B;cursor:pointer;margin-bottom:16px}
+    .cd-hero{background:#0A0A0A;color:#fff;border-radius:16px;padding:26px 28px;margin-bottom:22px}
+    .cd-hero-title{font-family:'Fraunces',serif;font-size:26px;font-weight:600;line-height:1.15;margin:0 0 6px}
+    .cd-hero-sub{font-size:15px;color:#CFCFCF;margin:0 0 14px;max-width:70ch}
+    .cd-hero-meta{display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:13px;color:#BEBEBE}
+    .cd-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:4px 11px;border-radius:20px;background:#1f7a34;color:#fff}
+    .cd-pill.planning{background:#8a6d1f}
+    .cd-pill.done{background:#444}
+    .cd-landing{color:#fff;text-decoration:underline;font-weight:600}
+    .cd-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:0;background:#111;border-radius:14px;overflow:hidden;margin-bottom:24px}
+    @media(max-width:700px){.cd-metrics{grid-template-columns:repeat(2,1fr)}}
+    .cd-metric{padding:18px 20px;border-left:1px solid #2a2a2a;color:#fff}
+    .cd-metric:first-child{border-left:0}
+    .cd-metric-label{font-size:12px;color:#9A9A9A;margin-bottom:6px}
+    .cd-metric-value{font-size:28px;font-weight:800;font-family:'Fraunces',serif}
+    .cd-blocks-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8A8A8A;margin:0 0 14px}
+    .cd-blocks{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    @media(max-width:800px){.cd-blocks{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:480px){.cd-blocks{grid-template-columns:1fr}}
+    .cd-block{background:#EDEDED;border:1px solid #E0E0E0;border-radius:12px;padding:26px 18px;text-align:center;font-size:15px;font-weight:700;color:#1A1A1A;cursor:pointer;transition:background .15s,box-shadow .15s;display:flex;flex-direction:column;align-items:center;gap:8px}
+    .cd-block:hover{background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    .cd-block .cd-block-ico{color:#D1242B}
+    .cd-block .cd-block-note{font-size:11px;font-weight:500;color:#9A9A9A}
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -144,14 +226,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         Home
       </a>
-      <a class="inh-nav-link" id="navl-launches"   onclick="showPage('launches',1)">Products &amp; Launches</a>
+      <a class="inh-nav-link" id="navl-launches"   onclick="showPage('launches',1)">Product Launches</a>
       <a class="inh-nav-link" id="navl-campaigns"  onclick="showPage('campaigns',2)">Campaigns</a>
       <a class="inh-nav-link" id="navl-trade"      onclick="showPage('trade',3)">Trade &amp; Events</a>
       <a class="inh-nav-link" id="navl-training"   onclick="showPage('training',4)">Resources</a>
-      <a class="inh-nav-link inh-nav-showroom"     onclick="openBookingModal()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Book Showroom
-      </a>
     </div>
   </nav>
 
@@ -161,7 +239,140 @@
 
 <main id="page-home" class="page active" data-screen-label="Home">
 
-  <!-- ══ LATEST VIDEOS (top) — last 3 months only ════════════ -->
+  <!-- ══ HERO NEWS GRID ══════════════════════════════════════ -->
+  <section class="inh-hero-section">
+    <div class="inh-hero-grid" id="home-hero-grid">
+
+      <!-- Feature article (large) — populated from WordPress -->
+      <a class="inh-hero-feature skeleton-card" id="hero-feature" href="#" target="_blank" rel="noopener">
+        <div class="inh-hero-img" id="hero-feature-img"></div>
+        <div class="inh-hero-overlay">
+          <span class="inh-tag red">Feature</span>
+          <h2 class="inh-hero-title" id="hero-feature-title">Loading latest news…</h2>
+          <div class="inh-hero-date" id="hero-feature-date"></div>
+        </div>
+      </a>
+
+      <!-- Right column: two stacked boxes -->
+      <div class="inh-hero-side hero-side-boxes">
+
+        <!-- Box 1: Upcoming / Latest Product Launch -->
+        <div class="hbox" id="home-hero-launch">
+          <div class="hbox-head red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            Upcoming Launch
+          </div>
+          <div class="hbox-body" id="home-hero-launch-body">
+            <div class="skeleton sk-line"></div>
+            <div class="skeleton sk-line short"></div>
+          </div>
+        </div>
+
+        <!-- Box 2: Latest Videos (compact) -->
+        <div class="hbox" id="home-hero-videos">
+          <div class="hbox-head dark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            Latest Videos
+          </div>
+          <div class="hbox-body" id="home-hero-videos-body">
+            <div class="skeleton sk-line"></div>
+            <div class="skeleton sk-line short"></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══ THREE EQUAL BOXES: Visits · Calendar · Quick Links ══ -->
+  <section class="inh-content-row three-equal">
+
+    <!-- Box 1: Upcoming Showroom Visits -->
+    <div class="inh-col-card" id="sd-visits-container">
+      <div class="inh-col-head red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Upcoming Showroom Visits
+      </div>
+      <p class="sd-empty">Fetching bookings…</p>
+    </div>
+
+    <!-- Box 2: Marketing Calendar -->
+    <div class="inh-col-card">
+      <div class="inh-col-head red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Marketing Calendar
+      </div>
+      <div class="sd-cal sd-cal-container" id="sd-cal-container">
+        <div class="inh-loading">Loading calendar…</div>
+      </div>
+      <div class="cal-actions">
+        <button class="inh-book-btn" onclick="openBookingModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="13" height="13"><path d="M12 5v14M5 12h14"/></svg>
+          Book a slot
+        </button>
+        <button class="inh-sub-btn" onclick="subscribeCalendar()" title="Add these dates to your own calendar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+          Subscribe
+        </button>
+      </div>
+    </div>
+
+    <!-- Box 3: Quick Links -->
+    <div class="inh-col-card">
+      <div class="inh-col-head dark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Quick Links
+      </div>
+      <div class="inh-quicklinks">
+        <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
+          <span class="inh-ql-icon" style="background:#D1242B">MP</span>Media Portal
+        </a>
+        <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">
+          <span class="inh-ql-icon" style="background:#0078D4">PP</span>Product Portal
+        </a>
+        <a class="inh-ql" href="https://www.checkfire.co.uk" target="_blank" rel="noopener">
+          <span class="inh-ql-icon" style="background:#111">CF</span>Website
+        </a>
+        <a class="inh-ql" href="https://www.linkedin.com/company/checkfire/" target="_blank" rel="noopener">
+          <span class="inh-ql-icon" style="background:#0A66C2">in</span>CF LinkedIn
+        </a>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ══ LATEST BLOGS (carousel) ═════════════════════════════ -->
+  <section class="inh-carousel-section" id="home-blogs-section">
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">Latest Blogs</h3>
+      <div class="carousel-nav">
+        <a class="inh-section-link" href="https://www.checkfire.co.uk/news" target="_blank" rel="noopener">View all →</a>
+        <button class="carousel-arrow" aria-label="Scroll left"  onclick="scrollCarousel('home-blogs-track',-1)">‹</button>
+        <button class="carousel-arrow" aria-label="Scroll right" onclick="scrollCarousel('home-blogs-track',1)">›</button>
+      </div>
+    </div>
+    <div class="carousel-track" id="home-blogs-track">
+      <div class="skeleton-card cara-skel"></div>
+      <div class="skeleton-card cara-skel"></div>
+      <div class="skeleton-card cara-skel"></div>
+    </div>
+  </section>
+
+  <!-- ══ UPDATED LANDING PAGES (carousel) ════════════════════ -->
+  <section class="inh-carousel-section" id="home-pages-section" style="display:none">
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">Updated Landing Pages</h3>
+      <div class="carousel-nav">
+        <a class="inh-section-link" href="https://www.checkfire.co.uk" target="_blank" rel="noopener">View site →</a>
+        <button class="carousel-arrow" aria-label="Scroll left"  onclick="scrollCarousel('home-pages-track',-1)">‹</button>
+        <button class="carousel-arrow" aria-label="Scroll right" onclick="scrollCarousel('home-pages-track',1)">›</button>
+      </div>
+    </div>
+    <div class="carousel-track" id="home-pages-track"></div>
+  </section>
+
+  <!-- ══ LATEST VIDEOS (moved to bottom) ═════════════════════ -->
   <section class="inh-videos-section" id="home-videos" style="display:none">
     <div class="inh-section-head">
       <h3 class="inh-section-title">Latest Videos</h3>
@@ -204,142 +415,18 @@
     </div>
   </section>
 
-  <!-- ══ HERO NEWS GRID ══════════════════════════════════════ -->
-  <section class="inh-hero-section">
-    <div class="inh-hero-grid" id="home-hero-grid">
-
-      <!-- Feature article (large) — populated from WordPress -->
-      <a class="inh-hero-feature skeleton-card" id="hero-feature" href="#" target="_blank" rel="noopener">
-        <div class="inh-hero-img" id="hero-feature-img"></div>
-        <div class="inh-hero-overlay">
-          <span class="inh-tag red">Feature</span>
-          <h2 class="inh-hero-title" id="hero-feature-title">Loading latest news…</h2>
-          <div class="inh-hero-date" id="hero-feature-date"></div>
-        </div>
-      </a>
-
-      <!-- Side articles grid -->
-      <div class="inh-hero-side" id="hero-side-articles">
-        <div class="inh-hero-side-item skeleton-card"></div>
-        <div class="inh-hero-side-item skeleton-card"></div>
-        <div class="inh-hero-side-item skeleton-card"></div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ══ THREE COLUMN CONTENT ROW ════════════════════════════ -->
-  <section class="inh-content-row">
-
-    <!-- Col 1: Latest Product News -->
-    <div class="inh-col-card">
-      <div class="inh-col-head red">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-        Latest Product News
-      </div>
-      <div id="home-product-news" class="inh-product-list">
-        <div class="inh-product-item skeleton-line"></div>
-        <div class="inh-product-item skeleton-line"></div>
-        <div class="inh-product-item skeleton-line"></div>
-      </div>
-      <a class="inh-col-footer-link" onclick="showPage('launches',1)">View all products →</a>
-    </div>
-
-    <!-- Col 2: Calendar -->
-    <div class="inh-col-card">
-      <div class="inh-col-head red">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Showroom Calendar
-      </div>
-      <div class="sd-cal sd-cal-container" id="sd-cal-container">
-        <div class="inh-loading">Loading calendar…</div>
-      </div>
-      <button class="inh-book-btn" onclick="openBookingModal()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="13" height="13"><path d="M12 5v14M5 12h14"/></svg>
-        Book a slot
-      </button>
-    </div>
-
-    <!-- Col 3: Quick Links + Upcoming -->
-    <div class="inh-col-stack">
-
-      <!-- Quick links -->
-      <div class="inh-col-card">
-        <div class="inh-col-head dark">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          Quick Links
-        </div>
-        <div class="inh-quicklinks">
-          <a class="inh-ql" href="https://3810789.app.netsuite.com/app/login/secure/enterpriselogin.nl?c=3810789&amp;redirect=%2Fapp%2Fcenter%2Fcard.nl%3Fsc%3D-29%26whence%3D&amp;whence=" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#0070C0">NS</span>NetSuite
-          </a>
-          <a class="inh-ql" href="https://www.checkfire.co.uk" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#D1242B">CF</span>CheckFire Website
-          </a>
-          <a class="inh-ql" href="https://w3.cezanneondemand.com/CezanneOnDemand/-/CheckFire/Account/LogIn" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#00A19A">HR</span>HR Portal
-          </a>
-          <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#0078D4">SP</span>SharePoint
-          </a>
-          <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#D1242B">MP</span>Media Portal
-          </a>
-          <a class="inh-ql" href="https://www.checkfire.co.uk/wp-admin" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#21759B">WP</span>WordPress
-          </a>
-          <a class="inh-ql" href="https://teams.microsoft.com" target="_blank" rel="noopener">
-            <span class="inh-ql-icon" style="background:#6264A7">MS</span>Teams
-          </a>
-        </div>
-      </div>
-
-      <!-- Upcoming visits -->
-      <div class="inh-col-card" id="sd-visits-container">
-        <div class="inh-col-head dark">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Upcoming Showroom Visits
-        </div>
-        <p class="sd-empty">Fetching bookings…</p>
-      </div>
-
-    </div>
-
-  </section>
-
-  <!-- ══ BOTTOM ROW: NEWS FEED + COUNTDOWN ═══════════════════ -->
-  <section class="inh-bottom-row">
-
-    <!-- More news from WordPress -->
-    <div class="inh-bottom-news">
-      <div class="inh-section-head">
-        <h3 class="inh-section-title">More from CheckFire</h3>
-        <a class="inh-section-link" href="https://www.checkfire.co.uk/news" target="_blank">View all →</a>
-      </div>
-      <div id="sp-wp-news" class="inh-more-news-grid">
-        <div class="skeleton-card" style="height:120px;border-radius:12px"></div>
-        <div class="skeleton-card" style="height:120px;border-radius:12px"></div>
-        <div class="skeleton-card" style="height:120px;border-radius:12px"></div>
+  <!-- ══ NEXT EVENT COUNTDOWN (hidden unless upcoming) ═══════ -->
+  <section class="inh-social-section" style="padding-top:0">
+    <div class="inh-countdown-card" id="home-countdown" style="display:none">
+      <div class="inh-countdown-label">Next Major Event</div>
+      <div class="inh-countdown-name" id="countdown-name">—</div>
+      <div class="inh-countdown-date" id="countdown-date"></div>
+      <div class="inh-countdown-timer" id="countdown-timer">
+        <div class="inh-cd-unit"><span id="cd-days">--</span><span>days</span></div>
+        <div class="inh-cd-unit"><span id="cd-hours">--</span><span>hrs</span></div>
+        <div class="inh-cd-unit"><span id="cd-mins">--</span><span>min</span></div>
       </div>
     </div>
-
-    <!-- Countdown + survey -->
-    <div class="inh-bottom-side">
-
-      <!-- Next event countdown -->
-      <div class="inh-countdown-card" id="home-countdown" style="display:none">
-        <div class="inh-countdown-label">Next Major Event</div>
-        <div class="inh-countdown-name" id="countdown-name">—</div>
-        <div class="inh-countdown-date" id="countdown-date"></div>
-        <div class="inh-countdown-timer" id="countdown-timer">
-          <div class="inh-cd-unit"><span id="cd-days">--</span><span>days</span></div>
-          <div class="inh-cd-unit"><span id="cd-hours">--</span><span>hrs</span></div>
-          <div class="inh-cd-unit"><span id="cd-mins">--</span><span>min</span></div>
-        </div>
-      </div>
-
-    </div>
-
   </section>
 
 
@@ -347,12 +434,12 @@
 
 
 <main id="page-launches" class="page" data-screen-label="02 Launches">
-  <section class="ph">
+  <section class="ph" id="launches-head">
     <div class="container">
       <div class="ph-head">
         <div>
           <div class="eyebrow">Marketing Hub · Products</div>
-          <h1 class="ph-title">Products &amp; launches</h1>
+          <h1 class="ph-title">Product launches</h1>
           <p class="ph-sub">Every product launch, live from the Product Launches list in SharePoint. Add or update an item there and it appears here.</p>
         </div>
         <div class="ph-actions">
@@ -362,7 +449,7 @@
     </div>
   </section>
 
-  <section class="container py-lg">
+  <section class="container py-lg" id="launches-list-wrap">
     <div class="section-head tight" style="margin-bottom:12px">
       <h2 class="section-title small">All launches</h2>
     </div>
@@ -372,11 +459,14 @@
       <div class="skeleton sk-line short"></div>
     </div>
   </section>
+
+  <!-- Launch detail view (same organisation as Campaigns) -->
+  <section class="container py-lg" id="launch-detail" style="display:none"></section>
 </main>
 
 <!-- ─── CAMPAIGNS ─────────────────────────────────────────────── -->
 <main id="page-campaigns" class="page" data-screen-label="03 Campaigns">
-  <section class="ph">
+  <section class="ph" id="campaigns-head">
     <div class="container">
       <div class="ph-head">
         <div>
@@ -397,13 +487,16 @@
     </div>
   </section>
 
-  <section class="container py-lg">
+  <section class="container py-lg" id="campaigns-list">
     <div class="camp-grid" id="sp-campaigns-grid">
       <div class="skeleton-card" style="height:260px;border-radius:14px"></div>
       <div class="skeleton-card" style="height:260px;border-radius:14px"></div>
       <div class="skeleton-card" style="height:260px;border-radius:14px"></div>
     </div>
   </section>
+
+  <!-- Campaign detail view (shown when a campaign card is clicked) -->
+  <section class="container py-lg" id="campaign-detail" style="display:none"></section>
 </main>
 
 <!-- ─── TRADE & EVENTS ────────────────────────────────────────── -->
@@ -490,14 +583,27 @@
 
   <section class="container py-lg">
     <nav class="ltabs">
-      <button class="ltab training-tab active" onclick="switchTrainingTab(this,'documents');loadResourcesData()">SharePoint Library</button>
+      <button class="ltab training-tab active" onclick="switchTrainingTab(this,'documents');loadResourcesData()">Marketing Library</button>
+      <button class="ltab training-tab" onclick="switchTrainingTab(this,'product');loadProductPortal()">Product Portal</button>
       <button class="ltab training-tab" onclick="switchTrainingTab(this,'links')">Useful links</button>
     </nav>
 
-    <!-- SharePoint Library (live) -->
+    <!-- Marketing Library (live, browsable in-hub) -->
     <div id="ttab-documents" class="ltab-pane active">
-      <p class="prose dim mb">Documents and files from the SharePoint marketing library. Anything uploaded there appears here automatically.</p>
+      <p class="prose dim mb">Documents and files from the SharePoint marketing library — browsed and previewed right here in the hub. Anything uploaded to SharePoint appears here automatically.</p>
+      <nav class="fb-crumbs" id="docs-crumbs" aria-label="Folder path"></nav>
       <div id="sp-documents-grid">
+        <div class="skeleton sk-line med"></div>
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line short"></div>
+      </div>
+    </div>
+
+    <!-- Product Portal (second SharePoint site, browsable in-hub) -->
+    <div id="ttab-product" class="ltab-pane">
+      <p class="prose dim mb">Files from the CheckFire Product Portal — browsed and previewed right here in the hub, so you never have to leave to open a document.</p>
+      <nav class="fb-crumbs" id="pp-crumbs" aria-label="Folder path"></nav>
+      <div id="pp-documents-grid">
         <div class="skeleton sk-line med"></div>
         <div class="skeleton sk-line"></div>
         <div class="skeleton sk-line short"></div>
@@ -516,6 +622,11 @@
         <a class="link-card" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
           <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 13h6M9 17h4"></path></svg></div>
           <div class="link-info"><div class="link-name">Media Portal</div><div class="link-desc">Brand assets, hi-res imagery and video library</div></div>
+          <svg class="link-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17 17 7M7 7h10v10"></path></svg>
+        </a>
+        <a class="link-card" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">
+          <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7 12 3 4 7l8 4 8-4z"></path><path d="M4 7v10l8 4 8-4V7"></path><path d="M12 11v10"></path></svg></div>
+          <div class="link-info"><div class="link-name">Product Portal</div><div class="link-desc">Product datasheets, specs and portal documents · opens in-hub</div></div>
           <svg class="link-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17 17 7M7 7h10v10"></path></svg>
         </a>
         <a class="link-card" href="https://3810789.app.netsuite.com/app/login/secure/enterpriselogin.nl?c=3810789&amp;redirect=%2Fapp%2Fcenter%2Fcard.nl%3Fsc%3D-29%26whence%3D&amp;whence=" target="_blank" rel="noopener">
@@ -567,14 +678,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=3"></script>
+<script src="config.js?v=4"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js"></script>
-<script src="graph.js?v=4"></script>
-<script src="app.js?v=9"></script>
-<script src="jotform.js?v=8"></script>
+<script src="graph.js?v=5"></script>
+<script src="app.js?v=10"></script>
+<script src="jotform.js?v=9"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
