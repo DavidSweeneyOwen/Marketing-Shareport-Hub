@@ -183,18 +183,30 @@ HUB_CONFIG.jotform = {
 // licence and gives posting, liking, commenting, @mentions and
 // notifications for free — none of which a static site can do on its own.
 //
-// To get the embed URL:
-//   1. Create (or pick) the community in Viva Engage.
-//   2. Open the community, click ••• ▸ "Embed this community".
-//   3. Paste the full https://web.yammer.com/embed/... URL below.
+// To get the embed URL (note: this is NOT the community's normal
+// browser address — it has to be generated):
+//   1. Go to https://engage.cloud.microsoft/embed/widget?domainRedirect=false
+//   2. Choose "Community feed" on the left and type the community name.
+//   3. Click "Get code", then Copy.
+//   4. Paste just the iframe's src="..." value into vivaEngageEmbed below.
+//
+// Microsoft retired the old web.yammer.com JavaScript embed on
+// 1 June 2025 — modern embeds come from engage.cloud.microsoft.
 //
 // Until that is set, the wall falls back to a read-only feed of the
 // SharePoint "Comms" list so the section still shows something.
 HUB_CONFIG.social = {
   linkedInPageUrl: 'https://www.linkedin.com/company/checkfire/',
 
-  vivaEngageEmbed: '',   // e.g. 'https://web.yammer.com/embed/groups/<encoded-group-id>'
-  vivaEngageUrl:   '',   // optional "Open in Viva Engage →" link
+  // Generated 31 Jul 2026 from the Embed widget configuration site.
+  // Chrome/footer/banner switched off so the feed sits cleanly under the
+  // hub's own "Team wall" heading. Flip any of them back to true in the
+  // query string if you'd rather have Viva Engage's own framing.
+  vivaEngageEmbed: 'https://engage.cloud.microsoft/embed/groups/eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiIyMTA0NzYzNjkyMTQ2Njg4In0?header=false&footer=false&hideNetworkName=true&theme=light&includeFeedInformation=false',
+
+  // The community itself — used for the "Open in Viva Engage →" link.
+  // Community ID: 2104763692146688
+  vivaEngageUrl: 'https://engage.cloud.microsoft/main/groups/eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiIyMTA0NzYzNjkyMTQ2Njg4In0/all',
 
   commsList: 'Comms',    // read-only fallback feed
   commsMax:  8,

@@ -719,7 +719,9 @@ async function fetchCommsItems() {
 function _renderVivaEngage(body) {
   const cfg = (HUB_CONFIG.social || {});
   const embed = safeUrl(cfg.vivaEngageEmbed || '', '');
-  if (!embed || !/^https:\/\/([a-z0-9-]+\.)?(yammer|engage\.cloud\.microsoft|web\.yammer)\.com\//i.test(embed)) return false;
+  // Modern embeds are served from engage.cloud.microsoft; the retired
+  // classic ones came from web.yammer.com. Accept either.
+  if (!embed || !/^https:\/\/(engage\.cloud\.microsoft|([a-z0-9-]+\.)?yammer\.com)\//i.test(embed)) return false;
 
   body.innerHTML = `<iframe class="wall-frame" src="${escAttr(embed)}" title="CheckFire team wall" frameborder="0" loading="lazy" allowfullscreen></iframe>`;
 
