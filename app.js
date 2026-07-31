@@ -17,6 +17,7 @@ async function showPage(id, idx) {
   document.querySelectorAll('.nav-link').forEach((a, i) => {
     a.classList.toggle('active', i === idx);
   });
+  if (typeof updateNavActive === 'function') updateNavActive(id);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   if (id === 'home')     setTimeout(animateBars, 250);
@@ -37,8 +38,9 @@ async function loadPageData(pageId) {
     // per-page loaders below (loadLaunchData etc.) call functions that
     // no longer exist and must NOT be wired back in.
     case 'launches':
-    case 'campaigns':
-    case 'trade':     await loadSharePointData(); break;
+    case 'campaigns': await loadSharePointData(); break;
+    // Trade & Events reads the Documents ▸ Events folders, not a list.
+    case 'trade':     await loadTradeEvents();    break;
     case 'training':  await loadResourcesData(); break;
   }
 }
@@ -47,13 +49,15 @@ async function loadPageData(pageId) {
 
 async function loadHomeData() {
   await Promise.all([
+    loadNotices(),
     loadHeroNews(),
     loadBlogsCarousel(),
     loadLandingPages(),
     loadHeroLaunch(),
     startCountdown(),
     loadHomeVideos(),
-    (typeof loadSocial === 'function' ? loadSocial() : Promise.resolve()),
+    loadWall(),
+    loadTraining(),
   ]);
 }
 
@@ -62,7 +66,7 @@ async function loadHomeData() {
 function scrollCarousel(trackId, dir) {
   const track = document.getElementById(trackId);
   if (!track) return;
-  const card = track.querySelector('.cara-card, .cara-skel');
+  const card = track.querySelector('.cara-card, .cara-skel, .train-card');
   const step = card ? card.getBoundingClientRect().width + 16 : 316;
   track.scrollBy({ left: dir * step * 1.5, behavior: 'smooth' });
 }
@@ -71,10 +75,26 @@ function scrollCarousel(trackId, dir) {
 // ui.js's showPage() calls updateNavActive(id) if it exists. Map the
 // page id to its nav link so the underline follows the current page.
 function updateNavActive(id) {
-  const map = { home:'navl-home', launches:'navl-launches', campaigns:'navl-campaigns', trade:'navl-trade', training:'navl-training' };
+  const map = { home:'navl-home', launches:'navl-launches', campaigns:'navl-campaigns', trade:'navl-trade', training:'navl-training', portal:'navl-portal' };
   document.querySelectorAll('.inh-nav-link').forEach(a => a.classList.remove('active'));
   const el = document.getElementById(map[id]);
   if (el) el.classList.add('active');
+}
+
+// ─── Product Portal ───────────────────────────────────────────
+// The nav "Product Portal" link opens the Resources page with the
+// Product Portal tab already selected, so files still open in-hub
+// rather than bouncing the user out to SharePoint.
+async function openProductPortal() {
+  await showPage('training', 4);
+
+  const tabs = document.querySelectorAll('.training-tab');
+  const btn  = tabs[1];   // Marketing Library | Product Portal | Useful links
+  if (btn) {
+    switchTrainingTab(btn, 'product');
+    if (typeof loadProductPortal === 'function') loadProductPortal();
+  }
+  if (typeof updateNavActive === 'function') updateNavActive('portal');
 }
 
 // ─── WordPress News ───────────────────────────────────────────

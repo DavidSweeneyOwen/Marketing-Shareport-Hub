@@ -35,7 +35,7 @@
     .soc-title{font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:#0A0A0A;display:flex;align-items:center;gap:8px}
     .soc-title .soc-ico{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff}
     .soc-link{font-size:12px;font-weight:600;color:#D1242B;text-decoration:none}
-    /* In-house comms — Twitter-style cards */
+    /* Internal comms cards (team wall fallback) */
     .cm-list{display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto;padding-right:4px}
     .cm-card{display:block;background:#fff;border:1px solid #E5E5E5;border-radius:14px;padding:14px 16px;text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s}
     .cm-card:hover{box-shadow:0 3px 14px rgba(0,0,0,.07);border-color:#D8D8D8}
@@ -44,12 +44,8 @@
     .cm-id{display:flex;flex-direction:column;line-height:1.2;flex:1;min-width:0}
     .cm-name{font-size:13px;font-weight:700;color:#0A0A0A}
     .cm-handle{font-size:12px;color:#8A8A8A}
-    .cm-bird{color:#1DA1F2;flex:0 0 auto}
     .cm-text{font-size:14px;line-height:1.5;color:#1A1A1A;white-space:pre-wrap;word-wrap:break-word}
     .cm-date{font-size:11px;color:#AAA;margin-top:8px}
-    /* LinkedIn embeds */
-    .li-list{display:flex;flex-direction:column;gap:14px;max-height:520px;overflow-y:auto;padding-right:4px}
-    .li-embed{width:100%;border:1px solid #E5E5E5;border-radius:10px;background:#fff}
 
     /* ── In-hub document viewer modal ─────────────────────── */
     .doc-overlay{position:fixed;inset:0;background:rgba(10,10,10,.6);z-index:9996;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -149,6 +145,73 @@
     .cd-block:hover{background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.08)}
     .cd-block .cd-block-ico{color:#D1242B}
     .cd-block .cd-block-note{font-size:11px;font-weight:500;color:#9A9A9A}
+
+    /* ── Notices / alerts bar (home) ──────────────────────── */
+    .notice-wrap{max-width:1280px;margin:0 auto;padding:14px 24px 0;display:flex;flex-direction:column;gap:10px}
+    .notice{display:flex;align-items:flex-start;gap:12px;border-radius:12px;padding:13px 16px;border:1px solid}
+    .notice.info{background:#EAF3FB;border-color:#BBD9F0;color:#123A5C}
+    .notice.warning{background:#FDF4E3;border-color:#F0DCAE;color:#5C4310}
+    .notice.alert{background:#FDECEC;border-color:#F3C2C2;color:#7A1518}
+    .notice-ico{flex:0 0 auto;margin-top:1px}
+    .notice-body{flex:1;min-width:0}
+    .notice-title{font-size:13.5px;font-weight:800;letter-spacing:.01em}
+    .notice-text{font-size:13px;line-height:1.5;margin-top:3px;white-space:pre-wrap}
+    .notice-link{font-size:12px;font-weight:700;color:inherit;text-decoration:underline;display:inline-block;margin-top:6px}
+    .notice-dismiss{flex:0 0 auto;background:none;border:none;cursor:pointer;color:inherit;opacity:.55;padding:2px;line-height:0}
+    .notice-dismiss:hover{opacity:1}
+
+    /* ── Team wall (Viva Engage) ──────────────────────────── */
+    .wall-section{max-width:1280px;margin:0 auto;padding:8px 24px 18px}
+    .wall-frame{width:100%;height:620px;border:1px solid #E5E5E5;border-radius:14px;background:#fff}
+    .wall-empty{border:1px dashed #D8D8D8;border-radius:14px;padding:24px;background:#FAFAFA}
+    .wall-empty h4{font-size:14px;font-weight:800;margin:0 0 6px}
+    .wall-empty p{font-size:13px;line-height:1.55;color:#5A5A5A;margin:0}
+    .cm-list.wall{max-height:none}
+
+    /* ── Training strip (home) ────────────────────────────── */
+    .train-track{display:flex;gap:14px;overflow-x:auto;scroll-behavior:smooth;padding:4px 2px 12px;scrollbar-width:thin}
+    .train-track::-webkit-scrollbar{height:6px}
+    .train-track::-webkit-scrollbar-thumb{background:#D5D5D5;border-radius:3px}
+    .train-card{flex:0 0 272px;max-width:272px;display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #E5E5E5;border-radius:14px;padding:14px;text-decoration:none;color:inherit;transition:box-shadow .15s}
+    .train-card:hover{box-shadow:0 6px 20px rgba(0,0,0,.08)}
+    .train-date{flex:0 0 auto;width:48px;text-align:center;border-radius:10px;background:#0A0A0A;color:#fff;padding:7px 0}
+    .train-date .d{font-size:17px;font-weight:800;line-height:1}
+    .train-date .m{font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+    .train-info{min-width:0}
+    .train-name{font-size:13.5px;font-weight:700;line-height:1.35}
+    .train-meta{font-size:11.5px;color:#8A8A8A;margin-top:4px}
+    .train-tag{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:20px;margin-top:7px}
+    .train-tag.internal{background:#E8F4EC;color:#1f7a34}
+    .train-tag.external{background:#EAF3FB;color:#0A66C2}
+    .sd-d.train{background:#E8F4EC;color:#1f7a34;font-weight:700}
+    .sd-legend .sw.green{background:#1f7a34}
+
+    /* ── RAG traffic lights (launches + campaigns) ────────── */
+    .rag{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:4px 11px;border-radius:20px;background:#fff;border:1px solid #E0E0E0;color:#333;white-space:nowrap}
+    .rag-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+    .rag.red .rag-dot{background:#D1242B}
+    .rag.amber .rag-dot{background:#E0A320}
+    .rag.green .rag-dot{background:#1f7a34}
+    .rag.grey .rag-dot{background:#9A9A9A}
+    .camp-thumb.rag-red{background:linear-gradient(135deg,#D1242B,#8E1418)}
+    .camp-thumb.rag-amber{background:linear-gradient(135deg,#E0A320,#A97610)}
+    .camp-thumb.rag-green{background:linear-gradient(135deg,#1f7a34,#125222)}
+    .camp-thumb.rag-grey{background:linear-gradient(135deg,#6B6B6B,#3A3A3A)}
+    .camp-codes{font-size:11.5px;color:#8A8A8A;margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .cd-codes{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+    .cd-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;padding:4px 10px;border-radius:8px}
+    .cd-portal{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#fff;background:#0078D4;padding:6px 12px;border-radius:9px;text-decoration:none}
+    .cd-block-count{font-size:11px;font-weight:500;color:#9A9A9A}
+
+    /* ── Trade & events (folder-driven) ───────────────────── */
+    .ev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+    .ev-card{background:#fff;border:1px solid #E5E5E5;border-radius:14px;padding:18px;cursor:pointer;transition:box-shadow .15s,border-color .15s;display:flex;flex-direction:column;gap:6px;min-height:118px}
+    .ev-card:hover{box-shadow:0 6px 20px rgba(0,0,0,.08);border-color:#D8D8D8}
+    .ev-card.past{background:#FAFAFA}
+    .ev-year{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#D1242B}
+    .ev-card.past .ev-year{color:#9A9A9A}
+    .ev-name{font-family:'Fraunces',serif;font-size:19px;font-weight:600;line-height:1.2;color:#0A0A0A}
+    .ev-meta{font-size:12px;color:#8A8A8A;margin-top:auto}
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -230,6 +293,7 @@
       <a class="inh-nav-link" id="navl-campaigns"  onclick="showPage('campaigns',2)">Campaigns</a>
       <a class="inh-nav-link" id="navl-trade"      onclick="showPage('trade',3)">Trade &amp; Events</a>
       <a class="inh-nav-link" id="navl-training"   onclick="showPage('training',4)">Resources</a>
+      <a class="inh-nav-link" id="navl-portal"     onclick="openProductPortal()">Product Portal</a>
     </div>
   </nav>
 
@@ -238,6 +302,9 @@
 
 
 <main id="page-home" class="page active" data-screen-label="Home">
+
+  <!-- ══ NOTICES / ALERTS ═════════════════════════════════ -->
+  <div class="notice-wrap" id="home-notices" style="display:none"></div>
 
   <!-- ══ HERO NEWS GRID ══════════════════════════════════════ -->
   <section class="inh-hero-section">
@@ -342,6 +409,30 @@
 
   </section>
 
+  <!-- ══ TEAM WALL (Viva Engage) ═════════════════════════ -->
+  <section class="wall-section" id="home-wall">
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">Team wall</h3>
+      <a class="inh-section-link" id="wall-open-link" href="#" target="_blank" rel="noopener" style="display:none">Open in Viva Engage &rarr;</a>
+    </div>
+    <div id="home-wall-body">
+      <div class="skeleton sk-line med"></div>
+      <div class="skeleton sk-line"></div>
+    </div>
+  </section>
+
+  <!-- ══ TRAINING CALENDAR ══════════════════════════════ -->
+  <section class="inh-carousel-section" id="home-training" style="display:none">
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">Training calendar</h3>
+      <div class="carousel-nav">
+        <button class="carousel-arrow" aria-label="Scroll left"  onclick="scrollCarousel('home-training-track',-1)">&lsaquo;</button>
+        <button class="carousel-arrow" aria-label="Scroll right" onclick="scrollCarousel('home-training-track',1)">&rsaquo;</button>
+      </div>
+    </div>
+    <div class="train-track" id="home-training-track"></div>
+  </section>
+
   <!-- ══ LATEST BLOGS (carousel) ═════════════════════════════ -->
   <section class="inh-carousel-section" id="home-blogs-section">
     <div class="inh-section-head">
@@ -381,40 +472,6 @@
     <div id="home-videos-grid" class="vid-grid"></div>
   </section>
 
-  <!-- ══ SOCIAL — In-house comms + LinkedIn ═══════════════════ -->
-  <section class="inh-social-section" id="home-social">
-    <div class="soc-grid">
-
-      <!-- In-house comms (Twitter-style) -->
-      <div class="soc-col" id="home-comms" style="display:none">
-        <div class="soc-head">
-          <div class="soc-title">
-            <span class="soc-ico" style="background:#1DA1F2">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M23 4.9c-.8.4-1.7.6-2.6.8a4.5 4.5 0 0 0 2-2.5c-.9.5-1.8.9-2.9 1.1a4.5 4.5 0 0 0-7.7 4.1A12.8 12.8 0 0 1 2.7 3.6a4.5 4.5 0 0 0 1.4 6 4.4 4.4 0 0 1-2-.6v.1a4.5 4.5 0 0 0 3.6 4.4 4.5 4.5 0 0 1-2 .1 4.5 4.5 0 0 0 4.2 3.1A9 9 0 0 1 1 21.5a12.7 12.7 0 0 0 6.9 2c8.3 0 12.8-6.9 12.8-12.8v-.6c.9-.6 1.6-1.4 2.3-2.2z"/></svg>
-            </span>
-            In-house comms
-          </div>
-        </div>
-        <div id="home-comms-list" class="cm-list"></div>
-      </div>
-
-      <!-- LinkedIn -->
-      <div class="soc-col" id="home-linkedin" style="display:none">
-        <div class="soc-head">
-          <div class="soc-title">
-            <span class="soc-ico" style="background:#0A66C2">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4.98 3.5A2.5 2.5 0 1 0 5 8.5a2.5 2.5 0 0 0-.02-5zM3 9h4v12H3zM9 9h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21H20.6v-5.4c0-1.29-.02-2.95-1.8-2.95-1.8 0-2.08 1.4-2.08 2.85V21H12.9z"/></svg>
-            </span>
-            LinkedIn
-          </div>
-          <a class="soc-link" href="https://www.linkedin.com/company/checkfire/" target="_blank" rel="noopener">View page →</a>
-        </div>
-        <div id="home-linkedin-list" class="li-list"></div>
-      </div>
-
-    </div>
-  </section>
-
   <!-- ══ NEXT EVENT COUNTDOWN (hidden unless upcoming) ═══════ -->
   <section class="inh-social-section" style="padding-top:0">
     <div class="inh-countdown-card" id="home-countdown" style="display:none">
@@ -440,11 +497,17 @@
         <div>
           <div class="eyebrow">Marketing Hub · Products</div>
           <h1 class="ph-title">Product launches</h1>
-          <p class="ph-sub">Every product launch, live from the Product Launches list in SharePoint. Add or update an item there and it appears here.</p>
+          <p class="ph-sub">Every product launch, live from the Product Launches list in SharePoint. Status runs red (planning) → amber (scheduled) → green (launched).</p>
         </div>
         <div class="ph-actions">
-          <a class="btn primary" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">Open in SharePoint</a>
+          <a class="btn primary" id="launches-portal-link" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">Open Product Portal</a>
         </div>
+      </div>
+      <div class="metric-rail-row inline">
+        <div class="metric"><div class="metric-label">Planning</div><div class="metric-value"><span id="sp-metric-launch-planning">–</span></div></div>
+        <div class="metric"><div class="metric-label">Scheduled</div><div class="metric-value"><span id="sp-metric-launch-scheduled">–</span></div></div>
+        <div class="metric"><div class="metric-label">Launched</div><div class="metric-value"><span id="sp-metric-launch-live">–</span></div></div>
+        <div class="metric"><div class="metric-label">Total launches</div><div class="metric-value"><span id="sp-metric-launch-total">–</span></div></div>
       </div>
     </div>
   </section>
@@ -474,9 +537,6 @@
           <h1 class="ph-title">Campaigns &amp; activations</h1>
           <p class="ph-sub">Plan, brief, and run brand, trade and seasonal campaigns. Track readiness, budget and channel mix in one place.</p>
         </div>
-        <div class="ph-actions">
-          <a class="btn primary" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">Open in SharePoint</a>
-        </div>
       </div>
       <div class="metric-rail-row inline">
         <div class="metric"><div class="metric-label">Live</div><div class="metric-value"><span id="sp-metric-live">–</span></div></div>
@@ -499,68 +559,50 @@
   <section class="container py-lg" id="campaign-detail" style="display:none"></section>
 </main>
 
-<!-- ─── TRADE & EVENTS ────────────────────────────────────────── -->
+<!-- ─── TRADE & EVENTS ───────────────────────────── -->
 <main id="page-trade" class="page" data-screen-label="04 Trade &amp; Events">
   <section class="ph">
     <div class="container">
       <div class="ph-head">
         <div>
-          <div class="eyebrow">Marketing Hub · Field</div>
+          <div class="eyebrow">Marketing Hub &middot; Field</div>
           <h1 class="ph-title">Trade &amp; events</h1>
-          <p class="ph-sub">The live show calendar from the SharePoint Events list, plus showroom bookings. Book the CheckFire showroom below.</p>
-        </div>
-        <div class="ph-actions">
-          <a class="btn primary" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">Open in SharePoint</a>
+          <p class="ph-sub">Customer events the sales team attends. Every event has its own folder in the marketing library &mdash; open one to get the forms and artwork you need in the run-up.</p>
         </div>
       </div>
       <div class="metric-rail-row inline">
-        <div class="metric"><div class="metric-label">Confirmed shows</div><div class="metric-value"><span id="sp-metric-shows-confirmed">–</span></div></div>
-        <div class="metric"><div class="metric-label">In planning</div><div class="metric-value"><span id="sp-metric-shows-planning">–</span></div></div>
+        <div class="metric"><div class="metric-label">Upcoming events</div><div class="metric-value"><span id="sp-metric-ev-upcoming">&ndash;</span></div></div>
+        <div class="metric"><div class="metric-label">Previous events</div><div class="metric-value"><span id="sp-metric-ev-past">&ndash;</span></div></div>
       </div>
     </div>
   </section>
 
-  <section class="container py-lg">
-    <div class="t-grid">
-      <div>
-        <div class="section-head tight">
-          <h2 class="section-title small">Show calendar</h2>
-        </div>
-
-        <div class="show-list" id="sp-events-list">
-          <div class="skeleton sk-line"></div>
-          <div class="skeleton sk-line"></div>
-          <div class="skeleton sk-line short"></div>
-        </div>
-      </div>
-
-      <!-- TRADE SIDEBAR -->
-      <aside class="t-side">
-        <!-- SHOWROOM -->
-        <div class="card showroom" id="trade-showroom-card">
-          <div id="trade-showroom-content">
-            <div class="showroom-head">
-              <div>
-                <div class="eyebrow">CheckFire showroom</div>
-                <div class="card-title small" id="trade-showroom-title">Bookings · Loading…</div>
-              </div>
-              <span class="badge green" id="trade-showroom-badge"><span class="status-dot green"></span>–</span>
-            </div>
-            <div class="showroom-week" id="trade-showroom-week">
-              <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div><div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
-              <div class="day skeleton" style="border-radius:4px"></div><div class="day skeleton" style="border-radius:4px"></div><div class="day skeleton" style="border-radius:4px"></div><div class="day skeleton" style="border-radius:4px"></div><div class="day skeleton" style="border-radius:4px"></div><div class="day skeleton" style="border-radius:4px"></div><div class="day skeleton" style="border-radius:4px"></div>
-            </div>
-            <div class="legend">
-              <span><span class="sw red"></span>Booked</span>
-              <span><span class="sw light"></span>Available</span>
-              <span><span class="sw today-sw"></span>Today</span>
-            </div>
-          </div>
-          <button class="btn primary block" onclick="openBookingModal()">Book the showroom</button>
-        </div>
-
-      </aside>
+  <section class="container py-lg" id="events-overview">
+    <div class="section-head tight" style="margin-bottom:12px">
+      <h2 class="section-title small">Upcoming events</h2>
     </div>
+    <div class="ev-grid" id="ev-upcoming-grid">
+      <div class="skeleton-card" style="height:118px;border-radius:14px"></div>
+      <div class="skeleton-card" style="height:118px;border-radius:14px"></div>
+      <div class="skeleton-card" style="height:118px;border-radius:14px"></div>
+    </div>
+
+    <div class="section-head tight" style="margin:28px 0 12px">
+      <h2 class="section-title small">Previous events</h2>
+    </div>
+    <div class="ev-grid" id="ev-past-grid"></div>
+  </section>
+
+  <!-- Event folder browser — opens in-hub when an event is clicked -->
+  <section class="container py-lg" id="events-browser" style="display:none">
+    <div class="cd-back" role="button" tabindex="0" onclick="closeEventFolder()" onkeydown="if(event.key==='Enter')closeEventFolder()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to events
+    </div>
+    <h2 class="section-title small" id="ev-browser-title">Event</h2>
+    <p class="prose dim mb">Forms, artwork and everything else for this event &mdash; opened right here in the hub.</p>
+    <nav class="fb-crumbs" id="ev-crumbs" aria-label="Folder path"></nav>
+    <div id="ev-documents-grid"></div>
   </section>
 </main>
 
@@ -678,14 +720,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=6"></script>
+<script src="config.js?v=5"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js"></script>
-<script src="graph.js?v=7"></script>
-<script src="app.js?v=10"></script>
-<script src="jotform.js?v=9"></script>
+<script src="graph.js?v=6"></script>
+<script src="app.js?v=11"></script>
+<script src="jotform.js?v=10"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
@@ -749,7 +791,7 @@
     <div class="doc-head">
       <div class="doc-head-title" id="doc-modal-title">Document</div>
       <div class="doc-head-actions">
-        <a class="doc-sp" id="doc-modal-download" href="#" style="display:none">Download ↓</a>
+        <a class="doc-sp" id="doc-modal-download" href="#" download style="display:none">Download ↓</a>
         <a class="doc-sp" id="doc-modal-splink" href="#" target="_blank" rel="noopener">Open in SharePoint ↗</a>
         <button class="doc-close" onclick="closeDocPreview()" aria-label="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

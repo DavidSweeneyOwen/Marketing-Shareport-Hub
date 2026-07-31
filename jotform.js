@@ -130,6 +130,7 @@ function renderShowroomCalendar(containerId, year, month, marks) {
     else if (mk && mk.types.has('showroom'))  cls += ' booked';
     else if (mk && mk.types.has('campaign'))  cls += ' camp';
     else if (mk && mk.types.has('launch'))    cls += ' launch';
+    else if (mk && mk.types.has('training'))  cls += ' train';
     else if (isWknd)                          cls += ' wknd';
     else if (isFuture)                        cls += ' free';
 
@@ -174,6 +175,7 @@ function renderShowroomCalendar(containerId, year, month, marks) {
       <span><span class="sw red"></span>Showroom</span>
       <span><span class="sw blue"></span>Launch</span>
       <span><span class="sw amber"></span>Campaign</span>
+      <span><span class="sw green"></span>Training</span>
       <span><span class="sw today-sw"></span>Today</span>
     </div>
     <div class="sd-free-count">${freeDays} showroom day${freeDays !== 1 ? 's' : ''} free this month</div>
@@ -418,6 +420,15 @@ async function loadShowroomData() {
       if (e && e !== s) addMark(e, 'campaign', 'Campaign ends: ' + (f.Title || 'Untitled'));
     });
   } catch (e) { console.info('[Calendar] campaigns not marked:', e.message); }
+  try {
+    const listName = (HUB_CONFIG.training && HUB_CONFIG.training.list) || 'Training Events';
+    const training = await fetchListItems(listName);
+    training.forEach(f => {
+      const raw = f.TrainingDate || f.Date || f.StartDate || f.EventDate;
+      const ds = _toIsoDate(raw);
+      if (ds) addMark(ds, 'training', 'Training: ' + (f.Title || 'Session'));
+    });
+  } catch (e) { console.info('[Calendar] training not marked:', e.message); }
   JF.marks = marks;
 
   if (document.getElementById('sd-cal-container')) {
@@ -432,7 +443,7 @@ async function loadShowroomData() {
       vc.innerHTML =
         '<div class="sd-eyebrow">Upcoming visits</div>' +
         '<p class="sd-empty">Sign in to see upcoming showroom visits.<br>' +
-        '<span style="font-size:11px;color:#AAA">Use “Book the showroom” to request a date.</span></p>';
+        '<span style="font-size:11px;color:#AAA">Use “Book a slot” to request a date.</span></p>';
     }
   }
 

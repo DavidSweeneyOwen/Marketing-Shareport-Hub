@@ -287,36 +287,84 @@ function fileIcon(name, isFolder) {
   return { cls: 'doc', label: ext.slice(0, 4).toUpperCase() || 'FILE' };
 }
 
+// ═══ RAG status (traffic lights) ═════════════════════════════
+// One shared lifecycle for product launches AND campaigns, so the
+// colour means the same thing wherever you see it:
+//   red   — planning / drafting / on hold / delayed
+//   amber — scheduled or upcoming (work in flight)
+//   green — launched / live
+//   grey  — finished, archived, or a status we don't recognise
+function ragOf(status) {
+  const t = String(status || '').toLowerCase();
+  if (!t) return 'grey';
+  if (/complete|closed|archiv|finished|ended/.test(t))                 return 'grey';
+  if (/launch|live|released|active|published/.test(t))                 return 'green';
+  if (/schedul|upcoming|confirm|ready|approved|in progress/.test(t))   return 'amber';
+  if (/plan|draft|concept|hold|delay|pending|plan/.test(t))            return 'red';
+  return 'grey';
+}
+
+function ragChip(status) {
+  const tone = ragOf(status);
+  return `<span class="rag ${tone}"><span class="rag-dot"></span>${escHtml(status || 'Not set')}</span>`;
+}
+
+// Badge that sits on a card thumbnail (absolute-positioned .pill)
+function ragPill(status) {
+  const tone = ragOf(status);
+  return `<span class="pill"><span class="status-dot ${tone}"></span>${escHtml(status || 'Not set')}</span>`;
+}
+
+// Product codes: SKU columns often hold several codes separated by
+// commas, semicolons or slashes. Split so each renders as its own chip.
+function productCodes(f) {
+  const raw = [f.SKU, f.ProductCode, f.ProductCodes, f.Codes].find(v => v !== undefined && v !== null && v !== '');
+  if (!raw) return [];
+  return String(raw).split(/[,;/\n]+/).map(x => x.trim()).filter(Boolean);
+}
+
 // ═══ Renderers ═══════════════════════════════════════════════
 
 let _launchItems = [];
 
+// Product Launches page. Follows the same card layout as Campaigns
+// (marketing asked for the two pages to match) and colours each card by
+// its RAG stage. The header panel counts launches by stage.
 function renderLaunches(items) {
   const el = document.getElementById('sp-launches-list');
   if (!el) return;
+
+  items = items || [];
+
+  // Header panel — counted from live data, zeros when the list is empty.
+  const byTone = t => items.filter(f => ragOf(f.Status) === t).length;
+  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+  _set('sp-metric-launch-planning',  byTone('red'));
+  _set('sp-metric-launch-scheduled', byTone('amber'));
+  _set('sp-metric-launch-live',      byTone('green'));
+  _set('sp-metric-launch-total',     items.length);
 
   if (!items.length) {
     el.innerHTML = '<p class="prose dim">No launches in SharePoint yet — add items to the Product Launches list.</p>';
     return;
   }
 
-  const sorted = [...items].sort((a, b) => String(a.LaunchDate || '').localeCompare(String(b.LaunchDate || '')));
+  // Newest first so the current launch leads the page.
+  const sorted = [...items].sort((a, b) => String(b.LaunchDate || '').localeCompare(String(a.LaunchDate || '')));
   _launchItems = sorted;
 
-  el.innerHTML = `<div class="asset-grid">${sorted.map((f, i) => {
+  el.innerHTML = `<div class="camp-grid">${sorted.map((f, i) => {
+    const codes = productCodes(f);
     return `
-    <div class="asset asset-preview" role="button" tabindex="0" onclick="openLaunchDetail(${i})" onkeydown="if(event.key==='Enter')openLaunchDetail(${i})">
-      <div class="asset-info">
-        <div class="asset-name">${escHtml(f.Title || 'Untitled')}</div>
-        <div class="asset-meta">${[
-          escHtml(f.SKU || ''),
-          fmtSpDate(f.LaunchDate),
-          f.RRP != null && f.RRP !== '' ? fmtMoney(f.RRP) : '',
-        ].filter(Boolean).join(' · ')}</div>
+    <article class="camp-card" role="button" tabindex="0" onclick="openLaunchDetail(${i})" onkeydown="if(event.key==='Enter')openLaunchDetail(${i})">
+      <div class="camp-thumb rag-${ragOf(f.Status)}">${ragPill(f.Status)}</div>
+      <div class="camp-body">
+        <div class="camp-cat">Product launch</div>
+        <h3 class="camp-name">${escHtml(f.Title || 'Untitled')}</h3>
+        <div class="camp-dates">${escHtml(fmtSpDate(f.LaunchDate) || 'Date to be confirmed')}</div>
+        ${codes.length ? `<div class="camp-codes">${escHtml(codes.join(' · '))}</div>` : ''}
       </div>
-      ${statusBadge(f.Status)}
-      <span class="asset-open">Open →</span>
-    </div>`;
+    </article>`;
   }).join('')}</div>`;
 }
 
@@ -342,20 +390,14 @@ function renderCampaigns(items) {
     return;
   }
 
-  const tones = ['tone-red', 'tone-teal', 'tone-amber', 'tone-blue', 'tone-gold', 'tone-slate'];
-
   grid.innerHTML = items.map((f, i) => {
-    const s = String(f.Status || '').toLowerCase();
-    const pill = /live/.test(s)
-      ? '<span class="pill live"><span class="status-dot green"></span>Live</span>'
-      : /complete/.test(s)
-        ? '<span class="pill done">Completed</span>'
-        : `<span class="pill planning">${escHtml(f.Status || 'Planning')}</span>`;
+    // Same RAG colour code as Product Launches, so a red card means
+    // "still planning" on either page.
     const channels = Array.isArray(f.Channels) ? f.Channels.join(' · ') : (f.Channels || '');
 
     return `
     <article class="camp-card" role="button" tabindex="0" onclick="openCampaignDetail(${i})" onkeydown="if(event.key==='Enter')openCampaignDetail(${i})">
-      <div class="camp-thumb ${tones[i % tones.length]}">${pill}</div>
+      <div class="camp-thumb rag-${ragOf(f.Status)}">${ragPill(f.Status)}</div>
       <div class="camp-body">
         <div class="camp-cat">${escHtml(f.CampaignType || 'Campaign')}</div>
         <h3 class="camp-name">${escHtml(f.Title || 'Untitled')}</h3>
@@ -368,48 +410,6 @@ function renderCampaigns(items) {
     </article>`;
   }).join('');
 
-}
-
-function renderEvents(items) {
-  const el = document.getElementById('sp-events-list');
-  if (!el) return;
-
-  // Header metrics — always computed from live data
-  const count = re => items.filter(f => re.test(String(f.Status || '').toLowerCase())).length;
-  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
-  _set('sp-metric-shows-confirmed', count(/confirmed|live/));
-  _set('sp-metric-shows-planning',  count(/planning|draft|upcoming/));
-
-  if (!items.length) {
-    el.innerHTML = '<p class="prose dim">No events in SharePoint yet — add items to the Events list and they\'ll appear here.</p>';
-    return;
-  }
-
-  const sorted = [...items].sort((a, b) => String(a.EventDate || '').localeCompare(String(b.EventDate || '')));
-
-  el.innerHTML = sorted.map(f => {
-    const d = f.EventDate ? new Date(f.EventDate) : null;
-    const day = d && !isNaN(d) ? String(d.getDate()).padStart(2, '0') : '—';
-    const mon = d && !isNaN(d) ? d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '';
-    const isUpcoming = d && d >= new Date();
-    const url = safeUrl(linkOf(f.LinkURL), '');
-
-    return `
-    <article class="show" ${url ? `onclick="window.open('${escAttr(url)}','_blank','noopener')"` : ''}>
-      <div class="show-date ${isUpcoming ? 'upcoming' : ''}">
-        <div class="d">${day}</div><div class="m">${escHtml(mon)}</div>
-      </div>
-      <div class="show-body">
-        <div class="show-top">
-          <div>
-            <h3 class="show-name">${escHtml(f.Title || 'Untitled')}</h3>
-            <div class="show-where">${escHtml([f.Location, f.EventType].filter(Boolean).join(' · '))}</div>
-          </div>
-          ${statusBadge(f.Status)}
-        </div>
-      </div>
-    </article>`;
-  }).join('');
 }
 
 let _docFiles = [];
@@ -475,18 +475,20 @@ async function openDocFile(f) {
   if (titleEl) titleEl.textContent = f.name || 'Document';
   if (spLink)  spLink.href = safeUrl(f.webUrl, '#');
 
-  // Direct download (e.g. email signatures, images for Outlook). The
-  // short-lived download URL is fetched fresh each time the viewer opens.
+  // Download link — the direct URL is short-lived, so fetch it fresh.
   const dl = document.getElementById('doc-modal-download');
   if (dl) {
     dl.style.display = 'none';
-    dl.removeAttribute('href');
     if (f._driveId && f.id) {
       graphFetch(`/drives/${f._driveId}/items/${f.id}?$select=id,name,@microsoft.graph.downloadUrl`)
-        .then(it => {
-          const u = it && it['@microsoft.graph.downloadUrl'];
-          if (u) { dl.href = u; dl.setAttribute('download', f.name || ''); dl.style.display = ''; }
-        }).catch(() => {});
+        .then(meta => {
+          const url = meta && meta['@microsoft.graph.downloadUrl'];
+          if (!url) return;
+          dl.href = url;
+          dl.setAttribute('download', f.name || '');
+          dl.style.display = '';
+        })
+        .catch(() => { /* preview still works without it */ });
     }
   }
   const oldFb = document.querySelector('#doc-modal-body .doc-fallback');
@@ -581,16 +583,55 @@ async function fetchSharePointVideos() {
   return vids;
 }
 
+// YouTube — the channel marketing actually publish to. Read through
+// the Azure Function proxy so the YouTube API key stays server-side
+// (never put an API key in config.js — see the June 2026 note).
+async function fetchYouTubeVideos() {
+  const cfg = (HUB_CONFIG.videos && HUB_CONFIG.videos.youtube) || {};
+  if (!cfg.proxyUrl) return [];
+
+  const cached = _cacheGet('videos_yt');
+  if (cached) return cached;
+
+  const res = await fetch(cfg.proxyUrl, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('Video proxy returned ' + res.status);
+  const data = await res.json();
+  const rows = Array.isArray(data) ? data : (data.videos || data.items || []);
+
+  const vids = rows.map(v => {
+    const id = v.id || v.videoId || '';
+    return {
+      title:     String(v.title || 'Untitled').trim(),
+      date:      v.date || v.publishedAt || '',
+      youtubeId: id,
+      src:       null,
+      href:      v.url || (id ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(id) : ''),
+      thumb:     v.thumb || v.thumbnail || '',
+      source:    'YouTube',
+    };
+  }).filter(v => v.youtubeId);
+
+  _cacheSet('videos_yt', vids);
+  return vids;
+}
+
 async function loadHomeVideos() {
   const section = document.getElementById('home-videos');
   const grid = document.getElementById('home-videos-grid');
   if (!section || !grid) return;
 
-  const [wp, sp] = await Promise.allSettled([fetchWordPressVideos(), fetchSharePointVideos()]);
+  const cfg = HUB_CONFIG.videos || {};
+  const [yt, wp, sp] = await Promise.allSettled([
+    fetchYouTubeVideos(),
+    cfg.includeWordPress  === false ? [] : fetchWordPressVideos(),
+    cfg.includeSharePoint === false ? [] : fetchSharePointVideos(),
+  ]);
+  if (yt.status === 'rejected') console.warn('YouTube videos unavailable:', yt.reason.message);
   if (wp.status === 'rejected') console.warn('WordPress videos unavailable:', wp.reason.message);
   if (sp.status === 'rejected') console.warn('SharePoint videos unavailable:', sp.reason.message);
 
   let vids = [
+    ...(yt.status === 'fulfilled' ? yt.value : []),
     ...(wp.status === 'fulfilled' ? wp.value : []),
     ...(sp.status === 'fulfilled' ? sp.value : []),
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -611,9 +652,11 @@ async function loadHomeVideos() {
 
   grid.innerHTML = vids.map(v => {
     const href = safeUrl(v.href, '');
-    const media = v.src
-      ? `<video class="vid-player" src="${escAttr(safeUrl(v.src, ''))}" controls preload="metadata" playsinline></video>`
-      : `<a class="vid-thumb-link" href="${escAttr(href)}" target="_blank" rel="noopener"><span class="vid-play">▶</span><span>Watch on SharePoint</span></a>`;
+    const media = v.youtubeId
+      ? `<iframe class="vid-player" src="https://www.youtube-nocookie.com/embed/${escAttr(encodeURIComponent(v.youtubeId))}" title="${escAttr(v.title)}" frameborder="0" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`
+      : v.src
+        ? `<video class="vid-player" src="${escAttr(safeUrl(v.src, ''))}" controls preload="metadata" playsinline></video>`
+        : `<a class="vid-thumb-link" href="${escAttr(href)}" target="_blank" rel="noopener"><span class="vid-play">▶</span><span>Watch on SharePoint</span></a>`;
     return `
     <div class="vid-card">
       ${media}
@@ -632,8 +675,9 @@ function renderHeroVideos(vids) {
   const el = document.getElementById('home-hero-videos-body');
   if (!el) return;
   if (!vids || !vids.length) {
+    const ch = safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.youtube && HUB_CONFIG.videos.youtube.channelUrl) || '', '');
     el.innerHTML = '<p class="prose dim">No recent videos.</p>' +
-      '<a class="hbox-more" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">Media Portal →</a>';
+      (ch ? `<a class="hbox-more" href="${escAttr(ch)}" target="_blank" rel="noopener">CheckFire on YouTube →</a>` : '');
     return;
   }
   el.innerHTML = vids.slice(0, 3).map(v => `
@@ -649,7 +693,16 @@ function scrollToVideos() {
   if (s && s.style.display !== 'none') s.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// ═══ Social — LinkedIn embeds + in-house comms feed ══════════
+// ═══ Team wall ═══════════════════════════════════════════════
+// Marketing asked for a proper internal comms wall — post, like,
+// comment, tag people, notify everyone. A static site can't do any of
+// that on its own, so the wall is a Viva Engage community embedded in
+// the hub: it's already in the CheckFire Microsoft 365 licence and all
+// of those features come with it, including notifications.
+//
+// Until the community's embed URL is pasted into config.js, the section
+// falls back to a read-only feed of the SharePoint "Comms" list so the
+// page still shows something useful.
 
 function _pick(obj, names) {
   for (const n of names) {
@@ -658,41 +711,31 @@ function _pick(obj, names) {
   return '';
 }
 
-// LinkedIn has no free page feed — we embed specific posts whose embed
-// URLs are pasted into HUB_CONFIG.social.linkedInEmbeds. Panel hides
-// itself when none are configured.
-function renderLinkedIn() {
-  const wrap = document.getElementById('home-linkedin');
-  const list = document.getElementById('home-linkedin-list');
-  if (!wrap || !list) return;
-
-  const embeds = (HUB_CONFIG.social && HUB_CONFIG.social.linkedInEmbeds) || [];
-  const frames = embeds
-    .map(src => safeUrl(src, ''))
-    .filter(u => u && /(^https:\/\/)([a-z]+\.)?linkedin\.com\//i.test(u))
-    .map(u => `<iframe class="li-embed" src="${escAttr(u)}" height="430" frameborder="0" allowfullscreen title="Embedded LinkedIn post" loading="lazy"></iframe>`);
-
-  if (!frames.length) { wrap.style.display = 'none'; return; }
-  list.innerHTML = frames.join('');
-  wrap.style.display = '';
-}
-
-// In-house comms: a Twitter-style stream driven by a SharePoint list
-// on the MarketingHub site (HUB_CONFIG.social.commsList). Columns are
-// read defensively so minor naming differences still work.
 async function fetchCommsItems() {
   const name = (HUB_CONFIG.social && HUB_CONFIG.social.commsList) || 'Comms';
   return fetchListItems(name);
 }
 
-function renderComms(items) {
-  const wrap = document.getElementById('home-comms');
-  const list = document.getElementById('home-comms-list');
-  if (!wrap || !list) return;
+function _renderVivaEngage(body) {
+  const cfg = (HUB_CONFIG.social || {});
+  const embed = safeUrl(cfg.vivaEngageEmbed || '', '');
+  if (!embed || !/^https:\/\/([a-z0-9-]+\.)?(yammer|engage\.cloud\.microsoft|web\.yammer)\.com\//i.test(embed)) return false;
 
+  body.innerHTML = `<iframe class="wall-frame" src="${escAttr(embed)}" title="CheckFire team wall" frameborder="0" loading="lazy" allowfullscreen></iframe>`;
+
+  const link = document.getElementById('wall-open-link');
+  const open = safeUrl(cfg.vivaEngageUrl || '', '');
+  if (link && open) { link.href = open; link.style.display = ''; }
+  return true;
+}
+
+// Read-only fallback: the Comms list, styled as plain internal
+// announcements (no Twitter handles or bird — marketing asked for those
+// to go).
+function _renderCommsFallback(body, items) {
   let posts = (items || []).map(f => ({
     author: _pick(f, ['Author', 'PostedBy', 'Title']) || 'CheckFire',
-    handle: _pick(f, ['Handle', 'Team', 'Department']),
+    team:   _pick(f, ['Team', 'Department', 'Handle']),
     body:   _pick(f, ['Message', 'Body', 'Post', 'Content', 'Description']),
     date:   _pick(f, ['Date', 'Posted', 'PostDate']) || f.Created || '',
     link:   linkOf(_pick(f, ['Link', 'LinkURL', 'Url'])),
@@ -701,42 +744,209 @@ function renderComms(items) {
   posts.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   posts = posts.slice(0, (HUB_CONFIG.social && HUB_CONFIG.social.commsMax) || 8);
 
-  if (!posts.length) { wrap.style.display = 'none'; return; }
+  if (!posts.length) {
+    body.innerHTML = `
+      <div class="wall-empty">
+        <h4>The team wall isn't switched on yet</h4>
+        <p>Create a Viva Engage community for the team and paste its embed link into <strong>config.js</strong> — that gives everyone posting, likes, comments, @mentions and notifications. In the meantime, anything added to the SharePoint <strong>Comms</strong> list shows up here.</p>
+      </div>`;
+    return;
+  }
 
-  const bird = `<svg class="cm-bird" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M23 4.9c-.8.4-1.7.6-2.6.8a4.5 4.5 0 0 0 2-2.5c-.9.5-1.8.9-2.9 1.1a4.5 4.5 0 0 0-7.7 4.1A12.8 12.8 0 0 1 2.7 3.6a4.5 4.5 0 0 0 1.4 6 4.4 4.4 0 0 1-2-.6v.1a4.5 4.5 0 0 0 3.6 4.4 4.5 4.5 0 0 1-2 .1 4.5 4.5 0 0 0 4.2 3.1A9 9 0 0 1 1 21.5a12.7 12.7 0 0 0 6.9 2c8.3 0 12.8-6.9 12.8-12.8v-.6c.9-.6 1.6-1.4 2.3-2.2z"/></svg>`;
-
-  list.innerHTML = posts.map(p => {
-    const handleTxt = p.handle ? '@' + String(p.handle).replace(/\s+/g, '').toLowerCase() : '@checkfire';
+  body.innerHTML = `<div class="cm-list wall">${posts.map(p => {
     const init = String(p.author).trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'CF';
     const link = safeUrl(p.link, '');
+    const meta = [p.team, p.date ? fmtSpDate(p.date) : ''].filter(Boolean).join(' · ');
     const inner = `
       <div class="cm-head">
         <span class="cm-avatar">${escHtml(init)}</span>
         <div class="cm-id">
           <span class="cm-name">${escHtml(p.author)}</span>
-          <span class="cm-handle">${escHtml(handleTxt)}</span>
+          ${meta ? `<span class="cm-handle">${escHtml(meta)}</span>` : ''}
         </div>
-        ${bird}
       </div>
-      <div class="cm-text">${escHtml(p.body)}</div>
-      ${p.date ? `<div class="cm-date">${escHtml(fmtSpDate(p.date))}</div>` : ''}`;
+      <div class="cm-text">${escHtml(p.body)}</div>`;
     return link
       ? `<a class="cm-card" href="${escAttr(link)}" target="_blank" rel="noopener">${inner}</a>`
       : `<div class="cm-card">${inner}</div>`;
-  }).join('');
+  }).join('')}</div>`;
+}
+
+async function loadWall() {
+  const body = document.getElementById('home-wall-body');
+  if (!body) return;
+
+  if (_renderVivaEngage(body)) return;
+
+  try {
+    const items = await fetchCommsItems();
+    _renderCommsFallback(body, items);
+  } catch (e) {
+    console.info('[Wall] Comms list not loaded:', e.message);
+    _renderCommsFallback(body, []);
+  }
+}
+
+// ═══ Notices / alerts bar ════════════════════════════════════
+// Short "you should know" messages from marketing: a delayed product,
+// a website outage, an issue being worked on. Driven by the Notices
+// list; the bar stays hidden when there's nothing live.
+
+const _NOTICE_ICONS = {
+  info:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  alert:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+};
+
+function _noticeTone(type) {
+  const t = String(type || '').toLowerCase();
+  if (/alert|urgent|down|critical|outage/.test(t)) return 'alert';
+  if (/warn|delay|issue|caution/.test(t))          return 'warning';
+  return 'info';
+}
+
+function _noticeDismissed(key) {
+  try { return sessionStorage.getItem('hubnotice_' + key) === '1'; } catch (_) { return false; }
+}
+
+function dismissNotice(key, btn) {
+  try { sessionStorage.setItem('hubnotice_' + key, '1'); } catch (_) {}
+  const card = btn && btn.closest('.notice');
+  if (card) card.remove();
+  const wrap = document.getElementById('home-notices');
+  if (wrap && !wrap.querySelector('.notice')) wrap.style.display = 'none';
+}
+
+let _noticeItems = [];
+
+function renderNotices(items) {
+  const wrap = document.getElementById('home-notices');
+  if (!wrap) return;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const isOn = v => v === true || /^(yes|true|1|on)$/i.test(String(v ?? ''));
+
+  let live = (items || []).filter(f => {
+    // Active defaults to ON when the column doesn't exist.
+    if (f.Active !== undefined && f.Active !== null && f.Active !== '' && !isOn(f.Active)) return false;
+    const start = _pick(f, ['StartDate', 'Start']);
+    const end   = _pick(f, ['EndDate', 'End', 'Expires']);
+    if (start && !isNaN(new Date(start)) && new Date(start) > today) return false;
+    if (end   && !isNaN(new Date(end)))   { const e = new Date(end); e.setHours(23, 59, 59); if (e < today) return false; }
+    return _pick(f, ['Title', 'Message', 'Body']);
+  });
+
+  live.sort((a, b) => String(_pick(b, ['StartDate', 'Created'])).localeCompare(String(_pick(a, ['StartDate', 'Created']))));
+  live = live.slice(0, (HUB_CONFIG.notices && HUB_CONFIG.notices.max) || 3);
+
+  _noticeItems = live;
+
+  const cards = live.map((f, i) => {
+    const tone  = _noticeTone(_pick(f, ['Type', 'Severity', 'Level']));
+    const title = _pick(f, ['Title']);
+    const text  = _pick(f, ['Message', 'Body', 'Description']);
+    const link  = safeUrl(linkOf(_pick(f, ['Link', 'LinkURL', 'Url'])), '');
+    const key   = 'n' + i + '-' + String(title || text).slice(0, 40).replace(/\W+/g, '');
+    if (_noticeDismissed(key)) return '';
+    return `
+      <div class="notice ${tone}">
+        <span class="notice-ico">${_NOTICE_ICONS[tone]}</span>
+        <div class="notice-body">
+          ${title ? `<div class="notice-title">${escHtml(title)}</div>` : ''}
+          ${text ? `<div class="notice-text">${escHtml(text)}</div>` : ''}
+          ${link ? `<a class="notice-link" href="${escAttr(link)}" target="_blank" rel="noopener">More info →</a>` : ''}
+        </div>
+        <button class="notice-dismiss" title="Dismiss" onclick="dismissNotice('${escAttr(key)}', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" width="15" height="15"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`;
+  }).filter(Boolean);
+
+  if (!cards.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.innerHTML = cards.join('');
   wrap.style.display = '';
 }
 
-async function loadSocial() {
-  renderLinkedIn();
+async function loadNotices() {
+  const wrap = document.getElementById('home-notices');
+  if (!wrap) return;
   try {
-    const items = await fetchCommsItems();
-    renderComms(items);
+    const items = await fetchListItems((HUB_CONFIG.notices && HUB_CONFIG.notices.list) || 'Notices');
+    renderNotices(items);
   } catch (e) {
-    console.info('[Comms] feed not loaded:', e.message);
-    const wrap = document.getElementById('home-comms');
-    if (wrap) wrap.style.display = 'none';
+    // No list yet (or not signed in) — stay silent and hidden.
+    console.info('[Notices] not loaded:', e.message);
+    wrap.style.display = 'none';
   }
+}
+
+// ═══ Training calendar ═══════════════════════════════════════
+// Internal sessions (e.g. the product-launch training Josh runs) and
+// external courses. Dates also feed the marketing calendar as green
+// markers — see jotform.js.
+
+let TRAINING_ITEMS = [];
+
+function _trainDate(f) {
+  return _pick(f, ['TrainingDate', 'Date', 'StartDate', 'EventDate']);
+}
+
+function renderTraining(items) {
+  const section = document.getElementById('home-training');
+  const track   = document.getElementById('home-training-track');
+  if (!section || !track) return;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const upcoming = (items || [])
+    .filter(f => { const d = _trainDate(f); return d && !isNaN(new Date(d)) && new Date(d) >= today; })
+    .sort((a, b) => String(_trainDate(a)).localeCompare(String(_trainDate(b))))
+    .slice(0, (HUB_CONFIG.training && HUB_CONFIG.training.max) || 8);
+
+  if (!upcoming.length) { section.style.display = 'none'; return; }
+
+  track.innerHTML = upcoming.map(f => {
+    const d    = new Date(_trainDate(f));
+    const type = String(_pick(f, ['TrainingType', 'Type', 'Category']) || '').toLowerCase();
+    const cls  = /extern/.test(type) ? 'external' : 'internal';
+    const meta = [
+      _pick(f, ['Trainer', 'Host', 'Presenter']),
+      _pick(f, ['Location', 'Venue', 'Where']),
+    ].filter(Boolean).join(' · ');
+    const link = safeUrl(linkOf(_pick(f, ['Link', 'LinkURL', 'Url'])), '');
+    const inner = `
+      <div class="train-date">
+        <div class="d">${d.getDate()}</div>
+        <div class="m">${escHtml(d.toLocaleDateString('en-GB', { month: 'short' }))}</div>
+      </div>
+      <div class="train-info">
+        <div class="train-name">${escHtml(_pick(f, ['Title']) || 'Training session')}</div>
+        ${meta ? `<div class="train-meta">${escHtml(meta)}</div>` : ''}
+        <span class="train-tag ${cls}">${cls === 'external' ? 'External' : 'In-house'}</span>
+      </div>`;
+    return link
+      ? `<a class="train-card" href="${escAttr(link)}" target="_blank" rel="noopener">${inner}</a>`
+      : `<div class="train-card">${inner}</div>`;
+  }).join('');
+
+  section.style.display = '';
+}
+
+async function loadTraining() {
+  const section = document.getElementById('home-training');
+  if (!section) return;
+  try {
+    const items = await fetchListItems((HUB_CONFIG.training && HUB_CONFIG.training.list) || 'Training Events');
+    TRAINING_ITEMS = items || [];
+    renderTraining(TRAINING_ITEMS);
+  } catch (e) {
+    console.info('[Training] list not loaded:', e.message);
+    section.style.display = 'none';
+  }
+}
+
+// Kept for callers that still ask for "social" — now the wall + training.
+async function loadSocial() {
+  await Promise.all([loadWall(), loadTraining()]);
 }
 
 // ═══ Orchestrators ═══════════════════════════════════════════
@@ -753,10 +963,9 @@ async function loadSharePointData() {
   if (window.HUB_DEMO_MODE) return;
   if (typeof getAccessToken !== 'function') return;
 
-  const [launches, campaigns, events] = await Promise.allSettled([
+  const [launches, campaigns] = await Promise.allSettled([
     fetchListItems(HUB_CONFIG.lists.launches),
     fetchListItems(HUB_CONFIG.lists.campaigns),
-    fetchListItems(HUB_CONFIG.lists.events),
   ]);
 
   if (launches.status === 'fulfilled') renderLaunches(launches.value);
@@ -765,8 +974,8 @@ async function loadSharePointData() {
   if (campaigns.status === 'fulfilled') renderCampaigns(campaigns.value);
   else _renderListError('sp-campaigns-grid', `Couldn't load campaigns: ${campaigns.reason.message}`, true);
 
-  if (events.status === 'fulfilled') renderEvents(events.value);
-  else _renderListError('sp-events-list', `Couldn't load events: ${events.reason.message}`, true);
+  // Trade & Events is driven by the Documents/Events folders, not a list.
+  await loadTradeEvents();
 }
 
 // Resources ▸ Marketing Library — opened via loadResourcesData (ui.js).
@@ -791,50 +1000,10 @@ async function loadProductPortal() {
     grid.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to browse the Product Portal.</p>';
     return;
   }
-  if (_fbLoaded.product) { renderBrowser('product'); _ppRenderSwitch(); return; }
+  if (_fbLoaded.product) { renderBrowser('product'); return; }
   _fbLoaded.product = true;
-  await fbInit('product', HUB_CONFIG.productPortalSite, _ppCurrentLib(),
+  await fbInit('product', HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary,
                'pp-documents-grid', 'pp-crumbs', 'Product Portal');
-  _ppRenderSwitch();
-}
-
-// The Product Portal keeps files in more than one library (e.g. "Data
-// Sheets" and "Documents"). Pills above the browser switch between them.
-function _ppLibs() {
-  const libs = HUB_CONFIG.productPortalLibraries;
-  return (Array.isArray(libs) && libs.length) ? libs : [HUB_CONFIG.documentsLibrary];
-}
-function _ppCurrentLib() {
-  return window._ppLib || _ppLibs()[0];
-}
-function _ppRenderSwitch() {
-  const libs = _ppLibs();
-  if (libs.length < 2) return;
-  const crumbs = document.getElementById('pp-crumbs');
-  if (!crumbs) return;
-  let bar = document.getElementById('pp-lib-switch');
-  if (!bar) {
-    bar = document.createElement('div');
-    bar.id = 'pp-lib-switch';
-    bar.style.cssText = 'display:flex;gap:8px;margin:0 0 12px';
-    crumbs.parentNode.insertBefore(bar, crumbs);
-  }
-  const cur = _ppCurrentLib();
-  bar.innerHTML = libs.map(l => {
-    const on = l === cur;
-    const style = on
-      ? 'background:#111;color:#fff;border:1px solid #111'
-      : 'background:#fff;color:#111;border:1px solid #DADADA';
-    return `<button type="button" style="${style};font-size:12px;font-weight:700;border-radius:20px;padding:6px 14px;cursor:pointer" onclick="ppSwitchLib('${escAttr(l)}')">${escHtml(l)}</button>`;
-  }).join('');
-}
-async function ppSwitchLib(lib) {
-  if (lib === _ppCurrentLib()) return;
-  window._ppLib = lib;
-  delete FB.product;
-  await fbInit('product', HUB_CONFIG.productPortalSite, lib,
-               'pp-documents-grid', 'pp-crumbs', 'Product Portal');
-  _ppRenderSwitch();
 }
 
 // ═══ In-hub file browser ═════════════════════════════════════
@@ -850,8 +1019,10 @@ function _fbSkeleton(gridId) {
   if (g) g.innerHTML = '<div class="skeleton sk-line med"></div><div class="skeleton sk-line"></div><div class="skeleton sk-line short"></div>';
 }
 
-async function fbInit(key, siteUrl, library, gridId, crumbId, rootLabel) {
-  FB[key] = { siteUrl, library, gridId, crumbId, rootLabel: rootLabel || 'Home', driveId: null, path: [], items: [] };
+async function fbInit(key, siteUrl, library, gridId, crumbId, rootLabel, opts) {
+  opts = opts || {};
+  FB[key] = { siteUrl, library, gridId, crumbId, rootLabel: rootLabel || 'Home',
+              driveId: null, rootId: opts.rootItemId || null, path: [], items: [] };
   _fbSkeleton(gridId);
   try {
     const drive = await resolveDrive(siteUrl, library);
@@ -870,7 +1041,7 @@ async function fbLoad(key) {
   const b = FB[key];
   if (!b || !b.driveId) return;
   _fbSkeleton(b.gridId);
-  const current = b.path.length ? b.path[b.path.length - 1].id : null;
+  const current = b.path.length ? b.path[b.path.length - 1].id : (b.rootId || null);
   try {
     b.items = await fetchDriveChildren(b.driveId, current);
     renderBrowser(key);
@@ -993,7 +1164,12 @@ function _renderDetail(opts) {
 
   const landing = safeUrl(linkOf(f.LinkURL), '');
   const dates = [fmtSpDate(f.StartDate || f.LaunchDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ');
-  const sub = f.Description || f.Summary || f.CampaignType || '';
+  const isLaunch = opts.kind === 'launch';
+  // Marketing asked for the launch page to show product codes rather
+  // than a marketing blurb.
+  const codes = isLaunch ? productCodes(f) : [];
+  const sub = isLaunch ? '' : (f.Description || f.Summary || f.CampaignType || '');
+  const portal = safeUrl(HUB_CONFIG.productPortalSite || '', '');
 
   const metrics = opts.kind === 'campaign' ? [
     { label: 'Emails sent',       value: _num(f, ['EmailsSent', 'Emails', 'EmailCount']) },
@@ -1001,6 +1177,8 @@ function _renderDetail(opts) {
     { label: 'Blogs',             value: _num(f, ['Blogs', 'BlogCount', 'BlogPosts']) },
     { label: 'PR activity',       value: _num(f, ['PRActivity', 'PR', 'PRActivities']) },
   ] : [];
+
+  const blocks = (HUB_CONFIG.campaignAssetBlocks || []);
 
   box.innerHTML = `
     <div class="cd-back" role="button" tabindex="0" onclick="${opts.backFn}" onkeydown="if(event.key==='Enter')${opts.backFn}">
@@ -1012,11 +1190,13 @@ function _renderDetail(opts) {
       <div class="eyebrow" style="color:#D1242B;margin-bottom:8px">${escHtml(opts.kind === 'campaign' ? 'Campaign' : 'Product launch')}</div>
       <h1 class="cd-hero-title">${escHtml(f.Title || 'Untitled')}</h1>
       ${sub ? `<p class="cd-hero-sub">${escHtml(sub)}</p>` : ''}
+      ${codes.length ? `<div class="cd-codes">${codes.map(c => `<span class="cd-code">${escHtml(c)}</span>`).join('')}</div>` : ''}
       <div class="cd-hero-meta">
-        ${_campaignStatusPill(f.Status)}
+        ${ragChip(f.Status)}
         ${dates ? `<span>${escHtml(dates)}</span>` : ''}
         ${f.Region ? `<span>${escHtml(f.Region)}</span>` : ''}
         ${landing ? `<a class="cd-landing" href="${escAttr(landing)}" target="_blank" rel="noopener">View landing page →</a>` : ''}
+        ${isLaunch && portal ? `<a class="cd-portal" href="${escAttr(portal)}" target="_blank" rel="noopener">Open in Product Portal →</a>` : ''}
       </div>
     </div>
 
@@ -1025,80 +1205,62 @@ function _renderDetail(opts) {
     `).join('')}</div>` : ''}
 
     <p class="cd-blocks-title">Assets &amp; resources</p>
-    <div class="cd-blocks" id="cd-blocks">
-      <div class="skeleton-card" style="height:96px;border-radius:12px"></div>
-      <div class="skeleton-card" style="height:96px;border-radius:12px"></div>
-      <div class="skeleton-card" style="height:96px;border-radius:12px"></div>
-    </div>
+    <div class="cd-blocks" id="cd-blocks">${_blocksHtml(blocks)}</div>
 
     <div id="cd-asset-panel" style="margin-top:20px"></div>`;
 
-  // Remember what the asset blocks should resolve against, then discover
-  // the item's real sub-folders (nothing hardcoded - whatever folders
-  // marketing creates in SharePoint show up as blocks).
+  // Remember what the asset blocks should resolve against.
   _detailContext = { folderRoot: opts.folderRoot, campaignFolder: f.CampaignFolder || f.Folder || f.Title };
+  _detailBlocks  = blocks;
+
+  // Then swap the config placeholders for the real SharePoint folders.
   _loadDetailBlocks();
 }
 
-const _CD_BLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-
-let _detailBlocks = [];
-
-function _assetFilesHTML(heading, files, listVar) {
-  return `
-      <p class="cd-blocks-title" style="margin-bottom:10px">${escHtml(heading)}</p>
-      <div class="asset-grid">${files.map((f, idx) => {
-        const icon = fileIcon(f.name, false);
-        const meta = [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' \u00b7 ');
-        return `<div class="asset asset-preview" role="button" tabindex="0" onclick="openDocFile(${listVar}[${idx}])" onkeydown="if(event.key==='Enter')openDocFile(${listVar}[${idx}])">
-          <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
-          <div class="asset-info"><div class="asset-name">${escHtml(f.name)}</div><div class="asset-meta">${escHtml(meta)}</div></div>
-          <span class="asset-open">Open in hub \u2192</span>
-        </div>`;
-      }).join('')}</div>`;
+// Render the asset-block tiles. Each tile shows how many files are in
+// its folder once we've read the library.
+function _blocksHtml(blocks) {
+  return (blocks || []).map((bl, bi) => `
+      <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${bi})" onkeydown="if(event.key==='Enter')openDetailAsset(${bi})">
+        <span class="cd-block-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+        ${escHtml(bl.label)}
+        <span class="cd-block-note">${bl.count === undefined ? 'Open in hub'
+          : `${bl.count} item${bl.count === 1 ? '' : 's'} · Open in hub`}</span>
+      </div>`).join('');
 }
 
+// Read the real sub-folders under Documents/<root>/<item>/ so the tiles
+// match what's actually in SharePoint instead of a fixed list in
+// config.js. Falls back silently to the config blocks.
 async function _loadDetailBlocks() {
-  const ctx  = _detailContext;
-  const wrap = document.getElementById('cd-blocks');
-  if (!ctx || !wrap) return;
+  const ctx = _detailContext;
+  const box = document.getElementById('cd-blocks');
+  if (!ctx || !box) return;
+
   try {
     const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
     const rootFolder = await _findChildFolder(drive.id, null, ctx.folderRoot);
-    if (!rootFolder) throw new Error(`No "${ctx.folderRoot}" folder in the document library yet.`);
+    if (!rootFolder) return;
     const itemFolder = await _findChildFolder(drive.id, rootFolder.id, ctx.campaignFolder);
-    if (!itemFolder) throw new Error(`No folder matching "${ctx.campaignFolder}" inside ${ctx.folderRoot} yet - create one and its asset folders appear here automatically.`);
-    if (_detailContext !== ctx) return; // user navigated away meanwhile
+    if (!itemFolder) return;
 
-    const kids       = await fetchDriveChildren(drive.id, itemFolder.id);
-    const folders    = kids.filter(k => k.folder);
-    const looseFiles = kids.filter(k => !k.folder);
+    const kids = (await fetchDriveChildren(drive.id, itemFolder.id)).filter(x => x.folder);
+    if (!kids.length) return;
 
-    _detailBlocks = folders.map(k => ({ label: k.name, id: k.id, driveId: drive.id, count: (k.folder && typeof k.folder.childCount === 'number') ? k.folder.childCount : null }));
+    _detailBlocks = kids
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      .map(k => ({ label: k.name, folder: k.name, count: (k.folder && k.folder.childCount) || 0 }));
 
-    if (!_detailBlocks.length && !looseFiles.length) {
-      wrap.innerHTML = '<p class="prose dim">No asset folders set up for this item yet - add folders inside its Documents folder and they appear here.</p>';
-      return;
-    }
-
-    wrap.innerHTML = _detailBlocks.map((b, i) => `
-      <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${i})" onkeydown="if(event.key==='Enter')openDetailAsset(${i})">
-        <span class="cd-block-ico">${_CD_BLOCK_SVG}</span>
-        ${escHtml(b.label)}
-        <span class="cd-block-note">${b.count !== null ? b.count + (b.count === 1 ? ' item' : ' items') + ' \u00b7 ' : ''}Open in hub</span>
-      </div>`).join('');
-
-    if (looseFiles.length) {
-      _looseDetailFiles = looseFiles;
-      const panel = document.getElementById('cd-asset-panel');
-      if (panel) panel.innerHTML = _assetFilesHTML('Other files', looseFiles, '_looseDetailFiles');
+    // Guard against the user having navigated away while we were loading.
+    if (_detailContext === ctx && document.getElementById('cd-blocks') === box) {
+      box.innerHTML = _blocksHtml(_detailBlocks);
     }
   } catch (e) {
-    wrap.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
+    console.info('[Assets] using the config block list:', e.message);
   }
 }
 
-let _looseDetailFiles = [];
+let _detailBlocks = [];
 
 let _detailContext = null;
 
@@ -1147,85 +1309,159 @@ function closeLaunchDetail() {
 }
 
 // Find a child folder by (case-insensitive) name under a parent item.
-function _nameTokens(s) {
-  return String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-}
 async function _findChildFolder(driveId, parentId, name) {
   const target = String(name || '').trim().toLowerCase();
   if (!target) return null;
   const items = await fetchDriveChildren(driveId, parentId);
-  const folders = items.filter(f => f.folder);
-  // 1. exact (case-insensitive)
-  let hit = folders.find(f => String(f.name).trim().toLowerCase() === target);
-  if (hit) return hit;
-  // 2. substring either way
-  hit = folders.find(f => {
-    const n = String(f.name).trim().toLowerCase();
-    return n.includes(target) || target.includes(n);
-  });
-  if (hit) return hit;
-  // 3. word-set match: same words in any order, or one a subset of the
-  //    other. Fixes e.g. list title "Flat-Pack Tubular Black ... Stand range"
-  //    vs folder "Black Flat-Pack Tubular ... Stand Range".
-  const t = _nameTokens(target);
-  if (!t.length) return null;
-  return folders.find(f => {
-    const n = _nameTokens(f.name);
-    if (!n.length) return false;
-    const setN = new Set(n), setT = new Set(t);
-    return t.every(w => setN.has(w)) || n.every(w => setT.has(w));
-  }) || null;
+  return items.find(f => f.folder && String(f.name).trim().toLowerCase() === target)
+      || items.find(f => f.folder && String(f.name).trim().toLowerCase().includes(target));
 }
 
-// Open a discovered asset block folder in-hub. One file opens straight
-// into the preview; several are listed in a panel underneath the blocks.
-async function openDetailAsset(i) {
-  const block = _detailBlocks[i];
+// Resolve  Documents/<folderRoot>/<campaignFolder>/<block.folder>  and open
+// its file(s) in-hub. One file opens straight into the preview; several are
+// listed in a panel; none shows a friendly "not set up yet" note.
+async function openDetailAsset(blockIdx) {
+  const ctx   = _detailContext;
+  const block = (_detailBlocks && _detailBlocks.length ? _detailBlocks : (HUB_CONFIG.campaignAssetBlocks || []))[blockIdx];
   const panel = document.getElementById('cd-asset-panel');
-  if (!block || !panel) return;
+  if (!ctx || !block || !panel) return;
 
-  panel.innerHTML = `<p class="prose dim">Opening \u201c${escHtml(block.label)}\u201d\u2026</p>`;
+  panel.innerHTML = `<p class="prose dim">Opening “${escHtml(block.label)}”…</p>`;
 
   try {
-    const kids  = await fetchDriveChildren(block.driveId, block.id);
-    const files = kids.filter(x => !x.folder);
-    const subs  = kids.filter(x => x.folder);
+    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+    const rootFolder = await _findChildFolder(drive.id, null, ctx.folderRoot);
+    if (!rootFolder) throw new Error(`No “${ctx.folderRoot}” folder in the document library yet.`);
+    const itemFolder = await _findChildFolder(drive.id, rootFolder.id, ctx.campaignFolder);
+    if (!itemFolder) throw new Error(`No folder named “${ctx.campaignFolder}” inside ${ctx.folderRoot} yet.`);
+    const blockFolder = await _findChildFolder(drive.id, itemFolder.id, block.folder);
+    if (!blockFolder) throw new Error(`No “${block.label}” folder set up for this item yet.`);
 
-    if (!files.length && !subs.length) {
-      panel.innerHTML = `<p class="prose dim">No files in \u201c${escHtml(block.label)}\u201d yet.</p>`;
-      return;
-    }
+    const files = (await fetchDriveChildren(drive.id, blockFolder.id)).filter(x => !x.folder);
+    if (!files.length) { panel.innerHTML = `<p class="prose dim">No files in “${escHtml(block.label)}” yet.</p>`; return; }
 
-    // Sub-folders inside a block become extra blocks appended to the grid.
-    if (subs.length) {
-      const wrap = document.getElementById('cd-blocks');
-      const baseIdx = _detailBlocks.length;
-      subs.forEach((s, si) => {
-        _detailBlocks.push({ label: block.label + ' / ' + s.name, id: s.id, driveId: block.driveId, count: (s.folder && typeof s.folder.childCount === 'number') ? s.folder.childCount : null });
-        if (wrap) wrap.insertAdjacentHTML('beforeend', `
-          <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${baseIdx + si})" onkeydown="if(event.key==='Enter')openDetailAsset(${baseIdx + si})">
-            <span class="cd-block-ico">${_CD_BLOCK_SVG}</span>
-            ${escHtml(block.label + ' / ' + s.name)}
-            <span class="cd-block-note">Open in hub</span>
-          </div>`);
-      });
-    }
-
-    if (!files.length) {
-      panel.innerHTML = `<p class="prose dim">\u201c${escHtml(block.label)}\u201d holds sub-folders \u2014 they've been added to the grid above.</p>`;
+    if (files.length === 1) {
+      _lastAssetFiles = files;
+      openDocFile(files[0]);
+      panel.innerHTML = `<p class="prose dim">Opened <strong>${escHtml(files[0].name)}</strong> — <a class="fb-crumb" onclick="openDocFile(_lastAssetFiles[0])">reopen</a></p>`;
       return;
     }
 
     _lastAssetFiles = files;
-    if (files.length === 1) {
-      openDocFile(files[0]);
-      panel.innerHTML = `<p class="prose dim">Opened <strong>${escHtml(files[0].name)}</strong> \u2014 <a class="fb-crumb" onclick="openDocFile(_lastAssetFiles[0])">reopen</a></p>`;
-      return;
-    }
-    panel.innerHTML = _assetFilesHTML(`${block.label} \u2014 ${files.length} files`, files, '_lastAssetFiles');
+    panel.innerHTML = `
+      <p class="cd-blocks-title" style="margin-bottom:10px">${escHtml(block.label)} — ${files.length} files</p>
+      <div class="asset-grid">${files.map((f, idx) => {
+        const icon = fileIcon(f.name, false);
+        const meta = [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' · ');
+        return `<div class="asset asset-preview" role="button" tabindex="0" onclick="openDocFile(_lastAssetFiles[${idx}])" onkeydown="if(event.key==='Enter')openDocFile(_lastAssetFiles[${idx}])">
+          <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
+          <div class="asset-info"><div class="asset-name">${escHtml(f.name)}</div><div class="asset-meta">${escHtml(meta)}</div></div>
+          <span class="asset-open">Open in hub →</span>
+        </div>`;
+      }).join('')}</div>`;
   } catch (e) {
     panel.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
   }
 }
 
+
+// ═══ Trade & customer events ═════════════════════════════════
+// Everything on this page comes from the "Events" folder in the
+// marketing document library. Each sub-folder is one event (e.g.
+// "FSE 2027") and holds the forms the sales team need beforehand.
+// A four-digit year in the folder name splits upcoming from previous.
+
+let _eventFolders = [];
+
+function _eventYear(name) {
+  const m = String(name || '').match(/(19|20)\d{2}/);
+  return m ? parseInt(m[0], 10) : null;
+}
+
+async function loadTradeEvents() {
+  const upWrap   = document.getElementById('ev-upcoming-grid');
+  const pastWrap = document.getElementById('ev-past-grid');
+  if (!upWrap || !pastWrap) return;
+
+  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+
+  try {
+    const drive  = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+    const rootNm = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.folder) || 'Events';
+    const root   = await _findChildFolder(drive.id, null, rootNm);
+    if (!root) throw new Error(`No "${rootNm}" folder in the document library yet.`);
+
+    const kids = (await fetchDriveChildren(drive.id, root.id)).filter(x => x.folder);
+    _eventFolders = kids.map(k => ({
+      id:    k.id,
+      name:  k.name,
+      year:  _eventYear(k.name),
+      count: (k.folder && k.folder.childCount) || 0,
+      modified: k.lastModifiedDateTime,
+      driveId: drive.id,
+    }));
+
+    const thisYear = new Date().getFullYear();
+    // No year in the name? Treat it as current/ongoing.
+    const upcoming = _eventFolders.filter(e => e.year === null || e.year >= thisYear)
+      .sort((a, b) => (a.year || thisYear) - (b.year || thisYear) || String(a.name).localeCompare(String(b.name)));
+    const past = _eventFolders.filter(e => e.year !== null && e.year < thisYear)
+      .sort((a, b) => b.year - a.year || String(a.name).localeCompare(String(b.name)));
+
+    _set('sp-metric-ev-upcoming', upcoming.length);
+    _set('sp-metric-ev-past',     past.length);
+
+    const card = (e, isPast) => {
+      const idx = _eventFolders.indexOf(e);
+      return `
+        <div class="ev-card${isPast ? ' past' : ''}" role="button" tabindex="0" onclick="openEventFolder(${idx})" onkeydown="if(event.key==='Enter')openEventFolder(${idx})">
+          <div class="ev-year">${escHtml(e.year ? String(e.year) : 'Ongoing')}</div>
+          <div class="ev-name">${escHtml(e.name)}</div>
+          <div class="ev-meta">${e.count} item${e.count === 1 ? '' : 's'} · Open in hub →</div>
+        </div>`;
+    };
+
+    upWrap.innerHTML = upcoming.length
+      ? upcoming.map(e => card(e, false)).join('')
+      : '<p class="prose dim">No upcoming events yet — add a folder under Documents ▸ Events.</p>';
+    pastWrap.innerHTML = past.length
+      ? past.map(e => card(e, true)).join('')
+      : '<p class="prose dim">Nothing archived yet.</p>';
+
+  } catch (e) {
+    _set('sp-metric-ev-upcoming', '–');
+    _set('sp-metric-ev-past', '–');
+    const msg = e.message === 'NOT_FOUND'
+      ? 'Could not reach the document library — check you have access to the MarketingHub site.'
+      : e.message;
+    _renderListError('ev-upcoming-grid', msg);
+    pastWrap.innerHTML = '';
+  }
+}
+
+function openEventFolder(idx) {
+  const ev = _eventFolders[idx];
+  if (!ev) return;
+
+  const overview = document.getElementById('events-overview');
+  const browser  = document.getElementById('events-browser');
+  const title    = document.getElementById('ev-browser-title');
+  if (overview) overview.style.display = 'none';
+  if (browser)  browser.style.display  = '';
+  if (title)    title.textContent = ev.name;
+  window.scrollTo(0, 0);
+
+  fbInit('events', HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary,
+         'ev-documents-grid', 'ev-crumbs', ev.name, { rootItemId: ev.id });
+}
+
+function closeEventFolder() {
+  const overview = document.getElementById('events-overview');
+  const browser  = document.getElementById('events-browser');
+  if (overview) overview.style.display = '';
+  if (browser)  browser.style.display  = 'none';
+  window.scrollTo(0, 0);
+}
+
 let _lastAssetFiles = [];
+
