@@ -120,17 +120,26 @@ HUB_CONFIG.tradeEvents = {
 // Function proxy so the YouTube API key stays server-side (same pattern
 // as the Jotform proxy — never put an API key in this file).
 //
-// Set proxyUrl once the function is deployed, e.g.
-//   'https://checkfire-jotform.azurewebsites.net/api/videos'
-// Leave '' and the hub quietly falls back to the other two sources.
+// HOSTNAME — verified live 4 Aug 2026. Flex Consumption apps get a
+// region-scoped name with a random suffix; it is NOT
+// checkfire-jotform.azurewebsites.net (that resolves to nothing, which
+// is why the hub silently showed no bookings until 4 Aug). Don't
+// "tidy" this back to the short form. Leave '' to disable the proxy
+// and fall back to the other sources.
 //
 // Secondary sources are kept as a safety net:
 //   WordPress  — video uploads on checkfire.co.uk
 //   SharePoint — the Media Portal library ("03. Videos")
+//
+// CHANNEL CONFIRMED 4 Aug 2026. The handle guessed on 31 July
+// (@checkfireltd) does not exist — the real channel is @CheckFireGroup.
+// For the Function app's settings, use the channel ID rather than the
+// handle; it survives a rename:
+//   YOUTUBE_CHANNEL_ID = UC9EwvNr5cfQJW7GRrqCyphg
 HUB_CONFIG.videos = {
   youtube: {
-    proxyUrl:   'https://checkfire-jotform.azurewebsites.net/api/videos',
-    channelUrl: 'https://www.youtube.com/@checkfireltd',
+    proxyUrl:   'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/videos',
+    channelUrl: 'https://www.youtube.com/@CheckFireGroup',
   },
   includeWordPress:  true,
   includeSharePoint: true,
@@ -174,7 +183,7 @@ HUB_CONFIG.jotform = {
   // submissions straight from Jotform as well as anything in the
   // SharePoint list. The key NEVER ships to the browser.
   // Leave '' to read from the SharePoint list only.
-  proxyUrl: 'https://checkfire-jotform.azurewebsites.net/api/bookings',
+  proxyUrl: 'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/bookings',
 };
 
 // ── Team wall (home page) ─────────────────────────────────────
