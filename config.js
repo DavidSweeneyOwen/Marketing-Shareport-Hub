@@ -207,15 +207,21 @@ HUB_CONFIG.jotform = {
 HUB_CONFIG.social = {
   linkedInPageUrl: 'https://www.linkedin.com/company/checkfire/',
 
+  // 6 Aug 2026: repointed from the "All Company" community to the
+  // dedicated "Test Marketing Hub" community. All Company is the Viva
+  // Engage default group that EVERY user in the tenant belongs to and
+  // cannot leave, so every post to the hub wall notified the whole
+  // business. Do not point this back at All Company.
+  //
   // Generated 31 Jul 2026 from the Embed widget configuration site.
   // Chrome/footer/banner switched off so the feed sits cleanly under the
   // hub's own "Team wall" heading. Flip any of them back to true in the
   // query string if you'd rather have Viva Engage's own framing.
-  vivaEngageEmbed: 'https://engage.cloud.microsoft/embed/groups/eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiIyMTA0NzYzNjkyMTQ2Njg4In0?header=false&footer=false&hideNetworkName=true&theme=light&includeFeedInformation=false',
+  vivaEngageEmbed: 'https://engage.cloud.microsoft/embed/groups/eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiIyMTA0NzY1ODIxMTY1NTY4In0?header=false&footer=false&hideNetworkName=true&theme=light&includeFeedInformation=false',
 
   // The community itself — used for the "Open in Viva Engage →" link.
-  // Community ID: 2104763692146688
-  vivaEngageUrl: 'https://engage.cloud.microsoft/main/groups/eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiIyMTA0NzYzNjkyMTQ2Njg4In0/all',
+  // Community ID: 2104765821165568  ("Test Marketing Hub")
+  vivaEngageUrl: 'https://engage.cloud.microsoft/main/groups/eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiIyMTA0NzY1ODIxMTY1NTY4In0/all',
 
   commsList: 'Comms',    // read-only fallback feed
   commsMax:  8,
