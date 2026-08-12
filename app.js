@@ -6,7 +6,7 @@
 
 // ─── Page Navigation ──────────────────────────────────────────
 
-const PAGE_KEYS = ['home', 'launches', 'campaigns', 'trade', 'training'];
+const PAGE_KEYS = ['home', 'launches', 'campaigns', 'trade', 'training', 'portal'];
 const dataLoaded = {};
 
 async function showPage(id, idx) {
@@ -42,6 +42,9 @@ async function loadPageData(pageId) {
     // Trade & Events reads the Documents ▸ Events folders, not a list.
     case 'trade':     await loadTradeEvents();    break;
     case 'training':  await loadResourcesData(); break;
+    // Product Portal is its own page now — Resources is just the
+    // Marketing Library, per marketing's Aug feedback.
+    case 'portal':    await loadProductPortal();  break;
   }
 }
 
@@ -58,6 +61,7 @@ async function loadHomeData() {
     loadHomeVideos(),
     loadWall(),
     loadTraining(),
+    loadPolls(),
   ]);
 }
 
@@ -82,18 +86,13 @@ function updateNavActive(id) {
 }
 
 // ─── Product Portal ───────────────────────────────────────────
-// The nav "Product Portal" link opens the Resources page with the
-// Product Portal tab already selected, so files still open in-hub
-// rather than bouncing the user out to SharePoint.
+// Aug 2026: Resources was cut back to the Marketing Library alone, so
+// the Product Portal is a page in its own right rather than a tab.
+// Files still open in-hub — the browser instance and its element ids
+// are unchanged, only where they live on the page.
 async function openProductPortal() {
-  await showPage('training', 4);
-
-  const tabs = document.querySelectorAll('.training-tab');
-  const btn  = tabs[1];   // Marketing Library | Product Portal | Useful links
-  if (btn) {
-    switchTrainingTab(btn, 'product');
-    if (typeof loadProductPortal === 'function') loadProductPortal();
-  }
+  await showPage('portal', 5);
+  if (typeof loadProductPortal === 'function') loadProductPortal();
   if (typeof updateNavActive === 'function') updateNavActive('portal');
 }
 
@@ -327,11 +326,8 @@ function switchTrainingTab(btn, tab) {
   if (pane) pane.classList.add('active');
 }
 
-function answerPoll(btn) {
-  btn.parentElement.querySelectorAll('.poll-opt').forEach(o => o.classList.remove('selected'));
-  btn.classList.add('selected');
-  showToast('Thanks — your vote was recorded');
-}
+// (The old demo answerPoll() stub was removed — real voting is
+// votePoll() in graph.js, which writes to the SharePoint Poll Votes list.)
 
 function postToWall(btn) {
   const ta = btn.closest('.wall-composer')?.querySelector('.wall-comp-text');

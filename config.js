@@ -186,6 +186,34 @@ HUB_CONFIG.jotform = {
   proxyUrl: 'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/bookings',
 };
 
+// ── Polls (home page) ─────────────────────────────────────────
+// A one-question poll card sits under Quick Links on the home page.
+// Staff answer it IN THE HUB — the click writes a row to SharePoint,
+// so results are live and nobody has to leave for a survey tool.
+//
+// TWO LISTS on the MarketingHub site:
+//
+//   "Polls" — one item per question
+//     Title    (single line)  — the question, e.g. "Which campaign next?"
+//     Options  (multi-line, plain text) — ONE OPTION PER LINE
+//     Active   (Yes/No)       — only Active polls are shown
+//     EndDate  (date, optional) — auto-hides after this date
+//
+//   "Poll Votes" — one item per person per poll (written by the hub)
+//     Title    (single line)  — the option the person picked
+//     PollId   (single line)  — the Polls item id
+//     Voter    (single line)  — the voter's email
+//
+// WRITE PERMISSION: voting needs the delegated Microsoft Graph scope
+// Sites.ReadWrite.All. The hub does NOT ask for it up front — it stays
+// read-only until someone actually votes, then requests the extra scope
+// once (a single consent prompt). If it has not been granted, the card
+// still renders and simply shows the results with a note. See auth.js.
+HUB_CONFIG.polls = {
+  list:      'Polls',
+  votesList: 'Poll Votes',
+};
+
 // ── Team wall (home page) ─────────────────────────────────────
 // The internal comms wall is a Viva Engage community embedded in the
 // hub. Viva Engage is already part of the CheckFire Microsoft 365

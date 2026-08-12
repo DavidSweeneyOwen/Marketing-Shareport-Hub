@@ -18,6 +18,12 @@ const AUTH = { token: null, account: null };
 window.AUTH = AUTH; // const declarations don't attach to window — do it explicitly
 
 const SCOPES = ['User.Read', 'Sites.Read.All', 'Files.Read.All'];
+
+// Write scope — used ONLY when someone votes in a hub poll. Kept out of
+// SCOPES on purpose: the hub signs everyone in read-only, and asks for
+// write access the first time it is actually needed, so a permission
+// prompt never gets in the way of just reading the hub.
+const WRITE_SCOPES = ['User.Read', 'Sites.ReadWrite.All'];
 const LOGIN_HINT_KEY = 'hub_login_hint';
 
 let _msalApp = null;
@@ -130,6 +136,33 @@ async function getAccessToken() {
       console.warn('[Auth] Token acquisition failed:', e.message);
     }
     return null;
+  }
+}
+
+// Token that can WRITE to SharePoint (poll votes). Tries silently
+// first; if consent has never been given, opens one popup. Returns null
+// if the user cancels or the tenant blocks it — callers must cope.
+async function getWriteToken() {
+  if (window.HUB_DEMO_MODE) return null;
+  if (typeof msal === 'undefined') return null;
+
+  const app = getMsal();
+  const account = app.getActiveAccount() || app.getAllAccounts()[0];
+  if (!account) return null;
+
+  try {
+    const result = await app.acquireTokenSilent({ scopes: WRITE_SCOPES, account });
+    return result.accessToken;
+  } catch (_) {
+    // Not consented yet (or expired) — ask once, in a popup so the
+    // page keeps its state instead of doing a full redirect.
+    try {
+      const result = await app.acquireTokenPopup({ scopes: WRITE_SCOPES, account });
+      return result.accessToken;
+    } catch (e) {
+      console.info('[Auth] Write access not granted:', e.message);
+      return null;
+    }
   }
 }
 

@@ -212,6 +212,44 @@
     .ev-card.past .ev-year{color:#9A9A9A}
     .ev-name{font-family:'Fraunces',serif;font-size:19px;font-weight:600;line-height:1.2;color:#0A0A0A}
     .ev-meta{font-size:12px;color:#8A8A8A;margin-top:auto}
+
+    /* ── Home right column: Quick Links + Poll stacked ────── */
+    .col-stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+    .col-stack > .inh-col-card{margin:0}
+
+    /* ── Poll card (home) ─────────────────────────────────── */
+    .poll-body{padding:14px 16px 16px}
+    .poll-q{font-size:13.5px;font-weight:700;line-height:1.4;color:#0A0A0A;margin-bottom:12px}
+    .poll-opts{display:flex;flex-direction:column;gap:8px}
+    .poll-opt{width:100%;text-align:left;font:inherit;font-size:13px;font-weight:600;color:#1A1A1A;background:#fff;border:1px solid #E0E0E0;border-radius:10px;padding:10px 12px;cursor:pointer;transition:border-color .12s,background .12s,box-shadow .12s}
+    .poll-opt:hover{border-color:#D1242B;background:#FEF6F6;box-shadow:0 2px 10px rgba(209,36,43,.08)}
+    .poll-res{display:flex;flex-direction:column;gap:5px}
+    .poll-res-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+    .poll-res-lbl{font-size:12.5px;font-weight:600;color:#1A1A1A}
+    .poll-res-pct{font-size:12px;font-weight:800;color:#6A6A6A;flex:0 0 auto}
+    .poll-res.mine .poll-res-lbl{color:#D1242B}
+    .poll-tick{font-weight:800}
+    .poll-bar{height:7px;border-radius:20px;background:#F0F0F0;overflow:hidden}
+    .poll-bar > span{display:block;height:100%;border-radius:20px;background:#C9C9C9;transition:width .35s ease}
+    .poll-res.mine .poll-bar > span{background:#D1242B}
+    .poll-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;font-size:11px;color:#9A9A9A}
+    .poll-note{color:#D1242B;text-align:right}
+    .poll-empty{font-size:12.5px;color:#8A8A8A;line-height:1.5;margin:0}
+    .poll-hint{font-size:11.5px;color:#AAA}
+
+    /* ── Visits & training box: colour matches the calendar ── */
+    .sd-date.train{background:#E8F4EC;border-color:#CBE6D4}
+    .sd-date.train .sd-day{color:#1f7a34}
+    .sd-date.train .sd-mon{color:#3f8d51}
+    .sd-kind{display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:20px;vertical-align:middle}
+    .sd-kind.train{background:#E8F4EC;color:#1f7a34}
+    .avatar.bg-green{background:#1f7a34;color:#fff}
+
+    /* ── Showroom bookings card back on Trade & Events ────── */
+    .trade-showroom-wrap{max-width:340px}
+
+    /* ── Resources: tools strip (was the "Useful links" tab) ─ */
+    .tools-strip{margin-top:34px;padding-top:26px;border-top:1px solid #ECECEC}
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -355,11 +393,11 @@
   <!-- ══ THREE EQUAL BOXES: Visits · Calendar · Quick Links ══ -->
   <section class="inh-content-row three-equal">
 
-    <!-- Box 1: Upcoming Showroom Visits -->
+    <!-- Box 1: Upcoming visits + training days -->
     <div class="inh-col-card" id="sd-visits-container">
       <div class="inh-col-head red">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Upcoming Showroom Visits
+        Visits &amp; Training
       </div>
       <p class="sd-empty">Fetching bookings…</p>
     </div>
@@ -385,7 +423,9 @@
       </div>
     </div>
 
-    <!-- Box 3: Quick Links -->
+    <!-- Box 3: Quick Links + the team poll, stacked -->
+    <div class="col-stack">
+
     <div class="inh-col-card">
       <div class="inh-col-head dark">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -405,6 +445,21 @@
           <span class="inh-ql-icon" style="background:#0A66C2">in</span>CF LinkedIn
         </a>
       </div>
+    </div>
+
+    <!-- Poll — question comes from the SharePoint "Polls" list and the
+         answer is clicked right here; votes go back to SharePoint. -->
+    <div class="inh-col-card" id="home-poll">
+      <div class="inh-col-head red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Team Poll
+      </div>
+      <div class="poll-body" id="home-poll-body">
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line short"></div>
+      </div>
+    </div>
+
     </div>
 
   </section>
@@ -593,6 +648,37 @@
     <div class="ev-grid" id="ev-past-grid"></div>
   </section>
 
+  <!-- Showroom bookings — marketing asked for this to stay on the Trade
+       & Events page. Same data as the home calendar; renderMiniShowroom
+       Calendar() in jotform.js fills it. -->
+  <section class="container py-lg" id="trade-showroom-section">
+    <div class="section-head tight" style="margin-bottom:12px">
+      <h2 class="section-title small">Showroom bookings</h2>
+    </div>
+    <div class="trade-showroom-wrap">
+      <div class="card showroom" id="trade-showroom-card">
+        <div id="trade-showroom-content">
+          <div class="showroom-head">
+            <div>
+              <div class="eyebrow">CheckFire showroom</div>
+              <div class="card-title small" id="trade-showroom-title">Bookings &middot; Loading&hellip;</div>
+            </div>
+            <span class="badge green" id="trade-showroom-badge"><span class="status-dot green"></span>&ndash;</span>
+          </div>
+          <div class="showroom-week" id="trade-showroom-week">
+            <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div><div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
+          </div>
+          <div class="legend">
+            <span><span class="sw red"></span>Booked</span>
+            <span><span class="sw light"></span>Available</span>
+            <span><span class="sw today-sw"></span>Today</span>
+          </div>
+        </div>
+        <button class="btn primary block" onclick="openBookingModal()">Book the showroom</button>
+      </div>
+    </div>
+  </section>
+
   <!-- Event folder browser — opens in-hub when an event is clicked -->
   <section class="container py-lg" id="events-browser" style="display:none">
     <div class="cd-back" role="button" tabindex="0" onclick="closeEventFolder()" onkeydown="if(event.key==='Enter')closeEventFolder()">
@@ -624,13 +710,7 @@
   </section>
 
   <section class="container py-lg">
-    <nav class="ltabs">
-      <button class="ltab training-tab active" onclick="switchTrainingTab(this,'documents');loadResourcesData()">Marketing Library</button>
-      <button class="ltab training-tab" onclick="switchTrainingTab(this,'product');loadProductPortal()">Product Portal</button>
-      <button class="ltab training-tab" onclick="switchTrainingTab(this,'links')">Useful links</button>
-    </nav>
-
-    <!-- Marketing Library (live, browsable in-hub) -->
+    <!-- Marketing Library — the whole page now, no tabs. -->
     <div id="ttab-documents" class="ltab-pane active">
       <p class="prose dim mb">Documents and files from the SharePoint marketing library — browsed and previewed right here in the hub. Anything uploaded to SharePoint appears here automatically.</p>
       <nav class="fb-crumbs" id="docs-crumbs" aria-label="Folder path"></nav>
@@ -641,20 +721,11 @@
       </div>
     </div>
 
-    <!-- Product Portal (second SharePoint site, browsable in-hub) -->
-    <div id="ttab-product" class="ltab-pane">
-      <p class="prose dim mb">Files from the CheckFire Product Portal — browsed and previewed right here in the hub, so you never have to leave to open a document.</p>
-      <nav class="fb-crumbs" id="pp-crumbs" aria-label="Folder path"></nav>
-      <div id="pp-documents-grid">
-        <div class="skeleton sk-line med"></div>
-        <div class="skeleton sk-line"></div>
-        <div class="skeleton sk-line short"></div>
-      </div>
-    </div>
-
-    <!-- Useful links (real destinations only) -->
-    <div id="ttab-links" class="ltab-pane">
-      <p class="prose dim mb">Quick access to the systems and tools the marketing team uses every day.</p>
+    <!-- Tools & systems — was a tab, now just sits under the library so
+         the page is one simple list of documents plus the links. -->
+    <div class="tools-strip">
+      <h2 class="section-title small" style="margin:0 0 6px">Tools &amp; systems</h2>
+      <p class="prose dim mb">Quick access to the systems the marketing team uses every day.</p>
       <div class="links-grid">
         <a class="link-card" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">
           <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
@@ -708,6 +779,39 @@
 </main>
 
 
+
+<!-- ─── PRODUCT PORTAL ───────────────────────────────────────── -->
+<main id="page-portal" class="page" data-screen-label="06 Product Portal">
+  <section class="ph">
+    <div class="container">
+      <div class="ph-head">
+        <div>
+          <div class="eyebrow">CheckFire &middot; Product Portal</div>
+          <h1 class="ph-title">Product portal</h1>
+          <p class="ph-sub">Datasheets, specifications and product documents &mdash; browsed and previewed right here in the hub.</p>
+        </div>
+        <div class="ph-actions">
+          <a class="btn primary" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">Open in SharePoint</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container py-lg">
+    <div id="ttab-product">
+      <p class="prose dim mb">Files from the CheckFire Product Portal — browsed and previewed right here in the hub, so you never have to leave to open a document.</p>
+      <nav class="fb-crumbs" id="pp-crumbs" aria-label="Folder path"></nav>
+      <div id="pp-documents-grid">
+        <div class="skeleton sk-line med"></div>
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line short"></div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+
 <!-- ── App init ── -->
 <script>
   // Boot the hub once the DOM is ready. By the time DOMContentLoaded
@@ -720,14 +824,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=7"></script>
+<script src="config.js?v=8"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
-<script src="auth.js"></script>
-<script src="graph.js?v=6"></script>
-<script src="app.js?v=11"></script>
-<script src="jotform.js?v=10"></script>
+<script src="auth.js?v=2"></script>
+<script src="graph.js?v=7"></script>
+<script src="app.js?v=12"></script>
+<script src="jotform.js?v=11"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->

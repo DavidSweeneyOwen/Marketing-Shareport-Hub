@@ -1467,3 +1467,203 @@ function closeEventFolder() {
 
 let _lastAssetFiles = [];
 
+// ═══ Polls ═══════════════════════════════════════════════════
+// A live poll card on the home page. Marketing writes the question in
+// the SharePoint "Polls" list; everyone answers with one click IN THE
+// HUB, and the click writes a row to "Poll Votes". One vote per person
+// per poll. See the HUB_CONFIG.polls comment block in config.js for the
+// two lists and their columns.
+//
+// Reading uses the hub's normal read-only token. Writing (i.e. voting)
+// asks for Sites.ReadWrite.All the first time — see getWriteToken() in
+// auth.js. If that is refused the card degrades to a read-only result.
+
+const POLL = { poll: null, votes: [], busy: false };
+
+// Like fetchListItems() but keeps the SharePoint item id, which the
+// poll needs in order to tie votes to a question. Deliberately uncached
+// so a vote shows up straight away.
+async function _fetchListRows(listName, top) {
+  const siteId = await getSiteId();
+  const data = await graphFetch(
+    `/sites/${siteId}/lists/${encodeURIComponent(listName)}/items?expand=fields&$top=${top || 100}`
+  );
+  return (data.value || []).map(i => ({ id: i.id, fields: i.fields || {} }));
+}
+
+// "Options" is a multi-line column — one option per line. If the column
+// was created as rich text it comes back as HTML, so tags become line
+// breaks and the usual entities are decoded.
+function _pollOptions(f) {
+  const raw = String(f.Options || f.options || f.Choices || '');
+  return raw
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li)>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .split(/\r?\n/)
+    .map(x => x.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function _pollIsLive(f) {
+  const a = f.Active;
+  if (a === false || a === 0 || a === 'No' || a === 'false') return false;
+  if (f.EndDate) {
+    const d = new Date(f.EndDate);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (!isNaN(d) && d < today) return false;
+  }
+  return true;
+}
+
+function _pollMyEmail() {
+  return String((window.AUTH && window.AUTH.account && window.AUTH.account.mail) || '').toLowerCase();
+}
+
+function _pollNote(msg) {
+  const el = document.getElementById('poll-note');
+  if (el) el.innerHTML = msg ? escHtml(msg) : '';
+}
+
+async function loadPolls() {
+  const card = document.getElementById('home-poll');
+  const body = document.getElementById('home-poll-body');
+  if (!card || !body) return;
+
+  const cfg = HUB_CONFIG.polls || {};
+  const signedIn = window.AUTH && window.AUTH.account;
+  if (window.HUB_DEMO_MODE || !signedIn) {
+    body.innerHTML = '<p class="poll-empty">Sign in to see the current poll.</p>';
+    return;
+  }
+
+  try {
+    const rows = await _fetchListRows(cfg.list || 'Polls');
+    const live = rows.filter(r => _pollIsLive(r.fields) && _pollOptions(r.fields).length >= 2);
+    // Newest first — SharePoint item ids increase.
+    const poll = live.sort((a, b) => Number(b.id) - Number(a.id))[0];
+
+    if (!poll) {
+      POLL.poll = null;
+      body.innerHTML =
+        '<p class="poll-empty">No poll running right now.<br>' +
+        '<span class="poll-hint">Add a question to the <strong>Polls</strong> list to start one.</span></p>';
+      return;
+    }
+
+    POLL.poll = poll;
+    try {
+      const votes = await _fetchListRows(cfg.votesList || 'Poll Votes', 500);
+      POLL.votes = votes.filter(v => String(v.fields.PollId || '') === String(poll.id));
+    } catch (e) {
+      POLL.votes = [];
+      console.info('[Polls] votes list not readable yet:', e.message);
+    }
+    renderPoll();
+  } catch (e) {
+    console.info('[Polls] not loaded:', e.message);
+    body.innerHTML = '<p class="poll-empty">Poll unavailable.<br><span class="poll-hint">Create a <strong>Polls</strong> list on the MarketingHub site.</span></p>';
+  }
+}
+
+function renderPoll() {
+  const body = document.getElementById('home-poll-body');
+  if (!body || !POLL.poll) return;
+
+  const f    = POLL.poll.fields;
+  const opts = _pollOptions(f);
+  const me   = _pollMyEmail();
+
+  const mine  = POLL.votes.find(v => String(v.fields.Voter || '').toLowerCase() === me);
+  const total = POLL.votes.length;
+
+  const counts = {};
+  opts.forEach(o => { counts[o] = 0; });
+  POLL.votes.forEach(v => {
+    const t = String(v.fields.Title || '');
+    if (counts[t] !== undefined) counts[t]++;
+  });
+
+  const question = escHtml(f.Title || 'Quick poll');
+
+  let inner;
+  if (mine) {
+    const chosen = String(mine.fields.Title || '');
+    inner = opts.map(o => {
+      const n   = counts[o] || 0;
+      const pct = total ? Math.round((n / total) * 100) : 0;
+      return `
+        <div class="poll-res${o === chosen ? ' mine' : ''}">
+          <div class="poll-res-top">
+            <span class="poll-res-lbl">${escHtml(o)}${o === chosen ? ' <span class="poll-tick">✓</span>' : ''}</span>
+            <span class="poll-res-pct">${pct}%</span>
+          </div>
+          <div class="poll-bar"><span style="width:${pct}%"></span></div>
+        </div>`;
+    }).join('');
+  } else {
+    inner = opts.map((o, i) => `
+      <button type="button" class="poll-opt" onclick="votePoll(${i})">${escHtml(o)}</button>
+    `).join('');
+  }
+
+  body.innerHTML = `
+    <div class="poll-q">${question}</div>
+    <div class="poll-opts">${inner}</div>
+    <div class="poll-foot">
+      <span>${total} vote${total === 1 ? '' : 's'}${mine ? ' · thanks for voting' : ''}</span>
+      <span id="poll-note" class="poll-note"></span>
+    </div>`;
+}
+
+async function votePoll(i) {
+  if (POLL.busy || !POLL.poll) return;
+  const opts   = _pollOptions(POLL.poll.fields);
+  const choice = opts[i];
+  if (!choice) return;
+
+  POLL.busy = true;
+  _pollNote('Saving…');
+
+  try {
+    const token = (typeof getWriteToken === 'function') ? await getWriteToken() : null;
+    if (!token) {
+      _pollNote('Needs permission to save — ask IT to approve hub write access.');
+      POLL.busy = false;
+      return;
+    }
+
+    const siteId   = await getSiteId();
+    const listName = (HUB_CONFIG.polls && HUB_CONFIG.polls.votesList) || 'Poll Votes';
+    const res = await fetch(
+      `${GRAPH_BASE}/sites/${siteId}/lists/${encodeURIComponent(listName)}/items`,
+      {
+        method:  'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            Title:  choice,
+            PollId: String(POLL.poll.id),
+            Voter:  _pollMyEmail(),
+          },
+        }),
+      }
+    );
+    if (!res.ok) throw new Error('SharePoint returned ' + res.status);
+
+    const created = await res.json();
+    POLL.votes.push({
+      id: created.id,
+      fields: created.fields || { Title: choice, PollId: String(POLL.poll.id), Voter: _pollMyEmail() },
+    });
+    renderPoll();
+  } catch (e) {
+    _pollNote('Not saved — ' + e.message);
+  }
+  POLL.busy = false;
+}

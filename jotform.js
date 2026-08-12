@@ -22,7 +22,7 @@
 (function () {
   const vc = document.getElementById('sd-visits-container');
   if (vc) {
-    vc.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">Loading showroom…</p>';
+    vc.innerHTML = '<div class="sd-eyebrow">Next up</div><p class="sd-empty">Loading visits &amp; training…</p>';
   }
 })();
 
@@ -31,7 +31,8 @@
 const JF = {
   bookedDates:  new Set(),   // "YYYY-MM-DD" showroom-booked days (mini calendar)
   marks:        new Map(),   // "YYYY-MM-DD" → { types:Set, labels:[] } (main calendar)
-  visits:       [],          // parsed upcoming visits
+  visits:       [],          // parsed upcoming showroom visits
+  training:     [],          // upcoming training days (same box, green)
   calendarYear: new Date().getFullYear(),
   calendarMonth: new Date().getMonth(), // 0-indexed
   loaded: false,
@@ -202,7 +203,7 @@ function renderUpcomingVisits(containerId, visits) {
     .slice(0, 5);
 
   if (!upcoming.length) {
-    container.innerHTML = '<div class="sd-eyebrow">Upcoming visits</div><p class="sd-empty">No upcoming visits — calendar is clear.</p>';
+    container.innerHTML = '<div class="sd-eyebrow">Next up</div><p class="sd-empty">Nothing booked in — calendar is clear.</p>';
     return;
   }
 
@@ -211,27 +212,32 @@ function renderUpcomingVisits(containerId, visits) {
     const d    = new Date(b.bookingDate + 'T00:00:00');
     const day  = d.getDate();
     const mon  = MONTH_NAMES[d.getMonth()].slice(0, 3);
-    const name = b.companyName || 'Showroom visit';
+    const isTraining = b.kind === 'training';
+    const name = b.companyName || (isTraining ? 'Training session' : 'Showroom visit');
     const amName = personName(b.accountMgr);
     const n = parseInt(b.numVisitors, 10);
     const visitors = n > 0 ? `${n} visitor${n > 1 ? 's' : ''}` : '';
     const time = b.arrivalTime || '';
+    // Colour matches the calendar legend directly below: showroom red,
+    // training green — so a green row here is a green day on the calendar.
+    const kindCls = isTraining ? ' train' : '';
+    const tag = isTraining ? '<span class="sd-kind train">Training</span>' : '';
 
     return `
       <li class="sd-visit">
-        <div class="sd-date"><span class="sd-day">${day}</span><span class="sd-mon">${escHtml(mon)}</span></div>
+        <div class="sd-date${kindCls}"><span class="sd-day">${day}</span><span class="sd-mon">${escHtml(mon)}</span></div>
         <div class="sd-info">
-          <div class="sd-name">${escHtml(name)}</div>
+          <div class="sd-name">${escHtml(name)} ${tag}</div>
           <div class="sd-meta">${[time, amName, visitors].filter(Boolean).map(escHtml).join(' · ')}</div>
         </div>
         <div class="sd-avatars">
-          ${amName ? `<span class="avatar small bg-red">${escHtml(personInitials(b.accountMgr))}</span>` : ''}
+          ${amName ? `<span class="avatar small ${isTraining ? 'bg-green' : 'bg-red'}">${escHtml(personInitials(b.accountMgr))}</span>` : ''}
         </div>
       </li>`;
   }).join('');
 
   container.innerHTML = `
-    <div class="sd-eyebrow">Upcoming visits</div>
+    <div class="sd-eyebrow">Next up</div>
     <ul class="sd-list">${html}</ul>
   `;
 }
@@ -420,13 +426,26 @@ async function loadShowroomData() {
       if (e && e !== s) addMark(e, 'campaign', 'Campaign ends: ' + (f.Title || 'Untitled'));
     });
   } catch (e) { console.info('[Calendar] campaigns not marked:', e.message); }
+  // Training days — marked green on the calendar AND listed in the box
+  // above it alongside showroom visits, so "what's coming in" is one
+  // list rather than two. Marketing asked for both in the same place.
+  JF.training = [];
   try {
     const listName = (HUB_CONFIG.training && HUB_CONFIG.training.list) || 'Training Events';
     const training = await fetchListItems(listName);
     training.forEach(f => {
       const raw = f.TrainingDate || f.Date || f.StartDate || f.EventDate;
       const ds = _toIsoDate(raw);
-      if (ds) addMark(ds, 'training', 'Training: ' + (f.Title || 'Session'));
+      if (!ds) return;
+      addMark(ds, 'training', 'Training: ' + (f.Title || 'Session'));
+      JF.training.push({
+        kind:        'training',
+        bookingDate: ds,
+        companyName: f.Title || 'Training session',
+        accountMgr:  f.Trainer || '',
+        arrivalTime: f.Location || '',
+        numVisitors: '',
+      });
     });
   } catch (e) { console.info('[Calendar] training not marked:', e.message); }
   JF.marks = marks;
@@ -437,12 +456,12 @@ async function loadShowroomData() {
 
   const vc = document.getElementById('sd-visits-container');
   if (vc) {
-    if (JF.loaded) {
-      renderUpcomingVisits('sd-visits-container', JF.visits);
+    if (JF.loaded || JF.training.length) {
+      renderUpcomingVisits('sd-visits-container', JF.visits.concat(JF.training));
     } else {
       vc.innerHTML =
-        '<div class="sd-eyebrow">Upcoming visits</div>' +
-        '<p class="sd-empty">Sign in to see upcoming showroom visits.<br>' +
+        '<div class="sd-eyebrow">Next up</div>' +
+        '<p class="sd-empty">Sign in to see upcoming showroom visits and training days.<br>' +
         '<span style="font-size:11px;color:#AAA">Use “Book a slot” to request a date.</span></p>';
     }
   }
