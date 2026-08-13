@@ -234,6 +234,15 @@
     .poll-res.mine .poll-bar > span{background:#D1242B}
     .poll-foot{display:flex;justify-content:space-between;gap:10px;margin-top:12px;font-size:11px;color:#9A9A9A}
     .poll-note{color:#D1242B;text-align:right}
+    .poll-text{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.45;color:#1A1A1A;background:#fff;border:1px solid #E0E0E0;border-radius:10px;padding:9px 11px;resize:vertical;min-height:64px}
+    .poll-text:focus{outline:none;border-color:#D1242B;box-shadow:0 0 0 3px rgba(209,36,43,.08)}
+    .poll-send{align-self:flex-start;font:inherit;font-size:12.5px;font-weight:700;color:#fff;background:#D1242B;border:none;border-radius:9px;padding:8px 14px;cursor:pointer;transition:background .12s}
+    .poll-send:hover{background:#A81A20}
+    .poll-answered{background:#FAFAFA;border:1px solid #ECECEC;border-radius:10px;padding:10px 12px}
+    .poll-answered-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9A9A9A;margin-bottom:4px}
+    .poll-answered-text{font-size:13px;line-height:1.45;color:#1A1A1A;white-space:pre-wrap}
+    .poll-link{display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:#D1242B;text-decoration:none}
+    .poll-link:hover{text-decoration:underline}
     .poll-empty{font-size:12.5px;color:#8A8A8A;line-height:1.5;margin:0}
     .poll-hint{font-size:11.5px;color:#AAA}
 
@@ -829,7 +838,7 @@
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=7"></script>
+<script src="graph.js?v=8"></script>
 <script src="app.js?v=12"></script>
 <script src="jotform.js?v=11"></script>
 

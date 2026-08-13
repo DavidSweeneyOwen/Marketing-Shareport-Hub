@@ -188,27 +188,36 @@ HUB_CONFIG.jotform = {
 
 // ── Polls (home page) ─────────────────────────────────────────
 // A one-question poll card sits under Quick Links on the home page.
-// Staff answer it IN THE HUB — the click writes a row to SharePoint,
-// so results are live and nobody has to leave for a survey tool.
+// Staff answer it IN THE HUB — the answer is written straight to
+// SharePoint, so nobody has to leave for a survey tool.
 //
-// TWO LISTS on the MarketingHub site:
+// LIST "Polls" on MarketingHub — the columns marketing built:
+//   Title       short code, e.g. "NPD" / "CO2"
+//   Question    the question people actually answer
+//   Status      choice — only "Open" shows. Draft/Closed stay hidden
+//   OpensDate   optional — the card stays hidden until this day
+//   ClosesDate  optional — the card hides itself after this day
+//   PollURL     optional — adds an "Open the full form →" button
+//   Options     OPTIONAL, multi-line, ONE CHOICE PER LINE
 //
-//   "Polls" — one item per question
-//     Title    (single line)  — the question, e.g. "Which campaign next?"
-//     Options  (multi-line, plain text) — ONE OPTION PER LINE
-//     Active   (Yes/No)       — only Active polls are shown
-//     EndDate  (date, optional) — auto-hides after this date
+// The card picks its mode from Options:
+//   * Options filled in (2+ lines) → tap-to-vote, results as % bars
+//   * Options empty                → free-text answer box
+// If more than one poll is Open, the newest one shows.
 //
-//   "Poll Votes" — one item per person per poll (written by the hub)
-//     Title    (single line)  — the option the person picked
-//     PollId   (single line)  — the Polls item id
-//     Voter    (single line)  — the voter's email
+// LIST "Poll Votes" — written by the hub, one row per person per poll:
+//   Title    the answer (trimmed to 255 characters)
+//   PollId   the Polls item id
+//   Voter    the answerer's email
+//   Answer   optional multi-line — the full untruncated text. The hub
+//            includes it if the column exists and silently drops it if
+//            it doesn't, so the list works either way.
 //
-// WRITE PERMISSION: voting needs the delegated Microsoft Graph scope
+// WRITE PERMISSION: answering needs the delegated Microsoft Graph scope
 // Sites.ReadWrite.All. The hub does NOT ask for it up front — it stays
-// read-only until someone actually votes, then requests the extra scope
-// once (a single consent prompt). If it has not been granted, the card
-// still renders and simply shows the results with a note. See auth.js.
+// read-only until someone actually answers, then requests the extra
+// scope once. Without it the card still shows the question and simply
+// cannot save. See auth.js and POLLS-SETUP.md.
 HUB_CONFIG.polls = {
   list:      'Polls',
   votesList: 'Poll Votes',
