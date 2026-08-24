@@ -282,20 +282,28 @@
     .rag-col-empty{font-size:12.5px;color:#9A9A9A;padding:6px 0}
     @media (max-width:900px){ .rag-cols{grid-template-columns:1fr} }
 
-    /* ── Latest updates band (foot of the home page) ───────── */
+    /* ── Latest updates band ────────────────────────────────
+       Pinned to the bottom of the window like a news ticker, so you
+       don't have to scroll the whole page to find it. It lives inside
+       #page-home, and .page is display:none when another page is open,
+       so it only ever shows on the home page. #page-home gets bottom
+       padding to match, or the band would sit over the last section. */
     .news-band{
-      display:flex;align-items:stretch;gap:0;margin:26px 0 0;
-      background:#141414;border-radius:14px;overflow:hidden;
+      display:flex;align-items:stretch;gap:0;
+      position:fixed;left:0;right:0;bottom:0;z-index:90;
+      background:#141414;overflow:hidden;
+      box-shadow:0 -6px 22px rgba(0,0,0,0.22);
     }
+    #page-home.active{padding-bottom:58px}
     .news-label{
-      flex:0 0 auto;display:flex;align-items:center;padding:14px 18px;
+      flex:0 0 auto;display:flex;align-items:center;padding:13px 18px;
       background:#D1242B;color:#fff;font-size:11px;font-weight:800;
       text-transform:uppercase;letter-spacing:.09em;white-space:nowrap;
     }
     .news-viewport{flex:1 1 auto;overflow:hidden;position:relative}
     .news-track{
       display:flex;align-items:center;gap:38px;white-space:nowrap;
-      padding:14px 20px;will-change:transform;
+      padding:13px 20px;will-change:transform;
       animation:news-scroll 46s linear infinite;
     }
     .news-band:hover .news-track{animation-play-state:paused}
@@ -309,7 +317,12 @@
     .news-when{color:#9A9A9A;font-size:12px}
     @keyframes news-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
     @media (prefers-reduced-motion:reduce){
-      .news-track{animation:none;overflow-x:auto;white-space:normal;flex-wrap:wrap}
+      .news-track{animation:none;overflow-x:auto;white-space:nowrap}
+    }
+    @media (max-width:640px){
+      .news-label{padding:11px 12px;font-size:10px}
+      .news-item{font-size:12px}
+      #page-home.active{padding-bottom:52px}
     }
   </style>
 
@@ -823,7 +836,7 @@
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=9"></script>
+<script src="graph.js?v=10"></script>
 <script src="app.js?v=12"></script>
 <script src="jotform.js?v=12"></script>
 

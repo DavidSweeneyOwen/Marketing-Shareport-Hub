@@ -330,6 +330,13 @@ function productCodes(f) {
 // they just get grouped. Anything whose status doesn't match one of the
 // named columns lands in a trailing "Other" column rather than vanishing.
 function renderRagColumns(el, items, columns, cardFn) {
+  // The campaigns container carries .camp-grid from the old flat layout —
+  // itself a three-column grid. Left on, our column grid becomes a single
+  // cell inside it and every card is squeezed to a ninth of the page.
+  // Stripped here rather than in the HTML so the loading skeleton still
+  // lays out correctly before this runs.
+  el.classList.remove('camp-grid');
+
   const named = new Set(columns.map(c => c.tone));
   const other = items.filter(f => !named.has(ragOf(f.Status)));
 
