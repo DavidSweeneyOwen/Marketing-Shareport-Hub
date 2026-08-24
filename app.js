@@ -102,10 +102,12 @@ async function openProductPortal() {
 function _caraCard(item) {
   const link  = safeUrl(item.link);
   const image = safeCssUrl(item.image);
+  // No featured image (most WordPress *pages* have none) — drop the image
+  // area entirely rather than leaving an empty grey box, and let the CSS
+  // give the card a red rule instead.
   return `
-    <a class="cara-card" href="${escAttr(link)}" target="_blank" rel="noopener">
-      ${image ? `<div class="cara-img" style="background-image:url('${image}')"></div>`
-              : `<div class="cara-img"></div>`}
+    <a class="cara-card${image ? '' : ' no-img'}" href="${escAttr(link)}" target="_blank" rel="noopener">
+      ${image ? `<div class="cara-img" style="background-image:url('${image}')"></div>` : ''}
       <div class="cara-body">
         <div class="cara-date">${escHtml(item.date)}</div>
         <div class="cara-title">${escHtml(item.title)}</div>

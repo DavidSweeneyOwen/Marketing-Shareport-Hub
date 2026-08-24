@@ -284,17 +284,22 @@
 
     /* ── Latest updates band ────────────────────────────────
        Pinned to the bottom of the window like a news ticker, so you
-       don't have to scroll the whole page to find it. It lives inside
-       #page-home, and .page is display:none when another page is open,
-       so it only ever shows on the home page. #page-home gets bottom
-       padding to match, or the band would sit over the last section. */
+       don't have to scroll the page to find it. The element itself sits
+       outside every page element (see the markup note further down) and is
+       scoped back to the home page by the sibling rule below. The home
+       page carries matching bottom padding so the band never covers its
+       last section. */
     .news-band{
       display:flex;align-items:stretch;gap:0;
       position:fixed;left:0;right:0;bottom:0;z-index:90;
       background:#141414;overflow:hidden;
       box-shadow:0 -6px 22px rgba(0,0,0,0.22);
     }
-    #page-home.active{padding-bottom:58px}
+    /* Home only. The band is a later sibling of every page, so this hides
+       it whenever the home page is not the active one. !important because
+       renderNewsTicker sets display inline when it has something to show. */
+    #page-home:not(.active) ~ .news-band{display:none !important}
+    #page-home.active{padding-bottom:64px}
     .news-label{
       flex:0 0 auto;display:flex;align-items:center;padding:13px 18px;
       background:#D1242B;color:#fff;font-size:11px;font-weight:800;
@@ -322,8 +327,16 @@
     @media (max-width:640px){
       .news-label{padding:11px 12px;font-size:10px}
       .news-item{font-size:12px}
-      #page-home.active{padding-bottom:52px}
+      #page-home.active{padding-bottom:58px}
     }
+
+    /* ── Carousel cards with no featured image ──────────────
+       WordPress pages rarely have one, so "Updated landing pages" was a
+       row of empty grey boxes. Those cards now drop the image area and
+       carry a red rule instead, which reads as deliberate. */
+    .cara-card.no-img{flex:0 0 232px;max-width:232px;border-top:3px solid #D1242B}
+    .cara-card.no-img .cara-body{padding:16px 16px 18px;gap:8px;justify-content:center;min-height:96px}
+    .cara-card.no-img .cara-title{font-size:15px}
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -580,14 +593,6 @@
     <div class="carousel-track" id="home-pages-track"></div>
   </section>
 
-  <!-- ══ LATEST UPDATES — breaking-news band at the foot of the page.
-       Filled by renderNewsTicker() in graph.js from the Product Launches
-       and Campaigns lists. Stays hidden when there is nothing to say. ══ -->
-  <section class="news-band" id="home-news" style="display:none">
-    <span class="news-label">Latest updates</span>
-    <div class="news-viewport"><div class="news-track" id="home-news-track"></div></div>
-  </section>
-
 
 </main>
 
@@ -819,6 +824,20 @@
 </main>
 
 
+<!-- ══ LATEST UPDATES — the breaking-news band.
+     It deliberately sits OUTSIDE every <main>. .page.active carries a
+     fadeIn animation whose keyframes touch `transform`, and an element
+     with a filled transform animation becomes the containing block for
+     its fixed-position children — so while this lived inside #page-home
+     it pinned to the bottom of that element instead of the window, which
+     is exactly the "still right at the bottom" problem. Out here it pins
+     to the viewport, and the sibling rule in the CSS keeps it to the
+     home page only. Filled by renderNewsTicker() in graph.js. ══ -->
+<section class="news-band" id="home-news" style="display:none">
+  <span class="news-label">Latest updates</span>
+  <div class="news-viewport"><div class="news-track" id="home-news-track"></div></div>
+</section>
+
 <!-- ── App init ── -->
 <script>
   // Boot the hub once the DOM is ready. By the time DOMContentLoaded
@@ -837,7 +856,7 @@
 <script src="ui.js?v=2"></script>
 <script src="auth.js?v=2"></script>
 <script src="graph.js?v=10"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 <script src="jotform.js?v=12"></script>
 
 
