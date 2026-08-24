@@ -173,7 +173,7 @@ function renderShowroomCalendar(containerId, year, month, marks) {
       ${cells}
     </div>
     <div class="sd-legend">
-      <span><span class="sw red"></span>Showroom</span>
+      <span><span class="sw red"></span>Visit</span>
       <span><span class="sw blue"></span>Launch</span>
       <span><span class="sw amber"></span>Campaign</span>
       <span><span class="sw green"></span>Training</span>
@@ -221,7 +221,9 @@ function renderUpcomingVisits(containerId, visits) {
     // Colour matches the calendar legend directly below: showroom red,
     // training green — so a green row here is a green day on the calendar.
     const kindCls = isTraining ? ' train' : '';
-    const tag = isTraining ? '<span class="sd-kind train">Training</span>' : '';
+    const tag = isTraining
+      ? '<span class="sd-kind train">Training</span>'
+      : '<span class="sd-kind visit">Visit</span>';
 
     return `
       <li class="sd-visit">

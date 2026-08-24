@@ -325,6 +325,37 @@ function productCodes(f) {
 
 // ═══ Renderers ═══════════════════════════════════════════════
 
+// Marketing asked (deck, 24 Aug) for Launches and Campaigns to read as
+// three status columns rather than one flat grid. Cards are unchanged —
+// they just get grouped. Anything whose status doesn't match one of the
+// named columns lands in a trailing "Other" column rather than vanishing.
+function renderRagColumns(el, items, columns, cardFn) {
+  const named = new Set(columns.map(c => c.tone));
+  const other = items.filter(f => !named.has(ragOf(f.Status)));
+
+  const col = (label, rows) => `
+    <div class="rag-col">
+      <h2 class="rag-col-head">${escHtml(label)}</h2>
+      <div class="rag-col-cards">
+        ${rows.length ? rows.map(r => cardFn(r.item, r.index)).join('')
+                      : '<p class="rag-col-empty">Nothing here yet.</p>'}
+      </div>
+    </div>`;
+
+  // index is the position in the ORIGINAL array so the existing
+  // openLaunchDetail(i) / openCampaignDetail(i) handlers still resolve.
+  const rowsFor = tone => items
+    .map((item, index) => ({ item, index }))
+    .filter(r => ragOf(r.item.Status) === tone);
+
+  el.innerHTML = `<div class="rag-cols">
+    ${columns.map(c => col(c.label, rowsFor(c.tone))).join('')}
+  </div>` + (other.length ? `<div class="rag-cols" style="margin-top:22px">${
+      col('Other', items.map((item, index) => ({ item, index }))
+                        .filter(r => !named.has(ragOf(r.item.Status))))
+    }</div>` : '');
+}
+
 let _launchItems = [];
 
 // Product Launches page. Follows the same card layout as Campaigns
@@ -353,9 +384,14 @@ function renderLaunches(items) {
   const sorted = [...items].sort((a, b) => String(b.LaunchDate || '').localeCompare(String(a.LaunchDate || '')));
   _launchItems = sorted;
 
-  el.innerHTML = `<div class="camp-grid">${sorted.map((f, i) => {
-    const codes = productCodes(f);
-    return `
+  renderRagColumns(
+    el, sorted,
+    [{ tone: 'red', label: 'Planning' },
+     { tone: 'amber', label: 'Confirmed' },
+     { tone: 'green', label: 'Launched' }],
+    (f, i) => {
+      const codes = productCodes(f);
+      return `
     <article class="camp-card" role="button" tabindex="0" onclick="openLaunchDetail(${i})" onkeydown="if(event.key==='Enter')openLaunchDetail(${i})">
       <div class="camp-thumb rag-${ragOf(f.Status)}">${ragPill(f.Status)}</div>
       <div class="camp-body">
@@ -365,7 +401,8 @@ function renderLaunches(items) {
         ${codes.length ? `<div class="camp-codes">${escHtml(codes.join(' · '))}</div>` : ''}
       </div>
     </article>`;
-  }).join('')}</div>`;
+    }
+  );
 }
 
 let _campaignItems = [];
@@ -390,7 +427,15 @@ function renderCampaigns(items) {
     return;
   }
 
-  grid.innerHTML = items.map((f, i) => {
+  // Same three-column shape as Product Launches (deck, 24 Aug). The
+  // column names stay Campaigns' own — the deck asked for the layout to
+  // match, not the statuses, and these are what the SharePoint list uses.
+  renderRagColumns(
+    grid, items,
+    [{ tone: 'red', label: 'Planning' },
+     { tone: 'green', label: 'Live' },
+     { tone: 'grey', label: 'Completed' }],
+    (f, i) => {
     // Same RAG colour code as Product Launches, so a red card means
     // "still planning" on either page.
     const channels = Array.isArray(f.Channels) ? f.Channels.join(' · ') : (f.Channels || '');
@@ -408,7 +453,8 @@ function renderCampaigns(items) {
         </div>
       </div>
     </article>`;
-  }).join('');
+    }
+  );
 
 }
 
@@ -616,9 +662,10 @@ async function fetchYouTubeVideos() {
 }
 
 async function loadHomeVideos() {
+  // The full video grid was removed from the home page (deck, 24 Aug);
+  // the compact hero box stays, so neither element is required here.
   const section = document.getElementById('home-videos');
   const grid = document.getElementById('home-videos-grid');
-  if (!section || !grid) return;
 
   const cfg = HUB_CONFIG.videos || {};
   const [yt, wp, sp] = await Promise.allSettled([
@@ -645,9 +692,10 @@ async function loadHomeVideos() {
   }
   vids = vids.slice(0, (HUB_CONFIG.videos && HUB_CONFIG.videos.max) || 6);
 
-  // Compact hero box: newest 3, links down to the full grid.
+  // Compact hero box: newest 3, each opening the video itself.
   renderHeroVideos(vids);
 
+  if (!section || !grid) return;
   if (!vids.length) { section.style.display = 'none'; return; }
 
   grid.innerHTML = vids.map(v => {
@@ -680,17 +728,22 @@ function renderHeroVideos(vids) {
       (ch ? `<a class="hbox-more" href="${escAttr(ch)}" target="_blank" rel="noopener">CheckFire on YouTube →</a>` : '');
     return;
   }
-  el.innerHTML = vids.slice(0, 3).map(v => `
-    <div class="hbox-vid" role="button" tabindex="0" onclick="scrollToVideos()" onkeydown="if(event.key==='Enter')scrollToVideos()">
+  const channel = safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.youtube && HUB_CONFIG.videos.youtube.channelUrl) || '', '')
+    || safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.mediaPortalSite) || '', '');
+
+  el.innerHTML = vids.slice(0, 3).map(v => {
+    const href = safeUrl(v.href, '');
+    return href
+      ? `<a class="hbox-vid" href="${escAttr(href)}" target="_blank" rel="noopener">
       <span class="hbox-vid-thumb">▶</span>
       <span class="hbox-vid-title">${escHtml(v.title)}</span>
-    </div>`).join('') +
-    '<a class="hbox-more" onclick="scrollToVideos()">See all videos →</a>';
-}
-
-function scrollToVideos() {
-  const s = document.getElementById('home-videos');
-  if (s && s.style.display !== 'none') s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    </a>`
+      : `<div class="hbox-vid">
+      <span class="hbox-vid-thumb">▶</span>
+      <span class="hbox-vid-title">${escHtml(v.title)}</span>
+    </div>`;
+  }).join('') +
+    (channel ? `<a class="hbox-more" href="${escAttr(channel)}" target="_blank" rel="noopener">See all videos →</a>` : '');
 }
 
 // ═══ Team wall ═══════════════════════════════════════════════
@@ -976,8 +1029,66 @@ async function loadSharePointData() {
   if (campaigns.status === 'fulfilled') renderCampaigns(campaigns.value);
   else _renderListError('sp-campaigns-grid', `Couldn't load campaigns: ${campaigns.reason.message}`, true);
 
+  renderNewsTicker(
+    launches.status  === 'fulfilled' ? launches.value  : [],
+    campaigns.status === 'fulfilled' ? campaigns.value : []
+  );
+
   // Trade & Events is driven by the Documents/Events folders, not a list.
   await loadTradeEvents();
+}
+
+// "Latest updates" — the breaking-news band at the foot of the home
+// page. Reads the launches and campaigns already fetched above rather
+// than making another call, so it costs nothing extra. The track is
+// duplicated because the CSS scrolls it by -50%: two identical halves
+// make the loop seamless. Hidden entirely when there is nothing to say.
+function renderNewsTicker(launches, campaigns) {
+  const band  = document.getElementById('home-news');
+  const track = document.getElementById('home-news-track');
+  if (!band || !track) return;
+
+  const items = [];
+
+  (launches || []).forEach(f => {
+    if (!f.Title) return;
+    const when = fmtSpDate(f.LaunchDate);
+    items.push({
+      kind: 'launch',
+      label: 'Launch',
+      text: `${f.Title}${f.Status ? ' — ' + f.Status : ''}`,
+      when: when || 'Date to be confirmed',
+      sort: String(f.LaunchDate || ''),
+    });
+  });
+
+  (campaigns || []).forEach(f => {
+    if (!f.Title) return;
+    const span = [fmtSpDate(f.StartDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ');
+    items.push({
+      kind: 'campaign',
+      label: 'Campaign',
+      text: `${f.Title}${f.Status ? ' — ' + f.Status : ''}`,
+      when: span,
+      sort: String(f.StartDate || ''),
+    });
+  });
+
+  if (!items.length) { band.style.display = 'none'; return; }
+
+  // Newest first, and keep the band short enough to read as it passes.
+  items.sort((a, b) => b.sort.localeCompare(a.sort));
+  const shown = items.slice(0, 8);
+
+  const half = shown.map(n => `
+    <span class="news-item">
+      <span class="news-kind ${n.kind}">${escHtml(n.label)}</span>
+      <span>${escHtml(n.text)}</span>
+      ${n.when ? `<span class="news-when">${escHtml(n.when)}</span>` : ''}
+    </span>`).join('');
+
+  track.innerHTML = half + half;
+  band.style.display = '';
 }
 
 // Resources ▸ Marketing Library — opened via loadResourcesData (ui.js).

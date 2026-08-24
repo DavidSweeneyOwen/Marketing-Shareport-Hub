@@ -141,7 +141,12 @@ HUB_CONFIG.videos = {
     proxyUrl:   'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/videos',
     channelUrl: 'https://www.youtube.com/@CheckFireGroup',
   },
-  includeWordPress:  true,
+  // Marketing asked (deck, 24 Aug) for the stray WordPress mp4 to come
+  // off the home page. Turned off here rather than deleted in code, so
+  // flipping it back is a one-word change. The YouTube feed fills this
+  // box once YOUTUBE_API_KEY is set on the checkfire-jotform Function
+  // app — an API key, never the Google account password.
+  includeWordPress:  false,
   includeSharePoint: true,
   mediaPortalSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
   max: 6,            // how many to show on the home page

@@ -254,11 +254,63 @@
     .sd-kind.train{background:#E8F4EC;color:#1f7a34}
     .avatar.bg-green{background:#1f7a34;color:#fff}
 
-    /* ── Showroom bookings card back on Trade & Events ────── */
-    .trade-showroom-wrap{max-width:340px}
-
     /* ── Resources: tools strip (was the "Useful links" tab) ─ */
     .tools-strip{margin-top:34px;padding-top:26px;border-top:1px solid #ECECEC}
+
+    /* ── Visit tag, red, to match the green Training one ──── */
+    .sd-kind.visit{background:#FDECEC;color:#B3261E}
+
+    /* A free showroom day used to render the same green as a training
+       day, so the legend read as if half the month were training.
+       Free days are now plain; green on this calendar means training. */
+    .sd-d.free{background:transparent;border-color:#ECECEC;color:#6B6B6B;font-weight:500}
+
+    /* ── Dark page headers: make the action button readable ── */
+    .ph .ph-actions .btn.primary{
+      background:#D1242B;border-color:#D1242B;color:#fff;font-weight:700;
+      box-shadow:0 2px 10px rgba(209,36,43,0.35);
+    }
+    .ph .ph-actions .btn.primary:hover{background:#A81A20;border-color:#A81A20}
+
+    /* ── Status columns on Launches and Campaigns ─────────── */
+    .rag-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;align-items:start}
+    .rag-col-head{
+      font-size:17px;font-weight:700;color:#1A1A1A;margin:0 0 12px;
+      padding-bottom:8px;border-bottom:1px solid #E4E4E4;
+    }
+    .rag-col-cards{display:flex;flex-direction:column;gap:16px}
+    .rag-col-empty{font-size:12.5px;color:#9A9A9A;padding:6px 0}
+    @media (max-width:900px){ .rag-cols{grid-template-columns:1fr} }
+
+    /* ── Latest updates band (foot of the home page) ───────── */
+    .news-band{
+      display:flex;align-items:stretch;gap:0;margin:26px 0 0;
+      background:#141414;border-radius:14px;overflow:hidden;
+    }
+    .news-label{
+      flex:0 0 auto;display:flex;align-items:center;padding:14px 18px;
+      background:#D1242B;color:#fff;font-size:11px;font-weight:800;
+      text-transform:uppercase;letter-spacing:.09em;white-space:nowrap;
+    }
+    .news-viewport{flex:1 1 auto;overflow:hidden;position:relative}
+    .news-track{
+      display:flex;align-items:center;gap:38px;white-space:nowrap;
+      padding:14px 20px;will-change:transform;
+      animation:news-scroll 46s linear infinite;
+    }
+    .news-band:hover .news-track{animation-play-state:paused}
+    .news-item{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:#EDEDED}
+    .news-kind{
+      font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+      padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.12);color:#fff;
+    }
+    .news-kind.launch{background:#D1242B}
+    .news-kind.campaign{background:#E0A320;color:#1A1A1A}
+    .news-when{color:#9A9A9A;font-size:12px}
+    @keyframes news-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+    @media (prefers-reduced-motion:reduce){
+      .news-track{animation:none;overflow-x:auto;white-space:normal;flex-wrap:wrap}
+    }
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -372,7 +424,7 @@
 
         <!-- Box 1: Upcoming / Latest Product Launch -->
         <div class="hbox" id="home-hero-launch">
-          <div class="hbox-head red">
+          <div class="hbox-head dark">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             Upcoming Launch
           </div>
@@ -384,7 +436,7 @@
 
         <!-- Box 2: Latest Videos (compact) -->
         <div class="hbox" id="home-hero-videos">
-          <div class="hbox-head dark">
+          <div class="hbox-head red">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
             Latest Videos
           </div>
@@ -485,18 +537,6 @@
     </div>
   </section>
 
-  <!-- ══ TRAINING CALENDAR ══════════════════════════════ -->
-  <section class="inh-carousel-section" id="home-training" style="display:none">
-    <div class="inh-section-head">
-      <h3 class="inh-section-title">Training calendar</h3>
-      <div class="carousel-nav">
-        <button class="carousel-arrow" aria-label="Scroll left"  onclick="scrollCarousel('home-training-track',-1)">&lsaquo;</button>
-        <button class="carousel-arrow" aria-label="Scroll right" onclick="scrollCarousel('home-training-track',1)">&rsaquo;</button>
-      </div>
-    </div>
-    <div class="train-track" id="home-training-track"></div>
-  </section>
-
   <!-- ══ LATEST BLOGS (carousel) ═════════════════════════════ -->
   <section class="inh-carousel-section" id="home-blogs-section">
     <div class="inh-section-head">
@@ -527,27 +567,12 @@
     <div class="carousel-track" id="home-pages-track"></div>
   </section>
 
-  <!-- ══ LATEST VIDEOS (moved to bottom) ═════════════════════ -->
-  <section class="inh-videos-section" id="home-videos" style="display:none">
-    <div class="inh-section-head">
-      <h3 class="inh-section-title">Latest Videos</h3>
-      <a class="inh-section-link" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">Media Portal →</a>
-    </div>
-    <div id="home-videos-grid" class="vid-grid"></div>
-  </section>
-
-  <!-- ══ NEXT EVENT COUNTDOWN (hidden unless upcoming) ═══════ -->
-  <section class="inh-social-section" style="padding-top:0">
-    <div class="inh-countdown-card" id="home-countdown" style="display:none">
-      <div class="inh-countdown-label">Next Major Event</div>
-      <div class="inh-countdown-name" id="countdown-name">—</div>
-      <div class="inh-countdown-date" id="countdown-date"></div>
-      <div class="inh-countdown-timer" id="countdown-timer">
-        <div class="inh-cd-unit"><span id="cd-days">--</span><span>days</span></div>
-        <div class="inh-cd-unit"><span id="cd-hours">--</span><span>hrs</span></div>
-        <div class="inh-cd-unit"><span id="cd-mins">--</span><span>min</span></div>
-      </div>
-    </div>
+  <!-- ══ LATEST UPDATES — breaking-news band at the foot of the page.
+       Filled by renderNewsTicker() in graph.js from the Product Launches
+       and Campaigns lists. Stays hidden when there is nothing to say. ══ -->
+  <section class="news-band" id="home-news" style="display:none">
+    <span class="news-label">Latest updates</span>
+    <div class="news-viewport"><div class="news-track" id="home-news-track"></div></div>
   </section>
 
 
@@ -634,10 +659,6 @@
           <p class="ph-sub">Find information about upcoming events.</p>
         </div>
       </div>
-      <div class="metric-rail-row inline">
-        <div class="metric"><div class="metric-label">Upcoming events</div><div class="metric-value"><span id="sp-metric-ev-upcoming">&ndash;</span></div></div>
-        <div class="metric"><div class="metric-label">Previous events</div><div class="metric-value"><span id="sp-metric-ev-past">&ndash;</span></div></div>
-      </div>
     </div>
   </section>
 
@@ -655,37 +676,6 @@
       <h2 class="section-title small">Previous events</h2>
     </div>
     <div class="ev-grid" id="ev-past-grid"></div>
-  </section>
-
-  <!-- Showroom bookings — marketing asked for this to stay on the Trade
-       & Events page. Same data as the home calendar; renderMiniShowroom
-       Calendar() in jotform.js fills it. -->
-  <section class="container py-lg" id="trade-showroom-section">
-    <div class="section-head tight" style="margin-bottom:12px">
-      <h2 class="section-title small">Showroom bookings</h2>
-    </div>
-    <div class="trade-showroom-wrap">
-      <div class="card showroom" id="trade-showroom-card">
-        <div id="trade-showroom-content">
-          <div class="showroom-head">
-            <div>
-              <div class="eyebrow">CheckFire showroom</div>
-              <div class="card-title small" id="trade-showroom-title">Bookings &middot; Loading&hellip;</div>
-            </div>
-            <span class="badge green" id="trade-showroom-badge"><span class="status-dot green"></span>&ndash;</span>
-          </div>
-          <div class="showroom-week" id="trade-showroom-week">
-            <div class="dow">M</div><div class="dow">T</div><div class="dow">W</div><div class="dow">T</div><div class="dow">F</div><div class="dow">S</div><div class="dow">S</div>
-          </div>
-          <div class="legend">
-            <span><span class="sw red"></span>Booked</span>
-            <span><span class="sw light"></span>Available</span>
-            <span><span class="sw today-sw"></span>Today</span>
-          </div>
-        </div>
-        <button class="btn primary block" onclick="openBookingModal()">Book the showroom</button>
-      </div>
-    </div>
   </section>
 
   <!-- Event folder browser — opens in-hub when an event is clicked -->
@@ -710,9 +700,6 @@
           <div class="eyebrow">Marketing Hub · Library</div>
           <h1 class="ph-title">Resources &amp; documents</h1>
           <p class="ph-sub">Access all marketing resources and presentations here.</p>
-        </div>
-        <div class="ph-actions">
-          <a class="btn primary" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">Open in SharePoint</a>
         </div>
       </div>
     </div>
@@ -831,14 +818,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=8"></script>
+<script src="config.js?v=9"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=8"></script>
+<script src="graph.js?v=9"></script>
 <script src="app.js?v=12"></script>
-<script src="jotform.js?v=11"></script>
+<script src="jotform.js?v=12"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
