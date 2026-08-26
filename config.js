@@ -435,7 +435,7 @@ HUB_CONFIG.ember = {
   // The checkfire-ai Function app. Set this and Ember becomes a real
   // conversation. Deploy guide: checkfire-ai-function/DEPLOY.md.
   // Example: 'https://checkfire-ai-xxxx.uksouth-01.azurewebsites.net/api'
-  aiProxyUrl: '',
+  aiProxyUrl: 'https://checkfire-ai-eee3fpemdpb0g7g8.uksouth-01.azurewebsites.net/',
 
   // Alternative brain — a Copilot Studio agent published to a custom
   // website. If BOTH are set, Claude wins; clear aiProxyUrl to switch.
