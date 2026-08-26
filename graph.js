@@ -449,14 +449,50 @@ async function fetchLandingImages() {
       console.info(`[Landing images] no "${cfg.folder}" folder yet — cards stay text-only.`);
       return (_landingImgs = []);
     }
-    const kids = (await fetchDriveChildren(drive.id, folder.id))
-      .filter(k => !k.folder && IMAGE_EXT.test(k.name || ''));
 
-    const rows = await Promise.all(kids.map(async k => ({
-      key: _slugKey(String(k.name).replace(/\.[a-z0-9]+$/i, '')),
-      url: await driveThumb(drive.id, k.id),
-    })));
-    _landingImgs = rows.filter(r => r.key && r.url);
+    // 26 Aug, second round: the pictures weren't showing because they
+    // aren't loose in that folder — David: "I think you need to go 1
+    // deeper then in another folder in images for landing pages". So
+    // this walks SUB-FOLDERS too, and the sub-folder's own name counts
+    // as a match key. A folder called "Fire Extinguishers" holding
+    // "hero.jpg" now finds /fire-extinguishers, which is the shape
+    // marketing were actually using.
+    const found = [];
+    const walk = async (itemId, trail, depth) => {
+      if (depth < 0 || found.length > 200) return;
+      const kids = await fetchDriveChildren(drive.id, itemId);
+      const subs = [];
+      for (const k of kids) {
+        if (k.folder) { subs.push(k); continue; }
+        if (!IMAGE_EXT.test(k.name || '')) continue;
+        found.push({ item: k, trail: trail });
+      }
+      await Promise.all(subs.map(sf => walk(sf.id, trail.concat(sf.name), depth - 1)));
+    };
+    await walk(folder.id, [], (cfg.depth === undefined ? 3 : cfg.depth));
+
+    if (!found.length) {
+      console.info(`[Landing images] "${cfg.folder}" has no images in it yet.`);
+      return (_landingImgs = []);
+    }
+
+    const rows = await Promise.all(found.map(async ({ item, trail }) => {
+      const bare = String(item.name).replace(/\.[a-z0-9]+$/i, '');
+      // Match on the filename, on the folder it sits in, and on the two
+      // joined — so "Fire Extinguishers/hero.jpg", "fire-extinguishers.jpg"
+      // and "Landing/Fire Extinguishers 01.png" all land on the same page.
+      const keys = [];
+      const push = v => { const k = _slugKey(v); if (k && keys.indexOf(k) < 0) keys.push(k); };
+      push(bare);
+      if (trail.length) {
+        push(trail[trail.length - 1]);
+        push(trail[trail.length - 1] + ' ' + bare);
+      }
+      return { keys, url: await driveThumb(drive.id, item.id), name: item.name, folder: trail.join('/') };
+    }));
+
+    _landingImgs = rows.filter(r => r.keys.length && r.url);
+    console.info(`[Landing images] ${_landingImgs.length} image(s) available.`);
   } catch (e) {
     console.info('[Landing images] unavailable:', e.message);
     _landingImgs = [];
@@ -466,8 +502,8 @@ async function fetchLandingImages() {
 
 // Pick the image for one page. Exact key first, then either name
 // containing the other — so "01 fire-extinguishers hero.jpg" still
-// finds /fire-extinguishers. Longest match wins, which stops "water"
-// hijacking "water-mist".
+// finds /fire-extinguishers. The longest match wins, which stops
+// "water" hijacking "water-mist".
 function matchLandingImage(images, page) {
   if (!images || !images.length) return '';
   let slug = '';
@@ -475,18 +511,19 @@ function matchLandingImage(images, page) {
     const p = new URL(page.link).pathname.replace(/\/+$/, '');
     slug = p.split('/').filter(Boolean).pop() || '';
   } catch (_) { /* fall through to the title */ }
-  const keys = [_slugKey(slug), _slugKey(page.title)].filter(Boolean);
-  if (!keys.length) return '';
+  const wanted = [_slugKey(slug), _slugKey(page.title)].filter(Boolean);
+  if (!wanted.length) return '';
 
-  for (const k of keys) {
-    const exact = images.find(im => im.key === k);
+  for (const w of wanted) {
+    const exact = images.find(im => im.keys.indexOf(w) >= 0);
     if (exact) return exact.url;
   }
-  let best = null;
-  for (const k of keys) {
+
+  let best = null, bestLen = 0;
+  for (const w of wanted) {
     for (const im of images) {
-      if (im.key.includes(k) || k.includes(im.key)) {
-        if (!best || im.key.length > best.key.length) best = im;
+      for (const k of im.keys) {
+        if ((k.includes(w) || w.includes(k)) && k.length > bestLen) { best = im; bestLen = k.length; }
       }
     }
   }
@@ -653,8 +690,7 @@ function renderLaunches(items) {
       [{ tone: 'red', label: 'Planning' },
        { tone: 'amber', label: 'Confirmed' },
        { tone: 'green', label: 'Launched' },
-       { tone: 'grey', label: 'Archive' }],
-      'Live from the Product Launches list') +
+       { tone: 'grey', label: 'Archive' }]) +
     `<div class="px-grid" id="px-launch-grid" data-filter="all">${
       sorted.map((f, i) => {
         const codes = productCodes(f);
@@ -721,8 +757,6 @@ function renderCampaigns(items) {
     { label: 'PR activity',  value: _num(lead, ['PRActivity', 'PR', 'PRActivities']) },
   ].filter(m => m.value);
 
-  const totalBudget = sorted.reduce((sum, f) => sum + (Number(f.Budget) || 0), 0);
-
   grid.innerHTML =
     _pxLead('campaign', lead, leadIdx, {
       eyebrow: ragOf(lead.Status) === 'green' ? 'Running now' : 'Latest campaign',
@@ -738,8 +772,7 @@ function renderCampaigns(items) {
       [{ tone: 'red', label: 'Planning' },
        { tone: 'amber', label: 'Scheduled' },
        { tone: 'green', label: 'Live' },
-       { tone: 'grey', label: 'Completed' }],
-      totalBudget ? `Total budget <b>£${totalBudget.toLocaleString('en-GB')}</b>` : 'Live from the Campaigns list') +
+       { tone: 'grey', label: 'Completed' }]) +
     `<div class="px-grid" id="px-camp-grid" data-filter="all">${
       sorted.map((f, i) => {
         const channels = Array.isArray(f.Channels) ? f.Channels : String(f.Channels || '').split(/[,;/]+/);
@@ -803,79 +836,271 @@ function renderDocuments(files) {
   }).join('')}</div>`;
 }
 
-// ── In-hub document preview ───────────────────────────────────
-// Uses the Graph "preview" action, which returns a short-lived
-// embeddable URL. The file renders in an iframe inside the hub, so
-// users never bounce out to SharePoint. Non-previewable types fall
-// back to an "Open in SharePoint" link.
-// Kept for any legacy callers: preview by index into the last-rendered
-// _docFiles array. New code (file browser, campaign blocks) calls
-// openDocFile(fileObject) directly.
+// ═══ The reader ══════════════════════════════════════════════
+//
+// REWRITTEN 26 Aug 2026 (second round). David: "I still don't like how
+// things open from SharePoint — is there a way this can open like a
+// website would open?"
+//
+// It used to embed SharePoint's own preview iframe, which brings
+// SharePoint's toolbars, branding and behaviour along with it. Now the
+// hub fetches the file itself and renders it:
+//
+//   PDF            → the browser's own PDF viewer, off a blob: URL
+//   image          → an <img>
+//   text/csv/md    → set as text
+//   video / audio  → the browser's own player
+//   Word / PowerPoint / Excel
+//                  → Graph is asked to CONVERT to PDF, then the same
+//                    native viewer. Only if that fails does it fall
+//                    back to the Office web viewer.
+//
+// Because the file becomes a blob: URL on our own origin there is no
+// SharePoint chrome anywhere, and Download / Copy link / Open in new
+// tab all work off it. Blob URLs are revoked when the reader closes.
+
+const RDR = { blobUrl: null, file: null };
+
+const RDR_PDF    = /\.pdf$/i;
+const RDR_IMG    = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
+const RDR_TXT    = /\.(txt|md|csv|tsv|json|log|xml|ya?ml)$/i;
+const RDR_AV     = /\.(mp4|webm|m4v|mov|mp3|m4a|wav|ogg)$/i;
+const RDR_OFFICE = /\.(docx?|pptx?|xlsx?|xlsm|rtf|odt|odp|ods)$/i;
+
+// 60 MB. Past that a blob is a bad idea in a browser tab — the reader
+// hands the user the file instead of trying to paint it.
+const RDR_MAX_BYTES = 60 * 1024 * 1024;
+
+function _rdrExt(name) {
+  return (String(name || '').split('.').pop() || '').toLowerCase();
+}
+
+// Graph's downloadUrl is PRE-AUTHENTICATED and short-lived: fetching it
+// needs no Authorization header, which also means no CORS preflight.
+async function _rdrDownloadUrl(f) {
+  const meta = await graphFetch(
+    `/drives/${f._driveId}/items/${f.id}?$select=id,name,size,@microsoft.graph.downloadUrl`);
+  return (meta && meta['@microsoft.graph.downloadUrl']) || '';
+}
+
+async function _rdrBlob(f, asPdf) {
+  if (asPdf) {
+    // Graph converts Office formats to PDF on the fly. It answers with
+    // a redirect to a pre-authenticated URL, and the Authorization
+    // header is dropped on that cross-origin hop — which is fine,
+    // because the target doesn't want it.
+    const token = await getAccessToken();
+    const res = await fetch(
+      `${GRAPH_BASE}/drives/${f._driveId}/items/${f.id}/content?format=pdf`,
+      { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) throw new Error('Conversion returned ' + res.status);
+    return res.blob();
+  }
+  const url = await _rdrDownloadUrl(f);
+  if (!url) throw new Error('No download URL');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Download returned ' + res.status);
+  return res.blob();
+}
+
+function _rdrRevoke() {
+  if (RDR.blobUrl) { try { URL.revokeObjectURL(RDR.blobUrl); } catch (_) {} }
+  RDR.blobUrl = null;
+}
+
+function _rdrStage(html) {
+  const stage = document.getElementById('doc-stage');
+  if (stage) stage.innerHTML = html;
+}
+
+// Kept for any legacy callers: open by index into the last-rendered
+// _docFiles array. Everything else calls openDocFile(fileObject).
 function openDocPreview(i) {
   return openDocFile(_docFiles[i]);
 }
 
 async function openDocFile(f) {
   if (!f) return;
+  const modal = document.getElementById('doc-modal');
+  if (!modal) { if (f.webUrl) window.open(safeUrl(f.webUrl, '#'), '_blank', 'noopener'); return; }
 
-  const modal   = document.getElementById('doc-modal');
-  const frame   = document.getElementById('doc-frame');
-  const titleEl = document.getElementById('doc-modal-title');
-  const spLink  = document.getElementById('doc-modal-splink');
-  const loading = document.getElementById('doc-modal-loading');
+  _rdrRevoke();
+  RDR.file = f;
 
-  if (!modal || !frame) { if (f.webUrl) window.open(f.webUrl, '_blank', 'noopener'); return; }
-
-  if (titleEl) titleEl.textContent = f.name || 'Document';
-  if (spLink)  spLink.href = safeUrl(f.webUrl, '#');
-
-  // Download link — the direct URL is short-lived, so fetch it fresh.
-  const dl = document.getElementById('doc-modal-download');
-  if (dl) {
-    dl.style.display = 'none';
-    if (f._driveId && f.id) {
-      graphFetch(`/drives/${f._driveId}/items/${f.id}?$select=id,name,@microsoft.graph.downloadUrl`)
-        .then(meta => {
-          const url = meta && meta['@microsoft.graph.downloadUrl'];
-          if (!url) return;
-          dl.href = url;
-          dl.setAttribute('download', f.name || '');
-          dl.style.display = '';
-        })
-        .catch(() => { /* preview still works without it */ });
-    }
-  }
-  const oldFb = document.querySelector('#doc-modal-body .doc-fallback');
-  if (oldFb) oldFb.remove();
-  frame.removeAttribute('src');
-  if (loading) loading.style.display = '';
+  const ext = _rdrExt(f.name);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('rdr-name', f.name || 'Document');
+  set('rdr-type', (ext || 'file').toUpperCase().slice(0, 4));
+  set('rdr-sub', [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' · '));
 
   modal.classList.remove('hidden');
   document.body.classList.add('modal-open');
+  _rdrStage('<div class="rdr-wait"><span class="rdr-spin"></span>Opening…</div>');
+
+  if (!f._driveId || !f.id) {
+    _rdrStage(`<div class="rdr-wait">This one can only be opened in SharePoint.
+      <a class="rdr-alt" href="${escAttr(safeUrl(f.webUrl, '#'))}" target="_blank" rel="noopener">Open it there →</a></div>`);
+    return;
+  }
 
   try {
-    const prev = await graphPost(`/drives/${f._driveId}/items/${f.id}/preview`, {});
-    const url = prev && prev.getUrl;
-    if (!url) throw new Error('No preview URL returned');
-    frame.onload = () => { if (loading) loading.style.display = 'none'; };
-    frame.src = url + (url.includes('?') ? '&' : '?') + 'nb=true';
+    if (Number(f.size) > RDR_MAX_BYTES) throw new Error('TOO_BIG');
+
+    if (RDR_PDF.test(f.name)) {
+      RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
+      _rdrStage(`<iframe class="rdr-frame" src="${escAttr(RDR.blobUrl)}#view=FitH" title="${escAttr(f.name)}"></iframe>`);
+
+    } else if (RDR_IMG.test(f.name)) {
+      RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
+      _rdrStage(`<div class="rdr-centre"><img class="rdr-img" src="${escAttr(RDR.blobUrl)}" alt="${escAttr(f.name)}"></div>`);
+
+    } else if (RDR_AV.test(f.name)) {
+      RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
+      const audio = /\.(mp3|m4a|wav|ogg)$/i.test(f.name);
+      _rdrStage(audio
+        ? `<div class="rdr-centre"><audio class="rdr-audio" src="${escAttr(RDR.blobUrl)}" controls></audio></div>`
+        : `<div class="rdr-centre"><video class="rdr-video" src="${escAttr(RDR.blobUrl)}" controls playsinline></video></div>`);
+
+    } else if (RDR_TXT.test(f.name)) {
+      const text = await (await _rdrBlob(f, false)).text();
+      _rdrStage(`<pre class="rdr-text">${escHtml(text.slice(0, 400000))}</pre>`);
+
+    } else if (RDR_OFFICE.test(f.name)) {
+      try {
+        RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, true));
+        _rdrStage(`<iframe class="rdr-frame" src="${escAttr(RDR.blobUrl)}#view=FitH" title="${escAttr(f.name)}"></iframe>`);
+      } catch (_) {
+        // Spreadsheets in particular don't always convert. Fall back to
+        // the Office viewer with SharePoint's branding switched off.
+        const prev = await graphPost(`/drives/${f._driveId}/items/${f.id}/preview`, {});
+        const url = prev && prev.getUrl;
+        if (!url) throw new Error('no preview');
+        _rdrStage(`<iframe class="rdr-frame" src="${escAttr(url + (url.includes('?') ? '&' : '?') + 'nb=true')}" title="${escAttr(f.name)}"></iframe>`);
+      }
+
+    } else {
+      throw new Error('UNSUPPORTED');
+    }
   } catch (e) {
-    if (loading) loading.style.display = 'none';
-    const body = document.getElementById('doc-modal-body');
-    if (body) body.insertAdjacentHTML('beforeend',
-      `<div class="doc-fallback">This file type can't be previewed inline. ` +
-      `<a href="${escAttr(safeUrl(f.webUrl, '#'))}" target="_blank" rel="noopener">Open in SharePoint →</a></div>`);
+    const why = e.message === 'TOO_BIG'
+      ? 'This file is too big to open in the page.'
+      : 'This file type can’t be shown in the page.';
+    _rdrStage(`<div class="rdr-wait">${escHtml(why)}
+      <button class="rdr-alt" onclick="downloadDoc()">Download it instead ↓</button></div>`);
   }
+}
+
+// Download works off the blob when we already have it (instant, no
+// second round trip) and off a fresh pre-authenticated URL otherwise.
+async function downloadDoc() {
+  const f = RDR.file;
+  if (!f) return;
+  try {
+    const href = RDR.blobUrl || await _rdrDownloadUrl(f);
+    if (!href) throw new Error('no url');
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = f.name || 'document';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (_) {
+    if (f.webUrl) window.open(safeUrl(f.webUrl, '#'), '_blank', 'noopener');
+  }
+}
+
+// "Share" copies the SharePoint link, not the blob — a blob: URL only
+// exists inside this tab, so sending someone one would be useless. The
+// SharePoint link opens for anyone who already has access to the site.
+async function shareDoc(btn) {
+  const f = RDR.file;
+  if (!f || !f.webUrl) return;
+  const url = safeUrl(f.webUrl, '');
+  try {
+    await navigator.clipboard.writeText(url);
+    if (btn) {
+      const t = btn.getAttribute('data-label') || btn.textContent;
+      btn.setAttribute('data-label', t);
+      btn.textContent = 'Link copied';
+      setTimeout(() => { btn.textContent = t; }, 1800);
+    } else if (typeof showToast === 'function') {
+      showToast('Link copied');
+    }
+  } catch (_) {
+    window.prompt('Copy this link:', url);
+  }
+}
+
+// Opens the file itself in a new browser tab — a plain PDF in the
+// browser's own viewer, with neither the hub nor SharePoint around it.
+function popOutDoc() {
+  if (RDR.blobUrl) { window.open(RDR.blobUrl, '_blank', 'noopener'); return; }
+  const f = RDR.file;
+  if (f && f.webUrl) window.open(safeUrl(f.webUrl, '#'), '_blank', 'noopener');
 }
 
 function closeDocPreview() {
   const modal = document.getElementById('doc-modal');
-  const frame = document.getElementById('doc-frame');
-  if (modal) modal.classList.add('hidden');
-  if (frame) frame.removeAttribute('src');
+  if (!modal) return;
+  modal.classList.add('hidden');
   document.body.classList.remove('modal-open');
-  const fb = document.querySelector('#doc-modal-body .doc-fallback');
-  if (fb) fb.remove();
+  _rdrStage('');
+  _rdrRevoke();
+  RDR.file = null;
+}
+
+// Escape closes the reader — it's the biggest thing on screen when open.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const m = document.getElementById('doc-modal');
+  if (m && !m.classList.contains('hidden')) closeDocPreview();
+});
+
+// ── Download / share on every file row ────────────────────────
+// Every list of files in the hub — Resources, the Product Portal,
+// campaign assets, event packs — gets the same two buttons, so staff
+// have everything in one place without opening the file first.
+// Files live in a small registry so a button only has to carry a key.
+const DOCREG = {};
+let _docRegSeq = 0;
+
+function regDoc(f) {
+  const k = 'd' + (++_docRegSeq);
+  DOCREG[k] = f;
+  return k;
+}
+
+function openRegDoc(k) { return openDocFile(DOCREG[k]); }
+
+async function downloadRegDoc(k, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const f = DOCREG[k];
+  if (!f) return;
+  const keepFile = RDR.file, keepUrl = RDR.blobUrl;
+  RDR.file = f; RDR.blobUrl = null;      // force a fresh pre-auth URL
+  await downloadDoc();
+  RDR.file = keepFile; RDR.blobUrl = keepUrl;
+}
+
+async function shareRegDoc(k, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const f = DOCREG[k];
+  if (!f || !f.webUrl) return;
+  const keepFile = RDR.file;
+  RDR.file = f;
+  await shareDoc(null);
+  RDR.file = keepFile;
+}
+
+function docActions(k) {
+  return `<span class="doc-acts">
+    <button class="doc-act" title="Download" aria-label="Download" onclick="downloadRegDoc('${k}',event)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+    <button class="doc-act" title="Copy link" aria-label="Copy link" onclick="shareRegDoc('${k}',event)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    </button>
+  </span>`;
 }
 
 // ═══ Videos — WordPress uploads + SharePoint Media Portal ═════
@@ -940,27 +1165,50 @@ async function fetchSharePointVideos() {
 // YouTube — the channel marketing actually publish to. Read through
 // the Azure Function proxy so the YouTube API key stays server-side
 // (never put an API key in config.js — see the June 2026 note).
+// Two possible sources, tried in order:
+//   1. the new checkfire-ai Function app — reads the channel's public
+//      RSS feed, so no API key and no Google account is involved
+//   2. the old checkfire-jotform /api/videos endpoint, in case its
+//      YOUTUBE_API_KEY ever gets set
+// Whichever answers first wins. Nothing is embedded any more — the web
+// filter blocks the in-page player — so all we need from either is a
+// title, a date, a thumbnail and a link out to YouTube.
 async function fetchYouTubeVideos() {
   const cfg = (HUB_CONFIG.videos && HUB_CONFIG.videos.youtube) || {};
-  if (!cfg.proxyUrl) return [];
+  const ai  = ((HUB_CONFIG.ember || {}).aiProxyUrl || '').replace(/\/+$/, '');
+
+  const urls = [];
+  if (ai) urls.push(ai + '/videos');
+  if (cfg.proxyUrl) urls.push(cfg.proxyUrl);
+  if (!urls.length) return [];
 
   const cached = _cacheGet('videos_yt');
   if (cached) return cached;
 
-  const res = await fetch(cfg.proxyUrl, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error('Video proxy returned ' + res.status);
-  const data = await res.json();
-  const rows = Array.isArray(data) ? data : (data.videos || data.items || []);
+  let rows = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.videos || data.items || []);
+      if (list && list.length) { rows = list; break; }
+    } catch (_) { /* try the next one */ }
+  }
+  if (!rows) return [];
 
   const vids = rows.map(v => {
     const id = v.id || v.videoId || '';
     return {
       title:     String(v.title || 'Untitled').trim(),
-      date:      v.date || v.publishedAt || '',
+      date:      v.date || v.published || v.publishedAt || '',
       youtubeId: id,
       src:       null,
-      href:      v.url || (id ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(id) : ''),
-      thumb:     v.thumb || v.thumbnail || '',
+      href:      v.url || v.link || (id ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(id) : ''),
+      // i.ytimg.com serves thumbnails without a key. If the feed didn't
+      // give us one, build it from the video id.
+      thumb:     v.thumb || v.thumbnail ||
+                 (id ? `https://i.ytimg.com/vi/${encodeURIComponent(id)}/mqdefault.jpg` : ''),
       source:    'YouTube',
     };
   }).filter(v => v.youtubeId);
@@ -970,11 +1218,8 @@ async function fetchYouTubeVideos() {
 }
 
 async function loadHomeVideos() {
-  // The full video grid was removed from the home page (deck, 24 Aug);
-  // the compact hero box stays, so neither element is required here.
-  const section = document.getElementById('home-videos');
-  const grid = document.getElementById('home-videos-grid');
-
+  // The hero box is the only place videos appear now — the grid and
+  // the embedded player are both gone.
   const cfg = HUB_CONFIG.videos || {};
   const [yt, wp, sp] = await Promise.allSettled([
     fetchYouTubeVideos(),
@@ -991,137 +1236,86 @@ async function loadHomeVideos() {
     ...(sp.status === 'fulfilled' ? sp.value : []),
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
-  // Only show recent videos (default: last 3 months — see config.js).
+  // Prefer recent videos (default: last 3 months — see config.js), but
+  // never at the cost of showing nothing: the box's whole job is "the
+  // most recent upload", so if the age filter empties the list we keep
+  // the unfiltered set and just show the newest.
   const months = (HUB_CONFIG.videos && HUB_CONFIG.videos.maxAgeMonths) || 0;
   if (months > 0) {
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - months);
-    vids = vids.filter(v => v.date && !isNaN(new Date(v.date)) && new Date(v.date) >= cutoff);
+    const recent = vids.filter(v => v.date && !isNaN(new Date(v.date)) && new Date(v.date) >= cutoff);
+    if (recent.length) vids = recent;
   }
   vids = vids.slice(0, (HUB_CONFIG.videos && HUB_CONFIG.videos.max) || 6);
 
-  // Compact hero box: newest 3, each opening the video itself.
+  // The hero box, which is the only place videos appear now.
   renderHeroVideos(vids);
-
-  // The YouTube section below — works with or without the API key.
-  renderYouTubeSection(vids.filter(v => v.youtubeId));
-
-  if (!section || !grid) return;
-  if (!vids.length) { section.style.display = 'none'; return; }
-
-  grid.innerHTML = vids.map(v => {
-    const href = safeUrl(v.href, '');
-    const media = v.youtubeId
-      ? `<iframe class="vid-player" src="https://www.youtube-nocookie.com/embed/${escAttr(encodeURIComponent(v.youtubeId))}" title="${escAttr(v.title)}" frameborder="0" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>`
-      : v.src
-        ? `<video class="vid-player" src="${escAttr(safeUrl(v.src, ''))}" controls preload="metadata" playsinline></video>`
-        : `<a class="vid-thumb-link" href="${escAttr(href)}" target="_blank" rel="noopener"><span class="vid-play">▶</span><span>Watch on SharePoint</span></a>`;
-    return `
-    <div class="vid-card">
-      ${media}
-      <div class="vid-body">
-        <div class="vid-title">${escHtml(v.title)}</div>
-        <div class="vid-meta">${escHtml(v.source)}${v.date ? ' · ' + fmtSpDate(v.date) : ''}</div>
-      </div>
-    </div>`;
-  }).join('');
-  section.style.display = '';
 }
 
-// ── CheckFire on YouTube ──────────────────────────────────────
+// ── Latest videos (home hero box) ─────────────────────────────
 //
-// The API-key route has been blocked since July: the proxy still
-// answers {"error":"YOUTUBE_API_KEY app setting is not configured."},
-// so the hub has been showing no YouTube videos at all.
-//
-// It doesn't need the key to show the videos. Every channel has an
-// "uploads" playlist — the channel id with UC swapped for UU — and
-// that playlist embeds with no key, no quota, no Google account, and
-// it updates itself the moment marketing publish. That is the player
-// on the left. When the key IS eventually set, the feed on the right
-// fills with real titles and dates; until then it carries the channel
-// card. Either way there are CheckFire videos on the page.
-function renderYouTubeSection(vids) {
-  const sec = document.getElementById('home-youtube');
-  if (!sec) return;
-
-  const yt = (HUB_CONFIG.videos && HUB_CONFIG.videos.youtube) || {};
-  const list = yt.uploadsPlaylistId;
-  const channel = safeUrl(yt.channelUrl || '', '');
-  if (!list && !channel) { sec.style.display = 'none'; return; }
-
-  const player = list
-    ? `<iframe class="yt-player"
-         src="https://www.youtube-nocookie.com/embed/videoseries?list=${escAttr(list)}&rel=0&modestbranding=1"
-         title="CheckFire on YouTube" loading="lazy" frameborder="0"
-         allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
-         allowfullscreen></iframe>`
-    : '';
-
-  const side = (vids && vids.length)
-    ? `<div class="yt-list">${vids.slice(0, 5).map(v => `
-        <a class="yt-row" href="${escAttr(safeUrl(v.href, channel))}" target="_blank" rel="noopener">
-          <span class="yt-row-play">▶</span>
-          <span class="yt-row-main">
-            <span class="yt-row-title">${escHtml(v.title)}</span>
-            ${v.date ? `<span class="yt-row-date">${escHtml(fmtSpDate(v.date))}</span>` : ''}
-          </span>
-        </a>`).join('')}</div>`
-    : `<div class="yt-blurb">
-         <p>Everything the marketing team publishes to the CheckFire channel plays here — the newest upload first, updating on its own.</p>
-         <p class="yt-blurb-dim">Video titles and dates will appear in this column once the YouTube API key is added to the Function app. The player above needs nothing.</p>
-       </div>`;
-
-  sec.innerHTML = `
-    <div class="inh-section-head">
-      <h3 class="inh-section-title">CheckFire on YouTube</h3>
-      ${channel ? `<a class="inh-section-link" href="${escAttr(channel)}" target="_blank" rel="noopener">Visit the channel →</a>` : ''}
-    </div>
-    <div class="yt-grid">
-      <div class="yt-stage">${player}</div>
-      <div class="yt-side">
-        ${side}
-        ${channel ? `<a class="yt-cta" href="${escAttr(channel)}" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M21.6 7.2a2.6 2.6 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.6 2.6 0 0 0 2.4 7.2 27 27 0 0 0 2 12a27 27 0 0 0 .4 4.8 2.6 2.6 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.6 2.6 0 0 0 1.8-1.8A27 27 0 0 0 22 12a27 27 0 0 0-.4-4.8zM10 15V9l5 3z"/></svg>
-          Open the channel
-        </a>` : ''}
-      </div>
-    </div>`;
-  sec.style.display = '';
-}
-
-// Compact "Latest Videos" box in the hero — the newest few, each
-// scrolling down to the full video grid where they play inline.
+// REWRITTEN 26 Aug 2026 (second round). The in-page YouTube player is
+// blocked by CheckFire's web filter — David could open the same video
+// straight from Google, just not embedded — so nothing is embedded any
+// more. The box shows the MOST RECENT UPLOAD as a proper thumbnail
+// card and links out to YouTube, which the filter allows, with the
+// next couple listed underneath and a link to the channel.
 function renderHeroVideos(vids) {
   const el = document.getElementById('home-hero-videos-body');
   if (!el) return;
+
+  const yt = (HUB_CONFIG.videos && HUB_CONFIG.videos.youtube) || {};
+  const channel = safeUrl(yt.channelUrl || '', '');
+
+  const channelLink = channel
+    ? `<a class="hbox-more" href="${escAttr(channel)}" target="_blank" rel="noopener">
+         Go to our YouTube channel →
+       </a>`
+    : '';
+
   if (!vids || !vids.length) {
-    // No titled feed (the API key still isn't set) — point at the
-    // player further down the page rather than saying "nothing here",
-    // which was never true.
-    const ch = safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.youtube && HUB_CONFIG.videos.youtube.channelUrl) || '', '');
     el.innerHTML =
-      '<p class="prose dim" style="margin:0 0 6px">The latest uploads from the CheckFire channel are playing further down this page.</p>' +
-      `<a class="hbox-more" onclick="document.getElementById('home-youtube')?.scrollIntoView({behavior:'smooth',block:'center'})">Watch now →</a>` +
-      (ch ? `<a class="hbox-more" href="${escAttr(ch)}" target="_blank" rel="noopener">CheckFire on YouTube →</a>` : '');
+      `<p class="prose dim" style="margin:0 0 8px">Everything we publish is on the CheckFire channel.</p>` +
+      channelLink;
     return;
   }
-  const channel = safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.youtube && HUB_CONFIG.videos.youtube.channelUrl) || '', '')
-    || safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.mediaPortalSite) || '', '');
 
-  el.innerHTML = vids.slice(0, 3).map(v => {
-    const href = safeUrl(v.href, '');
-    return href
-      ? `<a class="hbox-vid" href="${escAttr(href)}" target="_blank" rel="noopener">
-      <span class="hbox-vid-thumb">▶</span>
-      <span class="hbox-vid-title">${escHtml(v.title)}</span>
-    </a>`
-      : `<div class="hbox-vid">
-      <span class="hbox-vid-thumb">▶</span>
-      <span class="hbox-vid-title">${escHtml(v.title)}</span>
-    </div>`;
-  }).join('') +
-    (channel ? `<a class="hbox-more" href="${escAttr(channel)}" target="_blank" rel="noopener">See all videos →</a>` : '');
+  // Newest first — loadHomeVideos already sorted, but be explicit,
+  // because "the most recent uploaded" is the whole point of the box.
+  const sorted = [...vids].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const lead = sorted[0];
+  const rest = sorted.slice(1, 3);
+
+  const leadHref = safeUrl(lead.href, channel || '#');
+
+  // The thumbnail is an <img>, not a background image, so it can remove
+  // ITSELF if it fails to load. CheckFire's web filter is why the
+  // embedded player had to go, and it may well block i.ytimg.com too —
+  // if it does the card falls back to the brand gradient underneath
+  // rather than showing a broken image.
+  const thumbImg = url => url
+    ? `<img class="vthumb-img" src="${escAttr(safeUrl(url, ''))}" alt="" loading="lazy" onerror="this.remove()">`
+    : '';
+
+  el.innerHTML = `
+    <a class="vlead" href="${escAttr(leadHref)}" target="_blank" rel="noopener">
+      <span class="vlead-thumb">
+        ${thumbImg(lead.thumb)}
+        <span class="vlead-play">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+        <span class="vlead-badge">Latest</span>
+      </span>
+      <span class="vlead-title">${escHtml(lead.title)}</span>
+      <span class="vlead-meta">${escHtml([lead.source, lead.date ? fmtSpDate(lead.date) : ''].filter(Boolean).join(' · '))}</span>
+    </a>
+    ${rest.length ? `<div class="vrest">${rest.map(v => `
+      <a class="hbox-vid" href="${escAttr(safeUrl(v.href, channel || '#'))}" target="_blank" rel="noopener">
+        <span class="hbox-vid-thumb">${thumbImg(v.thumb) || '\u25B6'}</span>
+        <span class="hbox-vid-title">${escHtml(v.title)}</span>
+      </a>`).join('')}</div>` : ''}
+    ${channelLink}`;
 }
 
 // ═══ Team wall ═══════════════════════════════════════════════
@@ -1577,43 +1771,38 @@ function dismissUpdates() {
   try { localStorage.setItem('cf-updates-seen', _updStamp()); } catch (_) {}
 }
 
-// Resources ▸ Marketing Library — opened via loadResourcesData (ui.js).
-// Backed by the in-hub file browser so folders open here, not SharePoint.
-const _fbLoaded = { marketing: false, product: false };
+// Which in-hub folder browsers have been started. Keyed by library, so
+// 'product' and 'resources' each keep their own place in the tree.
+const _fbLoaded = {};
 
+// Resources used to BE the folder browser. It's now the library front
+// door (loadResourcesLibrary), with the tree behind "Browse folders".
+// Kept as an alias so ui.js's loadResourcesData() still resolves.
 async function loadSharePointDocuments() {
-  const grid = document.getElementById('sp-documents-grid');
-  if (!grid) return;
-  if (_fbLoaded.marketing) { renderBrowser('marketing'); return; }
-  _fbLoaded.marketing = true;
-  await fbInit('marketing', HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary,
-               'sp-documents-grid', 'docs-crumbs', 'Marketing Library');
+  return loadResourcesLibrary();
 }
 
-// ═══ Product Portal front door ═══════════════════════════════
+// ═══ Library front doors ═════════════════════════════════════
 //
-// The Product Portal site files by CERTIFICATION TYPE — DOCs,
-// Kitemark Certificates, MED, MER, NTA 8133 — and buries the product
-// in the filename ("260824 Declaration of Conformity-CO2-AlloySteel").
-// That's a sensible filing cabinet and a poor front door: nobody
-// arrives thinking "NTA 8133", they arrive thinking "the paperwork for
-// the CO2".
+// GENERALISED 26 Aug 2026. This started as the Product Portal front
+// door and now drives Resources as well, so the two pages look and
+// behave the same — David: "Resources and documents needs to fit more
+// in to the rest of the website".
 //
-// So the hub reads the whole site once, tags every file with a product
-// and a document type, and lets people come at it from either
-// direction — plus a search box over every filename. The real folder
-// tree is still one click away under "Browse folders": this adds a way
-// in, it doesn't hide anything.
+// Both sites are folder trees of files. The hub reads the whole tree
+// once, tags every file, and offers three ways in — search, a tile
+// row, and type chips — with Download and Copy link on every row so
+// "staff have everything all in one place".
 //
-// Nothing here changes SharePoint. Marketing keep filing exactly as
-// they do now.
+// Nothing in SharePoint changes. Marketing keep filing as they do.
 
-const PORTAL = {
-  files: [], loaded: false, driveId: null,
-  product: 'all', category: 'all', q: '',
-};
+const LIB = {};   // key → { files, loaded, driveId, tag, cat, q }
 
-async function _portalCrawl(driveId, itemId, path, depth, out, cap) {
+function _libCfg(key) {
+  return ((HUB_CONFIG.libraries || {})[key]) || {};
+}
+
+async function _libCrawl(driveId, itemId, path, depth, out, cap, exclude) {
   if (depth < 0 || out.length >= cap) return;
   let kids;
   try { kids = await fetchDriveChildren(driveId, itemId); }
@@ -1621,97 +1810,104 @@ async function _portalCrawl(driveId, itemId, path, depth, out, cap) {
 
   const folders = [];
   for (const k of kids) {
-    if (k.folder) folders.push(k);
-    else if (out.length < cap) out.push(Object.assign({}, k, { _path: path }));
+    if (k.folder) {
+      // Folders that have their own page in the hub aren't repeated here.
+      if (!path.length && exclude.some(x => x.toLowerCase() === String(k.name).toLowerCase())) continue;
+      folders.push(k);
+    } else if (out.length < cap) {
+      out.push(Object.assign({}, k, { _path: path }));
+    }
   }
   await Promise.all(folders.map(f =>
-    _portalCrawl(driveId, f.id, path.concat(f.name), depth - 1, out, cap)));
+    _libCrawl(driveId, f.id, path.concat(f.name), depth - 1, out, cap, exclude)));
 }
 
-function _portalCatLabel(folder) {
-  const rows = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.categories) || [];
+function _libCatLabel(key, folder) {
+  const rows = _libCfg(key).categories || [];
   const hit = rows.find(r => String(r.folder).toLowerCase() === String(folder || '').toLowerCase());
-  return hit ? hit.label : (folder || 'Other documents');
+  if (hit) return hit.label;
+  return folder || 'General';
 }
 
-function _portalProduct(f) {
-  const rows = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.productTypes) || [];
+function _libTag(key, f) {
+  const rows = _libCfg(key).tags || [];
   const hay = [f.name].concat(f._path || []).join(' ').toLowerCase();
   for (const r of rows) {
     try { if (new RegExp(r.match, 'i').test(hay)) return r; }
-    catch (_) { /* a bad pattern in config shouldn't break the page */ }
+    catch (_) { /* a bad pattern in config mustn't break the page */ }
   }
   return null;
 }
 
-async function loadProductPortal() {
-  const host = document.getElementById('pp-index');
+async function loadLibrary(key) {
+  const cfg  = _libCfg(key);
+  const host = document.getElementById(cfg.hostId);
   if (!host) return;
 
   const signedIn = window.AUTH && window.AUTH.account;
   if (window.HUB_DEMO_MODE || !signedIn) {
-    host.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to open the Product Portal.</p>';
+    host.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to open this library.</p>';
     return;
   }
 
-  if (PORTAL.loaded) { renderPortalIndex(); return; }
+  if (LIB[key] && LIB[key].loaded) { renderLibrary(key); return; }
+  LIB[key] = { files: [], loaded: false, driveId: null, tag: 'all', cat: 'all', q: '' };
 
-  host.innerHTML = `<div class="pp-loading">
+  host.innerHTML = `<div class="lib-boot">
     <div class="skeleton sk-line med"></div>
     <div class="skeleton sk-line"></div>
     <div class="skeleton sk-line short"></div>
-    <p class="prose dim" style="margin-top:12px">Reading the Product Portal…</p>
+    <p class="prose dim" style="margin-top:12px">Reading ${escHtml(cfg.title || 'the library')}…</p>
   </div>`;
 
   try {
-    const cfg   = HUB_CONFIG.productPortal || {};
-    const drive = await resolveDrive(HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary);
-    PORTAL.driveId = drive.id;
+    const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
+    const drive = await resolveDrive(site, cfg.library || HUB_CONFIG.documentsLibrary);
+    LIB[key].driveId = drive.id;
 
     const out = [];
-    await _portalCrawl(drive.id, null, [], (cfg.crawlDepth || 3), out, (cfg.maxFiles || 400));
+    await _libCrawl(drive.id, null, [], (cfg.crawlDepth || 3), out,
+                    (cfg.maxFiles || 400), cfg.excludeFolders || []);
 
-    PORTAL.files = out.map(f => {
-      const p = _portalProduct(f);
+    LIB[key].files = out.map(f => {
+      const t = _libTag(key, f);
       return Object.assign({}, f, {
-        _product:    p ? p.key : 'other',
-        _productLbl: p ? p.label : 'Other',
-        _catFolder:  (f._path || [])[0] || '',
-        _cat:        _portalCatLabel((f._path || [])[0]),
-        _brand:      (f._path || [])[1] || '',
+        _tag:      t ? t.key : 'other',
+        _tagLbl:   t ? t.label : 'Other',
+        _catFolder: (f._path || [])[0] || '',
+        _cat:      _libCatLabel(key, (f._path || [])[0]),
+        _sub:      (f._path || [])[1] || '',
       });
     });
-    PORTAL.loaded = true;
-    renderPortalIndex();
+    LIB[key].loaded = true;
+    renderLibrary(key);
   } catch (e) {
     const msg = e.message === 'NOT_FOUND'
-      ? 'The Product Portal site or its library could not be found — check the URL in config.js and that you have access to the site.'
-      : `Couldn't read the Product Portal: ${e.message}`;
+      ? 'That SharePoint site or library could not be found — check the URL in config.js and that you have access to it.'
+      : `Couldn't read the library: ${e.message}`;
     host.innerHTML = `<p class="sp-error">${escHtml(msg)}</p>`;
   }
 }
 
-function renderPortalIndex() {
-  const host = document.getElementById('pp-index');
-  if (!host) return;
+function renderLibrary(key) {
+  const cfg   = _libCfg(key);
+  const host  = document.getElementById(cfg.hostId);
+  const state = LIB[key];
+  if (!host || !state) return;
 
-  const cfg   = HUB_CONFIG.productPortal || {};
-  const files = PORTAL.files;
-
+  const files = state.files;
   if (!files.length) {
-    host.innerHTML = '<p class="prose dim">No documents found in the Product Portal library.</p>';
+    host.innerHTML = '<p class="prose dim">Nothing in this library yet.</p>';
     return;
   }
 
-  // Product tiles — only the types that actually have documents.
-  const types = (cfg.productTypes || []).map(t => ({
+  const tiles = (cfg.tags || []).map(t => ({
     key: t.key, label: t.label,
-    n: files.filter(f => f._product === t.key).length,
+    n: files.filter(f => f._tag === t.key).length,
   })).filter(t => t.n);
-  const otherN = files.filter(f => f._product === 'other').length;
-  if (otherN) types.push({ key: 'other', label: 'Other', n: otherN });
+  const otherN = files.filter(f => f._tag === 'other').length;
+  if (tiles.length && otherN) tiles.push({ key: 'other', label: 'Other', n: otherN });
 
-  // Document-type chips in config order, then anything unexpected.
   const catOrder = (cfg.categories || []).map(c => c.label);
   const cats = [...new Set(files.map(f => f._cat))].sort((a, b) => {
     const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
@@ -1723,153 +1919,183 @@ function renderPortalIndex() {
     .slice(0, cfg.recentCount || 6);
 
   host.innerHTML = `
-    <div class="pp-search-wrap">
-      <svg class="pp-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="pp-search" id="pp-q" type="search" autocomplete="off"
-             placeholder="Search every certificate and declaration…"
-             oninput="portalSearch(this.value)">
-      <span class="pp-search-count">${files.length} documents</span>
+    <div class="lib-search-wrap">
+      <svg class="lib-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="lib-search" id="lib-q-${escAttr(key)}" type="search" autocomplete="off"
+             placeholder="${escAttr(cfg.searchPlaceholder || 'Search everything here…')}"
+             oninput="libSearch('${escAttr(key)}',this.value)">
+      <span class="lib-search-count">${files.length} files</span>
     </div>
 
-    <div class="pp-sec-head"><h2 class="pp-sec-title">By product</h2>
-      <button class="pp-reset" onclick="portalReset()">Reset</button></div>
-    <div class="pp-tiles" id="pp-tiles">
-      ${types.map((t, i) => `
-        <button class="pp-tile" style="--i:${i}" data-key="${escAttr(t.key)}" onclick="portalPick('${escAttr(t.key)}',this)">
-          <span class="pp-tile-n">${t.n}</span>
-          <span class="pp-tile-l">${escHtml(t.label)}</span>
+    ${tiles.length ? `
+    <div class="lib-sec-head"><h2 class="lib-sec-title">${escHtml(cfg.tagsLabel || 'By product')}</h2>
+      <button class="lib-reset" onclick="libReset('${escAttr(key)}')">Reset</button></div>
+    <div class="lib-tiles" id="lib-tiles-${escAttr(key)}">
+      ${tiles.map((t, i) => `
+        <button class="lib-tile" style="--i:${i}" onclick="libPick('${escAttr(key)}','${escAttr(t.key)}',this)">
+          <span class="lib-tile-n">${t.n}</span>
+          <span class="lib-tile-l">${escHtml(t.label)}</span>
         </button>`).join('')}
-    </div>
+    </div>` : ''}
 
-    <div class="pp-sec-head"><h2 class="pp-sec-title">By document type</h2></div>
-    <div class="pp-cats" id="pp-cats">
-      <button class="pp-cat active" onclick="portalCat('all',this)">All<b>${files.length}</b></button>
-      ${cats.map(c => `<button class="pp-cat" onclick="portalCat('${escAttr(c.label)}',this)">${escHtml(c.label)}<b>${c.n}</b></button>`).join('')}
+    <div class="lib-sec-head"><h2 class="lib-sec-title">${escHtml(cfg.catsLabel || 'By type')}</h2>
+      ${tiles.length ? '' : `<button class="lib-reset" onclick="libReset('${escAttr(key)}')">Reset</button>`}</div>
+    <div class="lib-cats" id="lib-cats-${escAttr(key)}">
+      <button class="lib-cat active" onclick="libCat('${escAttr(key)}','all',this)">All<b>${files.length}</b></button>
+      ${cats.map(c => `<button class="lib-cat" onclick="libCat('${escAttr(key)}','${escAttr(c.label)}',this)">${escHtml(c.label)}<b>${c.n}</b></button>`).join('')}
     </div>
 
     ${recent.length ? `
-    <div class="pp-recent" id="pp-recent">
-      <div class="pp-recent-lbl">Recently updated</div>
-      <div class="pp-recent-row">
-        ${recent.map(f => `
-          <button class="pp-recent-card" onclick="portalOpen('${escAttr(f.id)}')">
-            <span class="pp-recent-name">${escHtml(f.name.replace(/\.[a-z0-9]+$/i, ''))}</span>
-            <span class="pp-recent-meta">${escHtml(f._cat)} · ${escHtml(fmtSpDate(f.lastModifiedDateTime))}</span>
-          </button>`).join('')}
+    <div class="lib-recent">
+      <div class="lib-recent-lbl">Recently updated</div>
+      <div class="lib-recent-row">
+        ${recent.map(f => {
+          const k = regDoc(f);
+          return `<button class="lib-recent-card" onclick="openRegDoc('${k}')">
+            <span class="lib-recent-name">${escHtml(String(f.name).replace(/\.[a-z0-9]+$/i, ''))}</span>
+            <span class="lib-recent-meta">${escHtml(f._cat)} · ${escHtml(fmtSpDate(f.lastModifiedDateTime))}</span>
+          </button>`;
+        }).join('')}
       </div>
     </div>` : ''}
 
-    <div class="pp-results" id="pp-results"></div>`;
+    <div class="lib-results" id="lib-results-${escAttr(key)}"></div>`;
 
-  renderPortalResults();
+  renderLibraryResults(key);
 }
 
-function renderPortalResults() {
-  const box = document.getElementById('pp-results');
-  if (!box) return;
+function renderLibraryResults(key) {
+  const cfg   = _libCfg(key);
+  const state = LIB[key];
+  const box   = document.getElementById('lib-results-' + key);
+  if (!box || !state) return;
 
-  const q = PORTAL.q.trim().toLowerCase();
-  let rows = PORTAL.files.filter(f =>
-    (PORTAL.product  === 'all' || f._product === PORTAL.product) &&
-    (PORTAL.category === 'all' || f._cat === PORTAL.category) &&
+  const q = state.q.trim().toLowerCase();
+  const rows = state.files.filter(f =>
+    (state.tag === 'all' || f._tag === state.tag) &&
+    (state.cat === 'all' || f._cat === state.cat) &&
     (!q || (f.name + ' ' + (f._path || []).join(' ')).toLowerCase().includes(q)));
 
-  const filtered = PORTAL.product !== 'all' || PORTAL.category !== 'all' || q;
+  const filtered = state.tag !== 'all' || state.cat !== 'all' || !!q;
 
   if (!rows.length) {
     box.innerHTML = `<div class="px-empty"><h3>Nothing matches</h3>
-      <p>No documents for that combination. <button class="pp-reset inline" onclick="portalReset()">Clear the filters</button> and try again.</p></div>`;
+      <p>No files for that combination.
+      <button class="lib-reset inline" onclick="libReset('${escAttr(key)}')">Clear the filters</button> and try again.</p></div>`;
     return;
   }
 
-  // Group by document type so a product's paperwork arrives sorted the
-  // way you'd hand it to a customer.
   const groups = {};
   rows.forEach(f => { (groups[f._cat] = groups[f._cat] || []).push(f); });
 
-  const catOrder = ((HUB_CONFIG.productPortal || {}).categories || []).map(c => c.label);
+  const catOrder = (cfg.categories || []).map(c => c.label);
   const keys = Object.keys(groups).sort((a, b) => {
     const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   });
 
   box.innerHTML = `
-    <div class="pp-results-head">
-      <span>${rows.length} document${rows.length === 1 ? '' : 's'}${filtered ? ' matching' : ''}</span>
-      ${filtered ? '<button class="pp-reset inline" onclick="portalReset()">Clear filters</button>' : ''}
+    <div class="lib-results-head">
+      <span>${rows.length} file${rows.length === 1 ? '' : 's'}${filtered ? ' matching' : ''}</span>
+      ${filtered ? `<button class="lib-reset inline" onclick="libReset('${escAttr(key)}')">Clear filters</button>` : ''}
     </div>
     ${keys.map(k => `
-      <section class="pp-group">
-        <h3 class="pp-group-head">${escHtml(k)}<span>${groups[k].length}</span></h3>
-        <div class="pp-files">
-          ${groups[k].sort((a, b) => String(a.name).localeCompare(String(b.name))).map(f => `
-            <button class="pp-file" onclick="portalOpen('${escAttr(f.id)}')">
-              <span class="pp-file-ico">${escHtml((String(f.name).split('.').pop() || 'FILE').slice(0, 4).toUpperCase())}</span>
-              <span class="pp-file-main">
-                <span class="pp-file-name">${escHtml(f.name.replace(/\.[a-z0-9]+$/i, ''))}</span>
-                <span class="pp-file-meta">${[f._brand, f._productLbl, humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).map(escHtml).join(' · ')}</span>
-              </span>
-              <span class="pp-file-go">Open in hub →</span>
-            </button>`).join('')}
+      <section class="lib-group">
+        <h3 class="lib-group-head">${escHtml(k)}<span>${groups[k].length}</span></h3>
+        <div class="lib-files">
+          ${groups[k]
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+            .map(f => libFileRow(f)).join('')}
         </div>
       </section>`).join('')}`;
 }
 
-function portalPick(key, btn) {
-  PORTAL.product = (PORTAL.product === key) ? 'all' : key;
-  document.querySelectorAll('#pp-tiles .pp-tile')
-    .forEach(b => b.classList.toggle('active', b === btn && PORTAL.product === key));
-  renderPortalResults();
+// One file row — click to read it, plus download and copy-link.
+function libFileRow(f, subLabel) {
+  const k = regDoc(f);
+  const meta = [subLabel || f._sub, f._tagLbl && f._tagLbl !== 'Other' ? f._tagLbl : '',
+                humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)]
+    .filter(Boolean).map(escHtml).join(' · ');
+  return `
+    <div class="lib-file" role="button" tabindex="0"
+         onclick="openRegDoc('${k}')" onkeydown="if(event.key==='Enter')openRegDoc('${k}')">
+      <span class="lib-file-ico">${escHtml((String(f.name).split('.').pop() || 'FILE').slice(0, 4).toUpperCase())}</span>
+      <span class="lib-file-main">
+        <span class="lib-file-name">${escHtml(String(f.name).replace(/\.[a-z0-9]+$/i, ''))}</span>
+        <span class="lib-file-meta">${meta}</span>
+      </span>
+      ${docActions(k)}
+    </div>`;
 }
 
-function portalCat(label, btn) {
-  PORTAL.category = label;
-  document.querySelectorAll('#pp-cats .pp-cat')
+function libPick(key, tag, btn) {
+  const s = LIB[key];
+  if (!s) return;
+  s.tag = (s.tag === tag) ? 'all' : tag;
+  document.querySelectorAll('#lib-tiles-' + key + ' .lib-tile')
+    .forEach(b => b.classList.toggle('active', b === btn && s.tag === tag));
+  renderLibraryResults(key);
+}
+
+function libCat(key, label, btn) {
+  const s = LIB[key];
+  if (!s) return;
+  s.cat = label;
+  document.querySelectorAll('#lib-cats-' + key + ' .lib-cat')
     .forEach(b => b.classList.toggle('active', b === btn));
-  renderPortalResults();
+  renderLibraryResults(key);
 }
 
-function portalSearch(v) {
-  PORTAL.q = v || '';
-  clearTimeout(portalSearch._t);
-  portalSearch._t = setTimeout(renderPortalResults, 140);
+const _libTimers = {};
+function libSearch(key, v) {
+  const s = LIB[key];
+  if (!s) return;
+  s.q = v || '';
+  clearTimeout(_libTimers[key]);
+  _libTimers[key] = setTimeout(() => renderLibraryResults(key), 140);
 }
 
-function portalReset() {
-  PORTAL.product = 'all';
-  PORTAL.category = 'all';
-  PORTAL.q = '';
-  const q = document.getElementById('pp-q');
+function libReset(key) {
+  const s = LIB[key];
+  if (!s) return;
+  s.tag = 'all'; s.cat = 'all'; s.q = '';
+  const q = document.getElementById('lib-q-' + key);
   if (q) q.value = '';
-  document.querySelectorAll('#pp-tiles .pp-tile').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('#pp-cats .pp-cat').forEach((b, i) => b.classList.toggle('active', i === 0));
-  renderPortalResults();
+  document.querySelectorAll('#lib-tiles-' + key + ' .lib-tile').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#lib-cats-' + key + ' .lib-cat').forEach((b, i) => b.classList.toggle('active', i === 0));
+  renderLibraryResults(key);
 }
 
-function portalOpen(id) {
-  const f = PORTAL.files.find(x => x.id === id);
-  if (f) openDocFile(f);
-}
+// ── The two pages that use it ─────────────────────────────────
 
-// "Browse folders" — the original file browser, unchanged, for anyone
-// who wants the SharePoint tree exactly as it is.
-async function togglePortalBrowse(btn) {
-  const idx = document.getElementById('pp-index');
-  const br  = document.getElementById('pp-browser');
+async function loadProductPortal() { return loadLibrary('product'); }
+async function loadResourcesLibrary() { return loadLibrary('resources'); }
+
+// "Browse folders" — the original folder tree, unchanged, for anyone
+// who wants SharePoint's own structure. Works on both pages.
+async function toggleLibraryBrowse(key, btn) {
+  const cfg = _libCfg(key);
+  const idx = document.getElementById(cfg.hostId);
+  const br  = document.getElementById(cfg.browserId);
   if (!idx || !br) return;
+
   const showBrowser = br.style.display === 'none' || !br.style.display;
   br.style.display  = showBrowser ? '' : 'none';
   idx.style.display = showBrowser ? 'none' : '';
-  if (btn) btn.textContent = showBrowser ? 'Back to products' : 'Browse folders';
+  if (btn) btn.textContent = showBrowser ? (cfg.backLabel || 'Back') : 'Browse folders';
 
-  if (showBrowser && !_fbLoaded.product) {
-    _fbLoaded.product = true;
-    await fbInit('product', HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary,
-                 'pp-documents-grid', 'pp-crumbs', 'Product Portal');
+  if (showBrowser && !_fbLoaded[key]) {
+    _fbLoaded[key] = true;
+    const site = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
+    await fbInit(key, site, cfg.library || HUB_CONFIG.documentsLibrary,
+                 cfg.browserGridId, cfg.crumbId, cfg.title || 'Library');
   } else if (showBrowser) {
-    renderBrowser('product');
+    renderBrowser(key);
   }
 }
+
+function togglePortalBrowse(btn)    { return toggleLibraryBrowse('product', btn); }
+function toggleResourcesBrowse(btn) { return toggleLibraryBrowse('resources', btn); }
 
 // ═══ In-hub file browser ═════════════════════════════════════
 // A small, reusable folder browser. Files open in the in-hub preview
@@ -1931,27 +2157,34 @@ function renderBrowser(key) {
   const sorted = [...b.items].sort((a, c) =>
     ((c.folder ? 1 : 0) - (a.folder ? 1 : 0)) || String(a.name).localeCompare(String(c.name)));
 
-  grid.innerHTML = `<div class="asset-grid">${sorted.map(f => {
-    const idx  = b.items.indexOf(f);
-    const icon = fileIcon(f.name, !!f.folder);
-    const meta = [
-      f.folder ? `${f.folder.childCount ?? ''} items`.trim() : humanSize(f.size),
-      fmtSpDate(f.lastModifiedDateTime),
-    ].filter(Boolean).join(' · ');
-    const inner = `
-      <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
-      <div class="asset-info">
-        <div class="asset-name">${escHtml(f.name)}</div>
-        <div class="asset-meta">${escHtml(meta)}</div>
-      </div>
-      <span class="asset-open">${f.folder ? 'Open →' : 'Open in hub →'}</span>`;
+  // Folders drill in; files open in the reader and carry Download and
+  // Copy link, so nothing has to be opened first to be shared.
+  grid.innerHTML = `<div class="lib-files">${sorted.map(f => {
+    const idx = b.items.indexOf(f);
+
     if (f.folder) {
-      return `<div class="asset asset-preview" role="button" tabindex="0" onclick="fbOpenFolder('${key}',${idx})" onkeydown="if(event.key==='Enter')fbOpenFolder('${key}',${idx})">${inner}</div>`;
+      const n = (f.folder && f.folder.childCount) || 0;
+      return `
+        <div class="lib-file folder" role="button" tabindex="0"
+             onclick="fbOpenFolder('${key}',${idx})" onkeydown="if(event.key==='Enter')fbOpenFolder('${key}',${idx})">
+          <span class="lib-file-ico folder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          <span class="lib-file-main">
+            <span class="lib-file-name">${escHtml(f.name)}</span>
+            <span class="lib-file-meta">${n} item${n === 1 ? '' : 's'}</span>
+          </span>
+          <span class="lib-file-go">Open →</span>
+        </div>`;
     }
-    const canPreview = f._driveId && f.id;
-    return canPreview
-      ? `<div class="asset asset-preview" role="button" tabindex="0" onclick="fbPreview('${key}',${idx})" onkeydown="if(event.key==='Enter')fbPreview('${key}',${idx})">${inner}</div>`
-      : `<a class="asset" ${f.webUrl ? `href="${escAttr(safeUrl(f.webUrl))}" target="_blank" rel="noopener"` : ''}>${inner}</a>`;
+
+    if (!(f._driveId && f.id)) {
+      return `<a class="lib-file" ${f.webUrl ? `href="${escAttr(safeUrl(f.webUrl))}" target="_blank" rel="noopener"` : ''}>
+        <span class="lib-file-ico">${escHtml((String(f.name).split('.').pop() || 'FILE').slice(0, 4).toUpperCase())}</span>
+        <span class="lib-file-main"><span class="lib-file-name">${escHtml(f.name)}</span></span>
+      </a>`;
+    }
+    return libFileRow(f);
   }).join('')}</div>`;
 }
 
@@ -2215,15 +2448,7 @@ async function openDetailAsset(blockIdx) {
     _lastAssetFiles = files;
     panel.innerHTML = `
       <p class="cd-blocks-title" style="margin-bottom:10px">${escHtml(block.label)} — ${files.length} files</p>
-      <div class="asset-grid">${files.map((f, idx) => {
-        const icon = fileIcon(f.name, false);
-        const meta = [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' · ');
-        return `<div class="asset asset-preview" role="button" tabindex="0" onclick="openDocFile(_lastAssetFiles[${idx}])" onkeydown="if(event.key==='Enter')openDocFile(_lastAssetFiles[${idx}])">
-          <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
-          <div class="asset-info"><div class="asset-name">${escHtml(f.name)}</div><div class="asset-meta">${escHtml(meta)}</div></div>
-          <span class="asset-open">Open in hub →</span>
-        </div>`;
-      }).join('')}</div>`;
+      <div class="lib-files">${files.map(f => libFileRow(f)).join('')}</div>`;
   } catch (e) {
     panel.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
   }
@@ -2243,12 +2468,21 @@ function _eventYear(name) {
   return m ? parseInt(m[0], 10) : null;
 }
 
-async function loadTradeEvents() {
-  const upWrap   = document.getElementById('ev-upcoming-grid');
-  const pastWrap = document.getElementById('ev-past-grid');
-  if (!upWrap || !pastWrap) return;
+// ═══ Trade, events & training ════════════════════════════════
+//
+// REBUILT 26 Aug 2026 (second round) into the same editorial shape as
+// Launches and Campaigns, and given the training half David asked for:
+// "I think we should add more on the training events and things like
+// that in there."
+//
+// Events still come from the folders in Documents ▸ Events — one
+// folder per event, everything the sales team needs inside it.
+// Training comes from the Training Events list, and staff can now book
+// themselves onto a session in one click.
 
-  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+async function loadTradeEvents() {
+  const host = document.getElementById('ev-index');
+  if (!host) return;
 
   try {
     const drive  = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
@@ -2257,6 +2491,8 @@ async function loadTradeEvents() {
     if (!root) throw new Error(`No "${rootNm}" folder in the document library yet.`);
 
     const kids = (await fetchDriveChildren(drive.id, root.id)).filter(x => x.folder);
+    const thisYear = new Date().getFullYear();
+
     _eventFolders = kids.map(k => ({
       id:    k.id,
       name:  k.name,
@@ -2264,45 +2500,377 @@ async function loadTradeEvents() {
       count: (k.folder && k.folder.childCount) || 0,
       modified: k.lastModifiedDateTime,
       driveId: drive.id,
+    })).map(e => Object.assign(e, {
+      // No year in the name? Treat it as current/ongoing.
+      upcoming: e.year === null || e.year >= thisYear,
     }));
 
-    const thisYear = new Date().getFullYear();
-    // No year in the name? Treat it as current/ongoing.
-    const upcoming = _eventFolders.filter(e => e.year === null || e.year >= thisYear)
+    const upcoming = _eventFolders.filter(e => e.upcoming)
       .sort((a, b) => (a.year || thisYear) - (b.year || thisYear) || String(a.name).localeCompare(String(b.name)));
-    const past = _eventFolders.filter(e => e.year !== null && e.year < thisYear)
+    const past = _eventFolders.filter(e => !e.upcoming)
       .sort((a, b) => b.year - a.year || String(a.name).localeCompare(String(b.name)));
 
-    _set('sp-metric-ev-upcoming', upcoming.length);
-    _set('sp-metric-ev-past',     past.length);
+    if (!_eventFolders.length) {
+      host.innerHTML = `<div class="px-empty">
+        <h3>No events yet</h3>
+        <p>Add a folder for each event under <strong>Documents ▸ Events</strong> on the MarketingHub SharePoint site. Everything inside it — stand plans, artwork, forms — opens here.</p>
+      </div>`;
+      renderTrainingBand();
+      return;
+    }
 
-    const card = (e, isPast) => {
-      const idx = _eventFolders.indexOf(e);
+    const lead = upcoming[0] || past[0];
+    const leadIdx = _eventFolders.indexOf(lead);
+
+    const evCard = (e) => {
+      const i = _eventFolders.indexOf(e);
       return `
-        <div class="ev-card${isPast ? ' past' : ''}" role="button" tabindex="0" onclick="openEventFolder(${idx})" onkeydown="if(event.key==='Enter')openEventFolder(${idx})">
-          <div class="ev-year">${escHtml(e.year ? String(e.year) : 'Ongoing')}</div>
-          <div class="ev-name">${escHtml(e.name)}</div>
-          <div class="ev-meta">${e.count} item${e.count === 1 ? '' : 's'} · Open in hub →</div>
-        </div>`;
+      <article class="px-card" data-tone="${e.upcoming ? 'green' : 'grey'}" style="--i:${i}"
+               role="button" tabindex="0"
+               onclick="openEventFolder(${i})" onkeydown="if(event.key==='Enter')openEventFolder(${i})">
+        <div class="px-card-media" id="px-img-event-${i}">
+          <span class="px-card-initials">${escHtml(_pxInitials(e.name))}</span>
+          <span class="px-badge"><span class="px-badge-dot ${e.upcoming ? 'green' : 'grey'}"></span>${e.upcoming ? 'Upcoming' : 'Previous'}</span>
+        </div>
+        <div class="px-card-body">
+          <div class="px-card-eyebrow">${escHtml(e.year ? String(e.year) : 'Ongoing')}</div>
+          <h3 class="px-card-title">${escHtml(e.name)}</h3>
+          <div class="px-card-meta">${e.count} item${e.count === 1 ? '' : 's'} in the pack</div>
+        </div>
+        <span class="px-card-go">Open <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+      </article>`;
     };
 
-    upWrap.innerHTML = upcoming.length
-      ? upcoming.map(e => card(e, false)).join('')
-      : '<p class="prose dim">No upcoming events yet — add a folder under Documents ▸ Events.</p>';
-    pastWrap.innerHTML = past.length
-      ? past.map(e => card(e, true)).join('')
-      : '<p class="prose dim">Nothing archived yet.</p>';
+    host.innerHTML = `
+      <section class="px-lead">
+        <div class="px-lead-copy">
+          <div class="px-eyebrow">${lead.upcoming ? 'Next up' : 'Most recent'}</div>
+          <h2 class="px-lead-title">${escHtml(lead.name)}</h2>
+          <p class="px-lead-sub">Stand plans, artwork, forms and everything else for this one — opened right here, not in SharePoint.</p>
+          <div class="px-lead-meta">
+            <span class="px-badge"><span class="px-badge-dot ${lead.upcoming ? 'green' : 'grey'}"></span>${lead.upcoming ? 'Upcoming' : 'Previous'}</span>
+            <span class="px-lead-when">${lead.count} item${lead.count === 1 ? '' : 's'} in the pack</span>
+          </div>
+          <button class="px-cta" onclick="openEventFolder(${leadIdx})">
+            Open the event pack
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+        </div>
+        <div class="px-lead-media" id="px-lead-event">
+          <span class="px-lead-initials">${escHtml(_pxInitials(lead.name))}</span>
+        </div>
+      </section>
+
+      <div class="px-rail">
+        <div class="px-chips">
+          <button class="px-chip active" onclick="filterEvents('all',this)">All<b>${_eventFolders.length}</b></button>
+          <button class="px-chip${upcoming.length ? '' : ' empty'}" ${upcoming.length ? '' : 'disabled'} onclick="filterEvents('green',this)"><span class="px-chip-dot green"></span>Upcoming<b>${upcoming.length}</b></button>
+          <button class="px-chip${past.length ? '' : ' empty'}" ${past.length ? '' : 'disabled'} onclick="filterEvents('grey',this)"><span class="px-chip-dot grey"></span>Previous<b>${past.length}</b></button>
+        </div>
+      </div>
+
+      <div class="px-grid" id="px-event-grid" data-filter="all">
+        ${upcoming.concat(past).map(evCard).join('')}
+      </div>
+
+      <section id="ev-training"></section>`;
+
+    // Event artwork, painted in once SharePoint answers.
+    Promise.all(_eventFolders.slice(0, 16).map(async e => {
+      const url = await folderHeroImage(e.driveId, e.id);
+      if (!url) return;
+      const el = document.getElementById('px-img-event-' + _eventFolders.indexOf(e));
+      if (el) { el.style.backgroundImage = `url('${safeCssUrl(url)}')`; el.classList.add('has-img'); }
+      if (e === lead) {
+        const l = document.getElementById('px-lead-event');
+        if (l) { l.style.backgroundImage = `url('${safeCssUrl(url)}')`; l.classList.add('has-img'); }
+      }
+    })).catch(() => {});
+
+    renderTrainingBand();
 
   } catch (e) {
-    _set('sp-metric-ev-upcoming', '–');
-    _set('sp-metric-ev-past', '–');
     const msg = e.message === 'NOT_FOUND'
       ? 'Could not reach the document library — check you have access to the MarketingHub site.'
       : e.message;
-    _renderListError('ev-upcoming-grid', msg);
-    pastWrap.innerHTML = '';
+    host.innerHTML = `<p class="sp-error">${escHtml(msg)}</p>`;
   }
 }
+
+function filterEvents(tone, btn) {
+  const grid = document.getElementById('px-event-grid');
+  if (grid) grid.setAttribute('data-filter', tone);
+  if (btn && btn.parentElement) {
+    btn.parentElement.querySelectorAll('.px-chip').forEach(b => b.classList.toggle('active', b === btn));
+  }
+}
+
+// ── Training sessions, with one-click sign-up ─────────────────
+// Marketing put a session in the "Training Events" list; staff book
+// themselves onto it from here. The booking is written to the
+// "Training Signups" list so marketing can see who's coming, and the
+// same click drops the session into the person's own calendar.
+
+const TRAIN = { sessions: [], signups: [], busy: null, loaded: false };
+
+function _trainMyEmail() {
+  const a = (window.AUTH && window.AUTH.account) || {};
+  return a.username || a.email || '';
+}
+
+function _trainMyName() {
+  const a = (window.AUTH && window.AUTH.account) || {};
+  return a.name || a.username || '';
+}
+
+function _trainSignupList() {
+  return ((HUB_CONFIG.trainingSignup || {}).list) || 'Training Signups';
+}
+
+function _trainMine(session) {
+  const me = _trainMyEmail().toLowerCase();
+  if (!me) return null;
+  return TRAIN.signups.find(r =>
+    String(r.fields.SessionId || '') === String(session.id) &&
+    String(r.fields.Attendee || '').toLowerCase() === me) || null;
+}
+
+function _trainGoing(session) {
+  return TRAIN.signups.filter(r => String(r.fields.SessionId || '') === String(session.id)).length;
+}
+
+async function renderTrainingBand() {
+  const host = document.getElementById('ev-training');
+  if (!host) return;
+
+  host.innerHTML = `<div class="tr-band"><div class="tr-inner">
+    <div class="skeleton sk-line med"></div><div class="skeleton sk-line"></div></div></div>`;
+
+  try {
+    const rows = await _fetchListRows(HUB_CONFIG.training.list, 100);
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+
+    TRAIN.sessions = rows
+      .map(r => Object.assign({ id: r.id }, r.fields || {}))
+      .filter(f => f.TrainingDate && !isNaN(new Date(f.TrainingDate)))
+      .filter(f => new Date(f.EndDate || f.TrainingDate) >= now)
+      .sort((a, b) => String(a.TrainingDate).localeCompare(String(b.TrainingDate)));
+
+    // Who's already booked. Read-only, so it never asks for consent.
+    try {
+      TRAIN.signups = await _fetchListRows(_trainSignupList(), 500);
+    } catch (_) {
+      TRAIN.signups = [];   // list not created yet — sign-up explains
+    }
+    TRAIN.loaded = true;
+  } catch (e) {
+    host.innerHTML = `<div class="tr-band"><div class="tr-inner">
+      <p class="sp-error">Couldn't load training sessions: ${escHtml(e.message)}</p></div></div>`;
+    return;
+  }
+
+  renderTrainingList();
+}
+
+function renderTrainingList() {
+  const host = document.getElementById('ev-training');
+  if (!host) return;
+
+  const head = `
+    <div class="tr-head">
+      <div>
+        <h2 class="tr-title">Training &amp; sessions</h2>
+        <p class="tr-sub">Internal sessions and external courses. Book yourself on and it lands in your calendar.</p>
+      </div>
+      <button class="tr-sub-btn" onclick="subscribeCalendar()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+        Subscribe to all dates
+      </button>
+    </div>`;
+
+  if (!TRAIN.sessions.length) {
+    host.innerHTML = `<div class="tr-band"><div class="tr-inner">${head}
+      <div class="tr-empty">Nothing scheduled at the moment. Sessions marketing add to the
+      <strong>Training Events</strong> list appear here, and on the calendar on the home page.</div>
+    </div></div>`;
+    return;
+  }
+
+  host.innerHTML = `<div class="tr-band"><div class="tr-inner">${head}
+    <div class="tr-list">${TRAIN.sessions.map((s, i) => _trainCard(s, i)).join('')}</div>
+  </div></div>`;
+}
+
+function _trainCard(s, i) {
+  const d = new Date(s.TrainingDate);
+  const day = String(d.getDate());
+  const mon = d.toLocaleDateString('en-GB', { month: 'short' });
+  const kind = /external/i.test(s.TrainingType || '') ? 'external' : 'internal';
+  const mine = _trainMine(s);
+  const going = _trainGoing(s);
+  const busy = TRAIN.busy === s.id;
+
+  const meta = [
+    s.Trainer, s.Location,
+    s.EndDate && s.EndDate !== s.TrainingDate ? 'until ' + fmtSpDate(s.EndDate) : '',
+  ].filter(Boolean).map(escHtml).join(' · ');
+
+  const button = busy
+    ? `<button class="tr-book working" disabled>Saving…</button>`
+    : mine
+      ? `<button class="tr-book booked" onclick="cancelTraining('${escAttr(s.id)}')">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+           You're booked on
+         </button>`
+      : `<button class="tr-book" onclick="signUpTraining('${escAttr(s.id)}')">Book me on</button>`;
+
+  return `
+    <article class="tr-card" style="--i:${i}">
+      <div class="tr-date ${kind}">
+        <span class="d">${escHtml(day)}</span>
+        <span class="m">${escHtml(mon)}</span>
+      </div>
+      <div class="tr-main">
+        <span class="tr-tag ${kind}">${kind === 'external' ? 'External' : 'Internal'}</span>
+        <h3 class="tr-name">${escHtml(s.Title || 'Training session')}</h3>
+        ${meta ? `<div class="tr-meta">${meta}</div>` : ''}
+        ${s.Notes ? `<p class="tr-notes">${escHtml(s.Notes)}</p>` : ''}
+      </div>
+      <div class="tr-act">
+        ${button}
+        <span class="tr-going">${going ? `${going} booked on` : 'Be the first'}</span>
+        ${s.Link ? `<a class="tr-link" href="${escAttr(safeUrl(linkOf(s.Link), '#'))}" target="_blank" rel="noopener">Joining details →</a>` : ''}
+        ${mine ? `<button class="tr-link" onclick="addTrainingToCalendar('${escAttr(s.id)}')">Add to calendar again</button>` : ''}
+      </div>
+    </article>`;
+}
+
+function _trainSession(id) {
+  return TRAIN.sessions.find(s => String(s.id) === String(id));
+}
+
+// One .ics for one session — this is what actually puts it in Outlook.
+function addTrainingToCalendar(id) {
+  const s = _trainSession(id);
+  if (!s) return;
+  const start = _icsDate(s.TrainingDate);
+  const end   = _icsNextDay(s.EndDate || s.TrainingDate);
+  const desc  = [s.Trainer ? 'Trainer: ' + s.Trainer : '', s.Notes || ''].filter(Boolean).join('\\n');
+
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CheckFire//Marketing Hub//EN',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:cf-training-${_icsDate(s.TrainingDate)}-${String(s.id)}@checkfire-hub`,
+    `DTSTAMP:${_icsDate(new Date().toISOString())}T090000Z`,
+    `DTSTART;VALUE=DATE:${start}`,
+    `DTEND;VALUE=DATE:${end}`,
+    `SUMMARY:${_icsEscape(s.Title || 'CheckFire training')}`,
+    s.Location ? `LOCATION:${_icsEscape(s.Location)}` : '',
+    desc ? `DESCRIPTION:${_icsEscape(desc)}` : '',
+    'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+
+  const blob = new Blob([ics], { type: 'text/calendar' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (s.Title || 'training').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 60) + '.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+async function signUpTraining(id) {
+  const s = _trainSession(id);
+  if (!s || TRAIN.busy) return;
+  const me = _trainMyEmail();
+  if (!me) { showToast('Sign in first'); return; }
+
+  TRAIN.busy = s.id;
+  renderTrainingList();
+
+  try {
+    const token = (typeof getWriteToken === 'function') ? await getWriteToken() : null;
+    if (!token) throw new Error('NO_WRITE');
+
+    const siteId = await getSiteId();
+    const list   = _trainSignupList();
+    const url    = `${GRAPH_BASE}/sites/${siteId}/lists/${encodeURIComponent(list)}/items`;
+
+    const base = {
+      Title:     String(s.Title || 'Training').slice(0, 255),
+      SessionId: String(s.id),
+      Attendee:  me,
+    };
+
+    const post = fields => fetch(url, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+
+    // Optional columns first; SharePoint rejects the whole write if a
+    // column is missing, so fall back to the three that must exist.
+    let res = await post(Object.assign({}, base, {
+      AttendeeName: _trainMyName(),
+      SessionDate:  s.TrainingDate,
+    }));
+    if (res.status === 400) res = await post(base);
+
+    if (res.status === 404) throw new Error('NO_LIST');
+    if (!res.ok) throw new Error('SharePoint returned ' + res.status);
+
+    const created = await res.json();
+    TRAIN.signups.push({ id: created.id, fields: created.fields || base });
+
+    addTrainingToCalendar(id);
+    showToast('Booked on — it’s in your calendar');
+  } catch (e) {
+    if (e.message === 'NO_WRITE') {
+      showToast('Needs permission to save your booking — ask IT to approve hub write access');
+    } else if (e.message === 'NO_LIST') {
+      showToast(`The "${_trainSignupList()}" list hasn't been created yet`);
+      addTrainingToCalendar(id);   // at least get it in their calendar
+    } else {
+      showToast('Not saved — ' + e.message);
+    }
+  }
+
+  TRAIN.busy = null;
+  renderTrainingList();
+}
+
+async function cancelTraining(id) {
+  const s = _trainSession(id);
+  if (!s || TRAIN.busy) return;
+  const mine = _trainMine(s);
+  if (!mine) return;
+
+  TRAIN.busy = s.id;
+  renderTrainingList();
+
+  try {
+    const token = (typeof getWriteToken === 'function') ? await getWriteToken() : null;
+    if (!token) throw new Error('NO_WRITE');
+    const siteId = await getSiteId();
+    const list   = _trainSignupList();
+    const res = await fetch(
+      `${GRAPH_BASE}/sites/${siteId}/lists/${encodeURIComponent(list)}/items/${encodeURIComponent(mine.id)}`,
+      { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok && res.status !== 204) throw new Error('SharePoint returned ' + res.status);
+    TRAIN.signups = TRAIN.signups.filter(r => r !== mine);
+    showToast('Booking cancelled');
+  } catch (e) {
+    showToast(e.message === 'NO_WRITE'
+      ? 'Needs permission to change your booking'
+      : 'Not cancelled — ' + e.message);
+  }
+
+  TRAIN.busy = null;
+  renderTrainingList();
+}
+
+// ── Event pack (the drill-down) ───────────────────────────────
 
 function openEventFolder(idx) {
   const ev = _eventFolders[idx];
@@ -2316,6 +2884,7 @@ function openEventFolder(idx) {
   if (title)    title.textContent = ev.name;
   window.scrollTo(0, 0);
 
+  _fbLoaded.events = true;
   fbInit('events', HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary,
          'ev-documents-grid', 'ev-crumbs', ev.name, { rootItemId: ev.id });
 }

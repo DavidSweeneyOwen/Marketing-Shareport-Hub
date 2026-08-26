@@ -141,24 +141,21 @@ HUB_CONFIG.videos = {
     proxyUrl:   'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/videos',
     channelUrl: 'https://www.youtube.com/@CheckFireGroup',
 
-    // KEYLESS FALLBACK — added 26 Aug 2026.
-    // The proxy above still answers
-    //   {"error":"YOUTUBE_API_KEY app setting is not configured."}
-    // so the hub was showing no YouTube videos at all. It no longer has
-    // to wait for that key: every YouTube channel has an "uploads"
-    // playlist whose id is the channel id with UC swapped for UU, and
-    // that playlist embeds with NO API key, NO quota and NO Google
-    // account — and it refreshes itself the moment marketing publish.
+    // 26 Aug 2026, second round. The embedded uploads playlist worked
+    // but CheckFire's web filter blocks the YouTube player inside the
+    // page, so all anyone saw was a dead frame. Embedding is now gone
+    // entirely — the Latest videos box shows the newest upload as a
+    // thumbnail card and LINKS OUT to YouTube, which the filter does
+    // allow.
     //
-    //   channel  UC9EwvNr5cfQJW7GRrqCyphg
-    //   uploads  UU9EwvNr5cfQJW7GRrqCyphg
-    //
-    // The hub prefers the API feed when the proxy answers (real titles
-    // and dates for the hero list) and falls back to the embedded
-    // player when it doesn't. Set the key later and the richer version
-    // starts working on its own — nothing here needs changing.
-    channelId:         'UC9EwvNr5cfQJW7GRrqCyphg',
-    uploadsPlaylistId: 'UU9EwvNr5cfQJW7GRrqCyphg',
+    // Where the newest upload comes from: the new checkfire-ai
+    // Function app reads the channel's public RSS feed. No API key, no
+    // quota, no Google account — see aiProxyUrl below and
+    // checkfire-ai-function/DEPLOY.md. Until that's deployed the box
+    // falls back to a channel card, and the old /api/videos endpoint
+    // on checkfire-jotform is tried first in case its YOUTUBE_API_KEY
+    // ever does get set.
+    channelId: 'UC9EwvNr5cfQJW7GRrqCyphg',
   },
   // Marketing asked (deck, 24 Aug) for the stray WordPress mp4 to come
   // off the home page. Turned off here rather than deleted in code, so
@@ -312,80 +309,142 @@ HUB_CONFIG.landingImages = {
   site: 'marketing',
 };
 
-// ── Product Portal front door ─────────────────────────────────
-// The Product Portal SharePoint site is organised by CERTIFICATION
-// TYPE — DOCs, Kitemark Certificates, Marine Equipment Directive
-// (MED), Marine Equipment Regulations (MER), NTA 8133 — with the
-// product buried in each filename ("...Declaration of Conformity-CO2-
-// AlloySteel.pdf"). Fine for filing, useless if what you actually have
-// is a customer asking "send me the paperwork for the 6kg powder".
+// ── Library front doors (Resources + Product Portal) ──────────
+// Both pages run the same component: read the whole folder tree once,
+// then offer search, a tile row and type chips over it, with Download
+// and Copy link on every row. The raw SharePoint tree stays available
+// behind "Browse folders".
 //
-// So the hub indexes the whole site once, then lets people come at it
-// from either direction: by PRODUCT or by DOCUMENT TYPE, with a search
-// box over every filename. The raw folder browser is still there
-// behind "Browse folders" — nothing is hidden.
-//
-// productTypes: the first pattern that matches a filename wins, so
-// order matters (W3E before the general Water rule, for instance).
+// PRODUCT PORTAL. The site files by CERTIFICATION TYPE — DOCs,
+// Kitemark Certificates, Marine Equipment Directive (MED), Marine
+// Equipment Regulations (MER), NTA 8133 — with the product buried in
+// each filename ("...Declaration of Conformity-CO2-AlloySteel.pdf").
+// Fine for filing, useless when what you have is a customer asking for
+// the paperwork on a 6kg powder. `tags` is what puts the product back:
+// the FIRST pattern that matches a filename wins, so order matters
+// (W3E sits above the general Water rule for exactly that reason).
 // Marketing can add a row here without touching any code.
-HUB_CONFIG.productPortal = {
-  crawlDepth: 3,          // the site is shallow; 3 covers it comfortably
-  maxFiles:   400,
+HUB_CONFIG.libraries = {
 
-  productTypes: [
-    { key:'co2',      label:'CO₂',            match:'co2|carbon dioxide' },
-    { key:'w3e',      label:'Water W3E',      match:'w3e' },
-    { key:'water',    label:'Water',          match:'water|h2o' },
-    { key:'foam',     label:'Foam',           match:'foam|\\bff\\b|afff|f3' },
-    { key:'powder',   label:'Powder',         match:'powder|\\babc\\b|\\bbc\\b' },
-    { key:'wetchem',  label:'Wet chemical',   match:'wetchem|wet chem|wet-chem' },
-    { key:'blanket',  label:'Fire blankets',  match:'blanket' },
-    { key:'lfx',      label:'LFX',            match:'lfx' },
-    { key:'hose',     label:'Hose reels',     match:'hose|en ?671|1866' },
-  ],
+  product: {
+    title: 'Product portal',
+    site: 'product',
+    hostId: 'pp-index',
+    browserId: 'pp-browser',
+    browserGridId: 'pp-documents-grid',
+    crumbId: 'pp-crumbs',
+    backLabel: 'Back to products',
+    searchPlaceholder: 'Search every certificate and declaration…',
+    tagsLabel: 'By product',
+    catsLabel: 'By document type',
+    crawlDepth: 3,
+    maxFiles: 400,
+    recentCount: 6,
+    excludeFolders: [],
 
-  // Friendlier names for the top-level folders, and the order the
-  // document-type chips appear in. Anything not listed keeps its own
-  // folder name and sorts to the end.
-  categories: [
-    { folder:'DOCs',                               label:'Declarations of Conformity' },
-    { folder:'Kitemark Certificates',              label:'Kitemark certificates' },
-    { folder:'Marine Equipment Directive (MED)',   label:'MED' },
-    { folder:'Marine Equipment Regulations (MER)', label:'MER' },
-    { folder:'NTA 8133',                           label:'NTA 8133' },
-  ],
+    tags: [
+      { key:'co2',     label:'CO₂',           match:'co2|carbon dioxide' },
+      { key:'w3e',     label:'Water W3E',     match:'w3e' },
+      { key:'water',   label:'Water',         match:'water|h2o' },
+      { key:'foam',    label:'Foam',          match:'foam|\\bff\\b|afff|f3' },
+      { key:'powder',  label:'Powder',        match:'powder|\\babc\\b|\\bbc\\b' },
+      { key:'wetchem', label:'Wet chemical',  match:'wetchem|wet chem|wet-chem' },
+      { key:'blanket', label:'Fire blankets', match:'blanket' },
+      { key:'lfx',     label:'LFX',           match:'lfx' },
+      { key:'hose',    label:'Hose reels',    match:'hose|en ?671|1866' },
+    ],
 
-  recentCount: 6,
+    categories: [
+      { folder:'DOCs',                               label:'Declarations of Conformity' },
+      { folder:'Kitemark Certificates',              label:'Kitemark certificates' },
+      { folder:'Marine Equipment Directive (MED)',   label:'MED' },
+      { folder:'Marine Equipment Regulations (MER)', label:'MER' },
+      { folder:'NTA 8133',                           label:'NTA 8133' },
+    ],
+  },
+
+  // RESOURCES — the marketing Documents library on MarketingHub.
+  // Campaigns, Launches and Events are excluded because each already
+  // has its own page in the hub; showing them here again just makes
+  // the library look like a filing cabinet. Images for Landing Pages
+  // is plumbing, not a resource.
+  resources: {
+    title: 'Marketing library',
+    site: 'marketing',
+    hostId: 'res-index',
+    browserId: 'res-browser',
+    browserGridId: 'sp-documents-grid',
+    crumbId: 'docs-crumbs',
+    backLabel: 'Back to the library',
+    searchPlaceholder: 'Search presentations, artwork, guidelines…',
+    tagsLabel: 'By kind',
+    catsLabel: 'By folder',
+    crawlDepth: 3,
+    maxFiles: 400,
+    recentCount: 6,
+    excludeFolders: ['Campaigns', 'Launches', 'Events', 'Images for Landing Pages'],
+
+    // Grouped by what the file IS, since a marketing library is mixed
+    // media rather than one product line.
+    tags: [
+      // Brand sits FIRST on purpose: "CheckFire Brand Guidelines.pdf"
+      // is more usefully filed under Brand than under Documents, and
+      // the first pattern that matches wins.
+      { key:'brand',  label:'Brand & guidelines', match:'brand|guideline|styleguide|style guide|logo|toolkit' },
+      { key:'deck',   label:'Presentations', match:'\\.pptx?$|deck|presentation' },
+      { key:'doc',    label:'Documents',     match:'\\.(docx?|pdf|rtf)$' },
+      { key:'sheet',  label:'Spreadsheets',  match:'\\.(xlsx?|xlsm|csv)$' },
+      { key:'image',  label:'Artwork',       match:'\\.(png|jpe?g|gif|webp|svg|ai|eps|psd|indd)$' },
+      { key:'video',  label:'Video',         match:'\\.(mp4|mov|webm|m4v)$' },
+    ],
+
+    // No fixed list — folder names become the categories as marketing
+    // create them, which is what Jess asked for.
+    categories: [],
+  },
+
 };
 
 // ── Ember — the CheckFire AI assistant ────────────────────────
 // Ember lives in a slide-over panel on every page of the hub.
 //
-// TWO MODES, and it picks whichever is available:
+// THREE MODES, and it uses the best one available:
 //
-// 1. COPILOT STUDIO (the real Ember). Build the agent in Copilot
-//    Studio, point its knowledge at the MarketingHub, Product Portal
-//    and Media Portal sites, publish it to a custom website, then
-//    paste the embed URL below. Copilot Studio honours each person's
-//    own SharePoint permissions, so nobody sees a document they
-//    couldn't already open, and there is no API key to leak.
-//    Step-by-step in EMBER-COPILOT-STUDIO-SETUP.md.
+// 1. CLAUDE (aiProxyUrl set) — a real conversation. The RETRIEVAL
+//    happens in the browser, under the signed-in user's own Microsoft
+//    token: Ember searches the three SharePoint sites, reads the most
+//    relevant documents, and sends only those extracts plus the
+//    question to the proxy. The proxy holds the Anthropic key and
+//    talks to Claude. Nothing is ever indexed on a server, and Ember
+//    can only ever see documents the person asking could already open.
 //
-// 2. SEARCH MODE (what runs until then). Ember searches all three
-//    SharePoint sites through Graph and answers with the documents
-//    themselves, opened in-hub. No AI, no cost, and genuinely the
-//    fastest way to find a certificate — so the panel is worth
-//    shipping before the agent exists.
+// 2. COPILOT STUDIO (copilotEmbedUrl set) — Microsoft's agent, embedded.
+//    See EMBER-COPILOT-STUDIO-SETUP.md.
+//
+// 3. SEARCH (neither set) — no AI: Ember searches and hands back the
+//    documents themselves. Costs nothing and still beats hunting
+//    through SharePoint.
 HUB_CONFIG.ember = {
   enabled: true,
   name: 'Ember',
-  tagline: 'CheckFire’s assistant',
+  tagline: 'CheckFire\u2019s assistant',
 
-  // Paste the Copilot Studio "custom website" embed URL here to switch
-  // Ember from search mode to the real agent. Leave '' for search mode.
+  // The checkfire-ai Function app. Set this and Ember becomes a real
+  // conversation. Deploy guide: checkfire-ai-function/DEPLOY.md.
+  // Example: 'https://checkfire-ai-xxxx.uksouth-01.azurewebsites.net/api'
+  aiProxyUrl: '',
+
+  // Alternative brain — a Copilot Studio agent published to a custom
+  // website. If BOTH are set, Claude wins; clear aiProxyUrl to switch.
   copilotEmbedUrl: '',
 
-  // Sites Ember searches in search mode, in the order results group.
+  // How much document text Ember reads before answering. Higher = better
+  // answers and a slightly bigger bill; 8 documents at 6k characters is
+  // a sensible balance for certificates and datasheets.
+  maxDocs: 8,
+  maxCharsPerDoc: 6000,
+
+  // Sites Ember searches, in the order results group.
   searchSites: [
     { key:'marketing', label:'Marketing Hub',  url:'https://checkfireltd.sharepoint.com/sites/MarketingHub' },
     { key:'product',   label:'Product Portal', url:'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal' },
@@ -394,9 +453,31 @@ HUB_CONFIG.ember = {
 
   // Shown as tap-to-run examples on the empty panel.
   suggestions: [
-    'Kitemark certificate for fire blankets',
-    'Declaration of conformity CO2',
-    'MED certificate LFX',
-    'Brand guidelines',
+    'Which extinguisher for a commercial kitchen?',
+    'Do we have a Kitemark certificate for fire blankets?',
+    'What changed in the latest powder declaration?',
+    'Where are the brand guidelines?',
   ],
+};
+
+// ── Training sign-up ──────────────────────────────────────────
+// Marketing put a session in the "Training Events" list; staff click
+// once in the hub to book onto it. The booking is written to a second
+// list so marketing can see who is coming, and the same click drops
+// the session into the person's own Outlook calendar.
+//
+// LIST "Training Signups" on MarketingHub — columns:
+//   Title        (single line)  — the session title, copied across
+//   SessionId    (single line)  — the Training Events item id
+//   Attendee     (single line)  — the person's email
+//   AttendeeName (single line, optional)
+//   SessionDate  (date, optional)
+//
+// Writing needs the delegated Microsoft Graph scope
+// Sites.ReadWrite.All. The hub stays read-only until someone actually
+// books, then asks for the extra scope once — the same pattern the
+// poll uses. Without it the button explains rather than failing.
+HUB_CONFIG.trainingSignup = {
+  list: 'Training Signups',
+  enabled: true,
 };

@@ -47,20 +47,96 @@
     .cm-text{font-size:14px;line-height:1.5;color:#1A1A1A;white-space:pre-wrap;word-wrap:break-word}
     .cm-date{font-size:11px;color:#AAA;margin-top:8px}
 
-    /* ── In-hub document viewer modal ─────────────────────── */
-    .doc-overlay{position:fixed;inset:0;background:rgba(10,10,10,.6);z-index:9996;display:flex;align-items:center;justify-content:center;padding:24px}
-    .doc-overlay.hidden{display:none}
-    .doc-modal{background:#fff;border-radius:14px;width:min(1100px,96vw);height:min(88vh,900px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-    .doc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #ECECEC}
-    .doc-head-title{font-size:14px;font-weight:700;color:#0A0A0A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .doc-head-actions{display:flex;align-items:center;gap:14px;flex:0 0 auto}
-    .doc-sp{font-size:12px;font-weight:600;color:#0078D4;text-decoration:none}
-    .doc-close{background:none;border:none;cursor:pointer;color:#666;display:flex;padding:4px}
-    .doc-body{position:relative;flex:1;background:#F4F4F4}
-    #doc-frame{width:100%;height:100%;border:0}
-    .doc-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px}
-    .doc-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#555;font-size:14px;padding:24px}
-    .doc-fallback a{color:#0078D4;font-weight:600}
+    /* ── The reader ────────────────────────────────────────
+       Was a SharePoint preview iframe with SharePoint's chrome around
+       it. Now the file renders on our own origin off a blob: URL, so a
+       PDF opens in the browser's own PDF viewer and an image is just
+       an image — the way a document opens on any normal website. */
+    .rdr{
+      position:fixed;inset:0;z-index:9996;background:rgba(12,10,9,.72);
+      backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;
+      padding:28px;animation:rdr-in .18s ease both;
+    }
+    .rdr.hidden{display:none}
+    @keyframes rdr-in{from{opacity:0}to{opacity:1}}
+    .rdr-sheet{
+      background:#fff;border-radius:16px;width:min(1180px,96vw);height:min(92vh,1000px);
+      display:flex;flex-direction:column;overflow:hidden;
+      box-shadow:0 30px 80px rgba(0,0,0,.42);
+      animation:rdr-up .28s cubic-bezier(.22,1,.36,1) both;
+    }
+    @keyframes rdr-up{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+    .rdr-bar{
+      display:flex;align-items:center;justify-content:space-between;gap:18px;
+      padding:12px 14px 12px 16px;border-bottom:1px solid #ECE8E2;background:#fff;flex:0 0 auto;
+    }
+    .rdr-id{display:flex;align-items:center;gap:12px;min-width:0}
+    .rdr-type{
+      flex:0 0 auto;font-size:9.5px;font-weight:800;letter-spacing:.04em;color:#8B8378;
+      background:#F7F5F2;border:1px solid #E3DDD4;border-radius:8px;padding:7px 8px;
+    }
+    .rdr-titles{display:flex;flex-direction:column;min-width:0;gap:2px}
+    .rdr-name{
+      font-size:14px;font-weight:700;color:#12100E;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .rdr-sub{font-size:11.5px;color:#9A938A}
+    .rdr-acts{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+    .rdr-btn{
+      display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:12.5px;font-weight:700;
+      color:#3D3831;background:#fff;border:1px solid #E5E5E7;border-radius:99px;
+      padding:8px 14px;cursor:pointer;transition:border-color .15s,color .15s,background .15s;
+    }
+    .rdr-btn:hover{border-color:#D1242B;color:#D1242B;background:#FDF6F6}
+    .rdr-close{
+      background:none;border:none;cursor:pointer;color:#8B8378;display:flex;padding:6px;
+      border-radius:8px;margin-left:4px;
+    }
+    .rdr-close:hover{color:#12100E;background:#F2F0EC}
+    .rdr-stage{flex:1;background:#3A3733;position:relative;overflow:auto}
+    .rdr-frame{width:100%;height:100%;border:0;display:block;background:#3A3733}
+    .rdr-centre{
+      min-height:100%;display:flex;align-items:center;justify-content:center;padding:26px;
+    }
+    .rdr-img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+    .rdr-video{max-width:100%;max-height:100%;border-radius:8px;background:#000}
+    .rdr-audio{width:min(560px,100%)}
+    .rdr-text{
+      margin:0;padding:28px 32px;background:#fff;min-height:100%;
+      font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;color:#25211C;
+      white-space:pre-wrap;word-break:break-word;
+    }
+    .rdr-wait{
+      position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:14px;color:#D6D0C8;font-size:14px;text-align:center;padding:28px;
+    }
+    .rdr-alt{
+      display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:13px;font-weight:700;
+      color:#fff;background:#D1242B;border:none;border-radius:99px;padding:10px 18px;
+      cursor:pointer;text-decoration:none;
+    }
+    .rdr-alt:hover{background:#A81A20}
+    .rdr-spin{
+      width:22px;height:22px;border-radius:50%;
+      border:2px solid rgba(255,255,255,.2);border-top-color:#D1242B;
+      animation:rdr-spin .8s linear infinite;
+    }
+    @keyframes rdr-spin{to{transform:rotate(360deg)}}
+    @media(max-width:640px){
+      .rdr{padding:0}
+      .rdr-sheet{width:100vw;height:100vh;border-radius:0}
+      .rdr-btn span,.rdr-btn{font-size:0;padding:9px 11px;gap:0}
+      .rdr-btn svg{font-size:initial}
+    }
+
+    /* Download / copy-link buttons on every file row in the hub. */
+    .doc-acts{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
+    .doc-act{
+      background:none;border:none;cursor:pointer;color:#B4ADA2;padding:6px;
+      border-radius:8px;display:flex;line-height:0;transition:color .14s,background .14s;
+    }
+    .doc-act:hover{color:#D1242B;background:#FDF0F0}
+
     .asset-preview{cursor:pointer}
     .asset-open{margin-left:auto;font-size:11px;font-weight:600;color:#D1242B;white-space:nowrap}
 
@@ -751,6 +827,19 @@
     }
     .ember-jump:hover{background:#A81A20}
 
+
+    /* Conversational Ember — the answer is prose now, not a list of
+       hits, so it needs the small bits of typography prose wants. */
+    .ember-bubble strong{font-weight:800}
+    .ember-bubble code{
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+      background:#F2F0EC;border-radius:5px;padding:1px 5px;
+    }
+    .ember-ul{margin:0 0 9px;padding-left:20px;list-style:disc}
+    ol.ember-ul{list-style:decimal}
+    .ember-ul li{margin-bottom:5px;line-height:1.5}
+    .ember-ul li:last-child{margin-bottom:0}
+    .ember-status{font-size:11.5px;color:#9A938A;margin-left:9px}
     .ember-dots{display:inline-flex;gap:4px;padding:2px 0}
     .ember-dots i{
       width:6px;height:6px;border-radius:50%;background:#C9C2B8;
@@ -779,79 +868,156 @@
       .ember-panel{right:10px;left:10px;bottom:10px;width:auto;height:min(78vh,620px)}
     }
 
-    /* ══ CHECKFIRE ON YOUTUBE (home) ═══════════════════════════ */
-    .yt-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:20px;align-items:stretch}
-    @media(max-width:900px){.yt-grid{grid-template-columns:1fr}}
-    .yt-stage{
-      background:#0A0A0A;border-radius:16px;overflow:hidden;aspect-ratio:16/9;
-      border:1px solid #E5E5E5;
+    /* ══ LATEST VIDEOS (home hero box) ═════════════════════════
+       No embedded player any more — CheckFire's web filter blocks it,
+       so all anyone saw was a dead frame. The newest upload is a
+       thumbnail card that links out to YouTube instead. */
+    .vlead{
+      display:block;text-decoration:none;color:inherit;margin-bottom:10px;
     }
-    .yt-player{width:100%;height:100%;border:0;display:block}
-    .yt-side{display:flex;flex-direction:column;gap:10px;min-width:0}
-    .yt-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto}
-    .yt-row{
-      display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;
-      text-decoration:none;color:inherit;transition:background .15s;
+    .vlead-thumb{
+      display:block;position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;
+      background:linear-gradient(135deg,#241012,#0A0A0A);
+      overflow:hidden;margin-bottom:9px;
     }
-    .yt-row:hover{background:#FAFAFA}
-    .yt-row-play{
-      flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:#D1242B;color:#fff;
-      display:flex;align-items:center;justify-content:center;font-size:11px;
+    /* The gradient shows through if a thumbnail is blocked or missing. */
+    .vthumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+    .vlead-play{
+      position:absolute;inset:0;margin:auto;width:44px;height:44px;border-radius:50%;
+      background:rgba(209,36,43,.94);color:#fff;
+      display:flex;align-items:center;justify-content:center;padding-left:3px;
+      box-shadow:0 6px 20px rgba(0,0,0,.4);transition:transform .18s;
     }
-    .yt-row-main{min-width:0;display:flex;flex-direction:column;gap:2px}
-    .yt-row-title{
-      font-size:12.5px;font-weight:700;line-height:1.35;color:#1A1A1A;
+    .vlead:hover .vlead-play{transform:scale(1.09)}
+    .vlead-badge{
+      position:absolute;left:9px;top:9px;font-size:9.5px;font-weight:800;
+      text-transform:uppercase;letter-spacing:.08em;color:#fff;background:#D1242B;
+      padding:3px 8px;border-radius:99px;
+    }
+    .vlead-title{
+      display:block;font-size:13px;font-weight:700;line-height:1.35;color:#1A1713;
       overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
     }
-    .yt-row-date{font-size:11px;color:#9A938A}
-    /* Deliberately NOT flex:1 — stretched to the height of the player
-       it became a tall empty box. It sizes to its text and the button
-       sits under it. */
-    .yt-blurb{
-      background:#FBFAF9;border:1px solid var(--line-2);border-radius:14px;padding:16px;
-    }
-    .yt-blurb p{font-size:13px;line-height:1.6;color:#5C554C;margin:0 0 10px}
-    .yt-blurb-dim{color:#9A938A !important;font-size:11.5px !important;margin:0 !important}
-    .yt-cta{
-      display:inline-flex;align-items:center;justify-content:center;gap:8px;
-      font-size:12.5px;font-weight:700;color:#fff;background:#D1242B;
-      border-radius:10px;padding:11px;text-decoration:none;transition:background .15s;
-    }
-    .yt-cta:hover{background:#A81A20}
+    .vlead:hover .vlead-title{color:#D1242B}
+    .vlead-meta{display:block;font-size:11px;color:#9A938A;margin-top:3px}
+    .vrest{border-top:1px solid #F0EEEA;margin-bottom:4px}
+    .hbox-vid-thumb{position:relative;overflow:hidden;padding:0}
 
-    /* ══ PRODUCT PORTAL front door ═════════════════════════════
-       The site files by certification type and hides the product in
-       the filename. This gives people the other way in. */
-    .pp-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:34px}
-    .pp-search-ico{position:absolute;left:18px;color:#9A938A;pointer-events:none}
-    .pp-search{
+    /* ══ TRAINING & SESSIONS (Trade & events) ══════════════════
+       David: "if Marketing put a training session in place you can
+       click it to be added to the session". One click writes the
+       booking to SharePoint and drops the date into your calendar. */
+    .tr-band{background:var(--px-paper);border-top:1px solid var(--px-rule);padding:52px 0 64px}
+    .tr-inner{max-width:1280px;margin:0 auto;padding:0 32px}
+    .tr-head{
+      display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+      flex-wrap:wrap;margin-bottom:26px;
+    }
+    .tr-title{
+      font-family:'Fraunces',Georgia,serif;font-size:clamp(26px,3vw,34px);font-weight:600;
+      letter-spacing:-.015em;color:var(--px-ink);margin:0 0 6px;
+    }
+    .tr-sub{font-size:14.5px;line-height:1.6;color:#6B645A;margin:0;max-width:52ch}
+    .tr-sub-btn{
+      display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:12.5px;font-weight:700;
+      color:#3D3831;background:#fff;border:1px solid var(--px-rule);border-radius:99px;
+      padding:10px 16px;cursor:pointer;transition:border-color .15s,color .15s;flex:0 0 auto;
+    }
+    .tr-sub-btn:hover{border-color:var(--px-red);color:var(--px-red)}
+
+    .tr-list{display:flex;flex-direction:column;gap:12px}
+    .tr-card{
+      display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:20px;align-items:center;
+      background:#fff;border:1px solid var(--px-rule);border-radius:16px;padding:16px 20px;
+      animation:px-rise .45s cubic-bezier(.22,1,.36,1) both;
+      animation-delay:calc(var(--i,0) * 50ms);
+      transition:border-color .16s,box-shadow .16s;
+    }
+    .tr-card:hover{border-color:#D2CAC0;box-shadow:0 8px 26px rgba(18,16,14,.06)}
+    @media(max-width:760px){
+      .tr-card{grid-template-columns:auto minmax(0,1fr);row-gap:14px}
+      .tr-act{grid-column:1/-1;align-items:flex-start}
+    }
+    .tr-date{
+      flex:0 0 auto;width:62px;text-align:center;border-radius:12px;padding:11px 0;
+      background:var(--px-ink);color:#fff;
+    }
+    .tr-date.external{background:#0A66C2}
+    .tr-date .d{display:block;font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:600;line-height:1}
+    .tr-date .m{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;margin-top:3px;opacity:.75}
+    .tr-main{min-width:0}
+    .tr-tag{
+      display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.09em;padding:3px 9px;border-radius:99px;margin-bottom:7px;
+    }
+    .tr-tag.internal{background:#E8F4EC;color:#1f7a34}
+    .tr-tag.external{background:#EAF3FB;color:#0A66C2}
+    .tr-name{
+      font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;line-height:1.25;
+      color:var(--px-ink);margin:0 0 5px;
+    }
+    .tr-meta{font-size:12.5px;color:#8B8378}
+    .tr-notes{font-size:13px;line-height:1.55;color:#5C554C;margin:8px 0 0;max-width:64ch}
+    .tr-act{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
+    .tr-book{
+      display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:13px;font-weight:700;
+      color:#fff;background:var(--px-red);border:none;border-radius:99px;padding:11px 20px;
+      cursor:pointer;white-space:nowrap;transition:background .15s,transform .15s;
+    }
+    .tr-book:hover{background:#A81A20;transform:translateY(-1px)}
+    .tr-book.booked{background:#1f7a34}
+    .tr-book.booked:hover{background:#A81A20}
+    .tr-book.working{background:#B4ADA2;cursor:default}
+    .tr-going{font-size:11.5px;color:#9A938A}
+    .tr-link{
+      font:inherit;font-size:12px;font-weight:700;color:var(--px-red);
+      background:none;border:none;padding:0;cursor:pointer;text-decoration:none;
+    }
+    .tr-link:hover{text-decoration:underline}
+    .tr-empty{
+      font-size:14px;line-height:1.6;color:#6B645A;background:#fff;
+      border:1px dashed var(--px-rule);border-radius:16px;padding:26px;
+    }
+
+    /* ══ LIBRARY FRONT DOORS (Resources + Product Portal) ══════
+       One component, two pages, so both read the same way. Download
+       and Copy link sit on every row — "everything in all tabs needs
+       to be downloadable and shareable". */
+    .lib-boot{padding:8px 0 40px}
+    .lib-page-title{
+      font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;
+      letter-spacing:-.015em;color:var(--px-ink);margin:0 0 14px;
+    }
+    .lib-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:34px}
+    .lib-search-ico{position:absolute;left:18px;color:#9A938A;pointer-events:none}
+    .lib-search{
       width:100%;font:inherit;font-size:16px;color:var(--px-ink);
       background:var(--px-paper);border:1px solid var(--px-rule);border-radius:14px;
-      padding:16px 130px 16px 50px;
+      padding:16px 120px 16px 50px;
     }
-    .pp-search:focus{outline:none;border-color:var(--px-red);background:#fff;box-shadow:0 0 0 4px rgba(209,36,43,.07)}
-    .pp-search-count{
+    .lib-search:focus{outline:none;border-color:var(--px-red);background:#fff;box-shadow:0 0 0 4px rgba(209,36,43,.07)}
+    .lib-search-count{
       position:absolute;right:16px;font-size:11.5px;font-weight:700;color:#9A938A;
       text-transform:uppercase;letter-spacing:.06em;pointer-events:none;
     }
-    @media(max-width:600px){.pp-search{padding-right:20px}.pp-search-count{display:none}}
+    @media(max-width:600px){.lib-search{padding-right:20px}.lib-search-count{display:none}}
 
-    .pp-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:0 0 14px}
-    .pp-sec-title{
+    .lib-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:0 0 14px}
+    .lib-sec-title{
       font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;
       color:#9A938A;margin:0;
     }
-    .pp-reset{
+    .lib-reset{
       font:inherit;font-size:12px;font-weight:700;color:var(--px-red);
       background:none;border:none;cursor:pointer;padding:0;
     }
-    .pp-reset:hover{text-decoration:underline}
-    .pp-reset.inline{margin-left:8px}
+    .lib-reset:hover{text-decoration:underline}
+    .lib-reset.inline{margin-left:8px}
 
-    .pp-tiles{
-      display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:34px;
+    .lib-tiles{
+      display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:34px;
     }
-    .pp-tile{
+    .lib-tile{
       display:flex;flex-direction:column;align-items:flex-start;gap:6px;font:inherit;
       background:#fff;border:1px solid var(--line);border-radius:14px;
       padding:18px 16px;cursor:pointer;text-align:left;
@@ -859,87 +1025,89 @@
       animation:px-rise .45s cubic-bezier(.22,1,.36,1) both;
       animation-delay:calc(var(--i,0) * 40ms);
     }
-    .pp-tile:hover{border-color:#C9C2B8;transform:translateY(-2px);box-shadow:0 10px 26px rgba(18,16,14,.07)}
-    .pp-tile.active{background:var(--px-ink);border-color:var(--px-ink)}
-    .pp-tile-n{
+    .lib-tile:hover{border-color:#C9C2B8;transform:translateY(-2px);box-shadow:0 10px 26px rgba(18,16,14,.07)}
+    .lib-tile.active{background:var(--px-ink);border-color:var(--px-ink)}
+    .lib-tile-n{
       font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;
       line-height:1;color:var(--px-red);
     }
-    .pp-tile.active .pp-tile-n{color:#fff}
-    .pp-tile-l{font-size:13px;font-weight:700;color:#3D3831}
-    .pp-tile.active .pp-tile-l{color:rgba(255,255,255,.8)}
+    .lib-tile.active .lib-tile-n{color:#fff}
+    .lib-tile-l{font-size:13px;font-weight:700;color:#3D3831}
+    .lib-tile.active .lib-tile-l{color:rgba(255,255,255,.8)}
 
-    .pp-cats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:30px}
-    .pp-cat{
+    .lib-cats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:30px}
+    .lib-cat{
       display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:13px;font-weight:600;
       color:#3D3831;background:#fff;border:1px solid var(--line);border-radius:99px;
       padding:8px 15px;cursor:pointer;transition:background .15s,color .15s,border-color .15s;
     }
-    .pp-cat b{font-size:11px;font-weight:800;color:#9A938A}
-    .pp-cat:hover{border-color:#B9B2A7}
-    .pp-cat.active{background:var(--px-ink);border-color:var(--px-ink);color:#fff}
-    .pp-cat.active b{color:rgba(255,255,255,.55)}
+    .lib-cat b{font-size:11px;font-weight:800;color:#9A938A}
+    .lib-cat:hover{border-color:#B9B2A7}
+    .lib-cat.active{background:var(--px-ink);border-color:var(--px-ink);color:#fff}
+    .lib-cat.active b{color:rgba(255,255,255,.55)}
 
-    .pp-recent{
+    .lib-recent{
       background:var(--px-paper);border:1px solid var(--px-rule);border-radius:16px;
       padding:16px 18px;margin-bottom:34px;
     }
-    .pp-recent-lbl{
+    .lib-recent-lbl{
       font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
       color:#9A938A;margin-bottom:11px;
     }
-    .pp-recent-row{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
-    .pp-recent-card{
+    .lib-recent-row{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+    .lib-recent-card{
       flex:0 0 230px;display:flex;flex-direction:column;gap:5px;text-align:left;font:inherit;
       background:#fff;border:1px solid var(--px-rule);border-radius:11px;
       padding:11px 13px;cursor:pointer;transition:border-color .15s;
     }
-    .pp-recent-card:hover{border-color:var(--px-red)}
-    .pp-recent-name{
+    .lib-recent-card:hover{border-color:var(--px-red)}
+    .lib-recent-name{
       font-size:12.5px;font-weight:700;color:#25211C;line-height:1.35;
       overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
     }
-    .pp-recent-meta{font-size:11px;color:#9A938A}
+    .lib-recent-meta{font-size:11px;color:#9A938A}
 
-    .pp-results-head{
+    .lib-results-head{
       display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
       color:#9A938A;text-transform:uppercase;letter-spacing:.08em;
       padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:22px;
     }
-    .pp-group{margin-bottom:30px}
-    .pp-group-head{
+    .lib-group{margin-bottom:30px}
+    .lib-group-head{
       display:flex;align-items:center;gap:9px;
       font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;
       color:var(--px-ink);margin:0 0 12px;
     }
-    .pp-group-head span{
+    .lib-group-head span{
       font-family:'Manrope',system-ui,sans-serif;font-size:11px;font-weight:800;
       color:#9A938A;background:var(--px-paper);border:1px solid var(--px-rule);
       border-radius:99px;padding:2px 8px;
     }
-    .pp-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
-    .pp-file{
+    .lib-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px}
+    .lib-file{
       display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;
       background:#fff;border:1px solid var(--line);border-radius:12px;
-      padding:12px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s;
+      padding:11px 12px 11px 14px;cursor:pointer;text-decoration:none;color:inherit;
+      transition:border-color .15s,box-shadow .15s;
     }
-    .pp-file:hover{border-color:var(--px-red);box-shadow:0 6px 18px rgba(18,16,14,.07)}
-    .pp-file-ico{
+    .lib-file:hover{border-color:var(--px-red);box-shadow:0 6px 18px rgba(18,16,14,.07)}
+    .lib-file-ico{
       flex:0 0 auto;width:38px;height:38px;border-radius:9px;background:var(--px-paper);
       border:1px solid var(--px-rule);display:flex;align-items:center;justify-content:center;
       font-size:9.5px;font-weight:800;color:#8B8378;
     }
-    .pp-file-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
-    .pp-file-name{
+    .lib-file-ico.folder{background:#FDF0F0;border-color:#F3D9D9;color:#D1242B}
+    .lib-file-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+    .lib-file-name{
       font-size:13.5px;font-weight:700;color:#25211C;line-height:1.35;
       overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
     }
-    .pp-file-meta{font-size:11.5px;color:#9A938A}
-    .pp-file-go{
+    .lib-file-meta{font-size:11.5px;color:#9A938A}
+    .lib-file-go{
       flex:0 0 auto;font-size:11px;font-weight:800;color:#C9C2B8;
       text-transform:uppercase;letter-spacing:.05em;
     }
-    .pp-file:hover .pp-file-go{color:var(--px-red)}
+    .lib-file:hover .lib-file-go{color:var(--px-red)}
 
     /* ── Carousel cards with no featured image ──────────────
        WordPress pages rarely have one, so "Updated landing pages" was a
@@ -1174,13 +1342,6 @@
     </div>
   </section>
 
-  <!-- ══ CHECKFIRE ON YOUTUBE ════════════════════════════════
-       Built by renderYouTubeSection() in graph.js. The player is the
-       channel's own uploads playlist, which embeds with no API key
-       and refreshes itself — so this works today rather than waiting
-       on YOUTUBE_API_KEY. ══ -->
-  <section class="wall-section" id="home-youtube" style="display:none"></section>
-
   <!-- ══ LATEST BLOGS (carousel) ═════════════════════════════ -->
   <section class="inh-carousel-section" id="home-blogs-section">
     <div class="inh-section-head">
@@ -1224,7 +1385,6 @@
     <div class="container">
       <div class="ph-head">
         <div>
-          <div class="eyebrow">Marketing Hub · Products</div>
           <h1 class="ph-title">Product launches</h1>
           <p class="ph-sub">Find the latest launches and upcoming NPD here.</p>
         </div>
@@ -1255,7 +1415,6 @@
     <div class="container">
       <div class="ph-head">
         <div>
-          <div class="eyebrow">Marketing Hub · 2026</div>
           <h1 class="ph-title">Campaigns &amp; activations</h1>
           <p class="ph-sub">See the latest and previous campaigns run across our digital platforms.</p>
         </div>
@@ -1275,79 +1434,77 @@
   <section class="container py-lg" id="campaign-detail" style="display:none"></section>
 </main>
 
-<!-- ─── TRADE & EVENTS ───────────────────────────── -->
+<!-- ─── TRADE, EVENTS & TRAINING ─────────────────────────────── -->
 <main id="page-trade" class="page" data-screen-label="04 Trade &amp; Events">
-  <section class="ph">
+  <section class="ph slim">
     <div class="container">
       <div class="ph-head">
         <div>
-          <div class="eyebrow">Marketing Hub &middot; Field</div>
-          <h1 class="ph-title">Trade &amp; events</h1>
-          <p class="ph-sub">Find information about upcoming events.</p>
+          <h1 class="ph-title">Trade, events &amp; training</h1>
+          <p class="ph-sub">Everything for the shows we exhibit at, and every session you can book yourself on to.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="container py-lg" id="events-overview">
-    <div class="section-head tight" style="margin-bottom:12px">
-      <h2 class="section-title small">Upcoming events</h2>
+  <!-- Built by loadTradeEvents() in graph.js: lead spread, filter rail,
+       event cards, then the training band with one-click sign-up. -->
+  <section id="events-overview">
+    <div id="ev-index">
+      <div class="px-boot">
+        <div class="skeleton sk-line med"></div>
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line short"></div>
+      </div>
     </div>
-    <div class="ev-grid" id="ev-upcoming-grid">
-      <div class="skeleton-card" style="height:118px;border-radius:14px"></div>
-      <div class="skeleton-card" style="height:118px;border-radius:14px"></div>
-      <div class="skeleton-card" style="height:118px;border-radius:14px"></div>
-    </div>
-
-    <div class="section-head tight" style="margin:28px 0 12px">
-      <h2 class="section-title small">Previous events</h2>
-    </div>
-    <div class="ev-grid" id="ev-past-grid"></div>
   </section>
 
-  <!-- Event folder browser — opens in-hub when an event is clicked -->
+  <!-- The event pack — opens in-hub when an event is clicked -->
   <section class="container py-lg" id="events-browser" style="display:none">
     <div class="cd-back" role="button" tabindex="0" onclick="closeEventFolder()" onkeydown="if(event.key==='Enter')closeEventFolder()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
       Back to events
     </div>
-    <h2 class="section-title small" id="ev-browser-title">Event</h2>
-    <p class="prose dim mb">Forms, artwork and everything else for this event &mdash; opened right here in the hub.</p>
+    <h2 class="lib-page-title" id="ev-browser-title">Event</h2>
     <nav class="fb-crumbs" id="ev-crumbs" aria-label="Folder path"></nav>
     <div id="ev-documents-grid"></div>
   </section>
 </main>
 
-<!-- ─── TRAINING & INSIGHTS ──────────────────────────────────── -->
+<!-- ─── RESOURCES ────────────────────────────────────────────── -->
 <main id="page-training" class="page" data-screen-label="05 Resources">
-  <section class="ph">
+  <section class="ph slim">
     <div class="container">
       <div class="ph-head">
         <div>
-          <div class="eyebrow">Marketing Hub · Library</div>
           <h1 class="ph-title">Resources &amp; documents</h1>
           <p class="ph-sub">Access all marketing resources and presentations here.</p>
+        </div>
+        <div class="ph-actions">
+          <button class="btn primary" onclick="toggleResourcesBrowse(this)">Browse folders</button>
         </div>
       </div>
     </div>
   </section>
 
   <section class="container py-lg">
-    <!-- Marketing Library — the whole page now, no tabs. -->
-    <div id="ttab-documents" class="ltab-pane active">
-      <nav class="fb-crumbs" id="docs-crumbs" aria-label="Folder path"></nav>
-      <div id="sp-documents-grid">
-        <div class="skeleton sk-line med"></div>
-        <div class="skeleton sk-line"></div>
-        <div class="skeleton sk-line short"></div>
-      </div>
+    <!-- The library front door — the same component the Product Portal
+         runs. Built by loadLibrary('resources') in graph.js. -->
+    <div id="res-index">
+      <div class="skeleton sk-line med"></div>
+      <div class="skeleton sk-line"></div>
+      <div class="skeleton sk-line short"></div>
     </div>
 
-    <!-- Tools & systems — was a tab, now just sits under the library so
-         the page is one simple list of documents plus the links. -->
+    <!-- The raw SharePoint folder tree, for anyone who wants it. -->
+    <div id="res-browser" style="display:none">
+      <nav class="fb-crumbs" id="docs-crumbs" aria-label="Folder path"></nav>
+      <div id="sp-documents-grid"></div>
+    </div>
+
+    <!-- Tools & systems — the links the marketing team use daily. -->
     <div class="tools-strip">
-      <h2 class="section-title small" style="margin:0 0 6px">Tools &amp; systems</h2>
-      <p class="prose dim mb">Quick access to the systems the marketing team uses every day.</p>
+      <h2 class="lib-sec-title" style="margin:0 0 14px">Tools &amp; systems</h2>
       <div class="links-grid">
         <a class="link-card" href="https://checkfireltd.sharepoint.com/sites/MarketingHub" target="_blank" rel="noopener">
           <div class="link-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
@@ -1396,19 +1553,15 @@
         </a>
       </div>
     </div>
-
   </section>
 </main>
 
-
-
 <!-- ─── PRODUCT PORTAL ───────────────────────────────────────── -->
 <main id="page-portal" class="page" data-screen-label="06 Product Portal">
-  <section class="ph">
+  <section class="ph slim">
     <div class="container">
       <div class="ph-head">
         <div>
-          <div class="eyebrow">CheckFire &middot; Product Portal</div>
           <h1 class="ph-title">Product portal</h1>
           <p class="ph-sub">Find data sheets, certifications, and regulations for our products here.</p>
         </div>
@@ -1514,15 +1667,15 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=10"></script>
+<script src="config.js?v=11"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
-<script src="ui.js?v=2"></script>
+<script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=11"></script>
-<script src="app.js?v=14"></script>
+<script src="graph.js?v=12"></script>
+<script src="app.js?v=15"></script>
 <script src="jotform.js?v=12"></script>
-<script src="ember.js?v=1"></script>
+<script src="ember.js?v=2"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
@@ -1580,23 +1733,40 @@
   </div>
 </div>
 
-<!-- ═══ IN-HUB DOCUMENT VIEWER ═══════════════════════════════ -->
-<div id="doc-modal" class="doc-overlay hidden" onclick="if(event.target===this)closeDocPreview()">
-  <div class="doc-modal">
-    <div class="doc-head">
-      <div class="doc-head-title" id="doc-modal-title">Document</div>
-      <div class="doc-head-actions">
-        <a class="doc-sp" id="doc-modal-download" href="#" download style="display:none">Download ↓</a>
-        <a class="doc-sp" id="doc-modal-splink" href="#" target="_blank" rel="noopener">Open in SharePoint ↗</a>
-        <button class="doc-close" onclick="closeDocPreview()" aria-label="Close">
+<!-- ═══ THE READER ═══════════════════════════════════════════
+     The file itself, rendered on our own origin off a blob: URL — a
+     PDF in the browser's own PDF viewer, an image as an image. No
+     SharePoint toolbars, ribbons or branding anywhere. Built by
+     openDocFile() in graph.js. ═══ -->
+<div id="doc-modal" class="rdr hidden" onclick="if(event.target===this)closeDocPreview()">
+  <div class="rdr-sheet">
+    <header class="rdr-bar">
+      <div class="rdr-id">
+        <span class="rdr-type" id="rdr-type">PDF</span>
+        <span class="rdr-titles">
+          <span class="rdr-name" id="rdr-name">Document</span>
+          <span class="rdr-sub" id="rdr-sub"></span>
+        </span>
+      </div>
+      <div class="rdr-acts">
+        <button class="rdr-btn" onclick="downloadDoc()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download
+        </button>
+        <button class="rdr-btn" onclick="shareDoc(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          Copy link
+        </button>
+        <button class="rdr-btn" onclick="popOutDoc()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          New tab
+        </button>
+        <button class="rdr-close" onclick="closeDocPreview()" aria-label="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-    </div>
-    <div class="doc-body" id="doc-modal-body">
-      <div class="doc-loading" id="doc-modal-loading">Loading preview…</div>
-      <iframe id="doc-frame" title="Document preview" allowfullscreen></iframe>
-    </div>
+    </header>
+    <div class="rdr-stage" id="doc-stage"></div>
   </div>
 </div>
 

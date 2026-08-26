@@ -119,16 +119,8 @@ function switchTrainingTab(btn, name) {
 // Signed in → hand off to the Graph layer (graph.js).
 
 function loadResourcesData() {
-  const grid = document.getElementById('sp-documents-grid');
-  if (!grid) return;
-
-  const signedIn = window.AUTH && window.AUTH.account;
-  if (window.HUB_DEMO_MODE || !signedIn) {
-    grid.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to see live documents from the SharePoint library.</p>';
-    return;
-  }
-
-  if (typeof loadSharePointDocuments === 'function') {
-    loadSharePointDocuments();
-  }
+  // Resources is the library front door now (graph.js loadLibrary),
+  // which does its own signed-out message and its own skeleton.
+  if (typeof loadResourcesLibrary === 'function') return loadResourcesLibrary();
+  if (typeof loadSharePointDocuments === 'function') return loadSharePointDocuments();
 }
