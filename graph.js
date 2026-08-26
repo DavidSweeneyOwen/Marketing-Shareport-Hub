@@ -323,93 +323,361 @@ function productCodes(f) {
   return String(raw).split(/[,;/\n]+/).map(x => x.trim()).filter(Boolean);
 }
 
+// ═══ Imagery from SharePoint ═════════════════════════════════
+// The launch and campaign cards used to be flat colour blocks, which
+// is most of why the pages read as a list rather than a website. The
+// artwork marketing need is already in SharePoint — in the item's own
+// asset folder — so the hub goes and gets it.
+//
+// Graph's /thumbnails endpoint returns a PRE-AUTHENTICATED url: it
+// works in a plain <img>/background-image with no token attached, and
+// expires after a few hours, which is exactly right for a page that is
+// re-rendered on every visit. Never cache these to disk.
+
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|tiff?)$/i;
+const _thumbCache = {};
+
+async function driveThumb(driveId, itemId, size) {
+  const want = size || 'large';
+  const key  = driveId + '|' + itemId + '|' + want;
+  if (_thumbCache[key] !== undefined) return _thumbCache[key];
+  try {
+    const d = await graphFetch(`/drives/${driveId}/items/${itemId}/thumbnails?$select=${want}`);
+    const set = (d.value || [])[0] || {};
+    const url = (set[want] && set[want].url) || '';
+    _thumbCache[key] = url;
+    return url;
+  } catch (_) {
+    _thumbCache[key] = '';
+    return '';
+  }
+}
+
+// Best image inside a folder. Prefers something obviously meant as the
+// picture for the thing ("hero", "cover", "main", "banner"), then any
+// image sitting loose in the folder, then the first image inside an
+// images/artwork sub-folder.
+async function folderHeroImage(driveId, folderId) {
+  try {
+    const kids = await fetchDriveChildren(driveId, folderId);
+    const imgs = kids.filter(k => !k.folder && IMAGE_EXT.test(k.name || ''));
+    if (imgs.length) {
+      const pick = imgs.find(k => /hero|cover|main|banner|key ?visual/i.test(k.name)) || imgs[0];
+      return await driveThumb(driveId, pick.id);
+    }
+    const sub = kids.find(k => k.folder && /image|photo|artwork|visual|social|asset/i.test(k.name || ''));
+    if (sub) {
+      const inner = await fetchDriveChildren(driveId, sub.id);
+      const first = inner.find(k => !k.folder && IMAGE_EXT.test(k.name || ''));
+      if (first) return await driveThumb(driveId, first.id);
+    }
+  } catch (_) { /* no folder, no access — card keeps its fallback */ }
+  return '';
+}
+
+// Names in SharePoint rarely match a list Title character for character.
+// Compare on letters and digits only so "FX-90 Launch" finds "FX90".
+function _slugKey(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+// Resolve a hero image for every item in a list, by finding its folder
+// under Documents/<root>/. Returns a map keyed by the item Title.
+// Everything is best-effort: one missing folder never stops the rest.
+async function itemHeroImages(items, rootFolderName) {
+  const out = {};
+  if (!items || !items.length) return out;
+  try {
+    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+    const root  = await _findChildFolder(drive.id, null, rootFolderName);
+    if (!root) return out;
+
+    const folders = (await fetchDriveChildren(drive.id, root.id)).filter(f => f.folder);
+    const byKey = {};
+    folders.forEach(f => { byKey[_slugKey(f.name)] = f; });
+
+    await Promise.all(items.slice(0, 24).map(async f => {
+      const wanted = f.CampaignFolder || f.Folder || f.Title;
+      const key = _slugKey(wanted);
+      if (!key) return;
+      const folder = byKey[key]
+        || folders.find(x => _slugKey(x.name).includes(key) || key.includes(_slugKey(x.name)));
+      if (!folder) return;
+      const url = await folderHeroImage(drive.id, folder.id);
+      if (url) out[f.Title] = url;
+    }));
+  } catch (e) {
+    console.info('[Imagery] no folder artwork available:', e.message);
+  }
+  return out;
+}
+
+// Paint the images in after the cards are already on screen, so the
+// page never waits on Graph to show something.
+function _applyHeroImages(prefix, items, map) {
+  items.forEach((f, i) => {
+    const url = map[f.Title];
+    if (!url) return;
+    const el = document.getElementById(prefix + i);
+    if (!el) return;
+    el.style.backgroundImage = `url('${safeCssUrl(url)}')`;
+    el.classList.add('has-img');
+  });
+}
+
+// ── Landing page artwork ──────────────────────────────────────
+// WordPress *pages* almost never carry a featured image, so "Updated
+// landing pages" on the home page had nothing to show. Marketing now
+// drop artwork into Documents ▸ Images for Landing Pages instead, and
+// the hub matches a picture to a page by filename. See config.js for
+// how forgiving the matching is.
+//
+// Returns [{ key, url }]; app.js does the matching so the carousel can
+// render immediately and take the pictures when they arrive.
+let _landingImgs = null;
+
+async function fetchLandingImages() {
+  if (_landingImgs) return _landingImgs;
+  const cfg = HUB_CONFIG.landingImages || {};
+  if (!cfg.folder) return (_landingImgs = []);
+
+  try {
+    const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
+    const drive = await resolveDrive(site, HUB_CONFIG.documentsLibrary);
+    const folder = await _findChildFolder(drive.id, null, cfg.folder);
+    if (!folder) {
+      console.info(`[Landing images] no "${cfg.folder}" folder yet — cards stay text-only.`);
+      return (_landingImgs = []);
+    }
+    const kids = (await fetchDriveChildren(drive.id, folder.id))
+      .filter(k => !k.folder && IMAGE_EXT.test(k.name || ''));
+
+    const rows = await Promise.all(kids.map(async k => ({
+      key: _slugKey(String(k.name).replace(/\.[a-z0-9]+$/i, '')),
+      url: await driveThumb(drive.id, k.id),
+    })));
+    _landingImgs = rows.filter(r => r.key && r.url);
+  } catch (e) {
+    console.info('[Landing images] unavailable:', e.message);
+    _landingImgs = [];
+  }
+  return _landingImgs;
+}
+
+// Pick the image for one page. Exact key first, then either name
+// containing the other — so "01 fire-extinguishers hero.jpg" still
+// finds /fire-extinguishers. Longest match wins, which stops "water"
+// hijacking "water-mist".
+function matchLandingImage(images, page) {
+  if (!images || !images.length) return '';
+  let slug = '';
+  try {
+    const p = new URL(page.link).pathname.replace(/\/+$/, '');
+    slug = p.split('/').filter(Boolean).pop() || '';
+  } catch (_) { /* fall through to the title */ }
+  const keys = [_slugKey(slug), _slugKey(page.title)].filter(Boolean);
+  if (!keys.length) return '';
+
+  for (const k of keys) {
+    const exact = images.find(im => im.key === k);
+    if (exact) return exact.url;
+  }
+  let best = null;
+  for (const k of keys) {
+    for (const im of images) {
+      if (im.key.includes(k) || k.includes(im.key)) {
+        if (!best || im.key.length > best.key.length) best = im;
+      }
+    }
+  }
+  return best ? best.url : '';
+}
+
 // ═══ Renderers ═══════════════════════════════════════════════
 
-// Marketing asked (deck, 24 Aug) for Launches and Campaigns to read as
-// three status columns rather than one flat grid. Cards are unchanged —
-// they just get grouped. Anything whose status doesn't match one of the
-// named columns lands in a trailing "Other" column rather than vanishing.
-function renderRagColumns(el, items, columns, cardFn) {
-  // The campaigns container carries .camp-grid from the old flat layout —
-  // itself a three-column grid. Left on, our column grid becomes a single
-  // cell inside it and every card is squeezed to a ninth of the page.
-  // Stripped here rather than in the HTML so the loading skeleton still
-  // lays out correctly before this runs.
-  el.classList.remove('camp-grid');
+// ── Product launches & campaigns: the editorial layout ────────
+//
+// REWRITTEN 26 Aug 2026. These two pages were a metric rail above
+// three columns of small cards, which is a project tracker, not a
+// website — marketing's words were "it doesn't look right". They now
+// share one editorial shape:
+//
+//   1. a lead spread — the launch/campaign that matters right now,
+//      given the space a homepage feature would get
+//   2. a filter rail carrying the same traffic-light counts the metric
+//      rail used to, but as something you can actually click
+//   3. a generous card grid with real artwork out of SharePoint
+//
+// The RAG colours are unchanged, so red still means planning wherever
+// you see it, and openLaunchDetail(i) / openCampaignDetail(i) still
+// take the index into the sorted array.
 
-  const named = new Set(columns.map(c => c.tone));
-  const other = items.filter(f => !named.has(ragOf(f.Status)));
+// Cards carry a status dot rather than a filled block, so the artwork
+// underneath is the thing you notice first.
+function _pxDot(status) {
+  return `<span class="px-badge"><span class="px-badge-dot ${ragOf(status)}"></span>${escHtml(status || 'Not set')}</span>`;
+}
 
-  const col = (label, rows) => `
-    <div class="rag-col">
-      <h2 class="rag-col-head">${escHtml(label)}</h2>
-      <div class="rag-col-cards">
-        ${rows.length ? rows.map(r => cardFn(r.item, r.index)).join('')
-                      : '<p class="rag-col-empty">Nothing here yet.</p>'}
+// A card with no artwork isn't left grey — it gets the item's own
+// initials set large on the brand gradient, which reads as a designed
+// placeholder rather than a missing image.
+function _pxInitials(title) {
+  // Words that START with a letter only — "FX-90 Water Mist" should
+  // read FW, not F9.
+  const words = String(title || '').replace(/[^A-Za-z0-9 ]/g, ' ')
+    .split(/\s+/).filter(w => /^[A-Za-z]/.test(w));
+  return words.slice(0, 2).map(w => w[0]).join('').toUpperCase() || 'CF';
+}
+
+function _pxCard(kind, f, i, opts) {
+  const o = opts || {};
+  const fn = kind === 'launch' ? 'openLaunchDetail' : 'openCampaignDetail';
+  return `
+    <article class="px-card" data-tone="${ragOf(f.Status)}" style="--i:${i}"
+             role="button" tabindex="0"
+             onclick="${fn}(${i})" onkeydown="if(event.key==='Enter')${fn}(${i})">
+      <div class="px-card-media" id="px-img-${kind}-${i}">
+        <span class="px-card-initials">${escHtml(_pxInitials(f.Title))}</span>
+        ${_pxDot(f.Status)}
       </div>
-    </div>`;
+      <div class="px-card-body">
+        <div class="px-card-eyebrow">${escHtml(o.eyebrow || 'Product launch')}</div>
+        <h3 class="px-card-title">${escHtml(f.Title || 'Untitled')}</h3>
+        <div class="px-card-meta">${escHtml(o.meta || '')}</div>
+        ${o.footer || ''}
+      </div>
+      <span class="px-card-go">Open <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+    </article>`;
+}
 
-  // index is the position in the ORIGINAL array so the existing
-  // openLaunchDetail(i) / openCampaignDetail(i) handlers still resolve.
-  const rowsFor = tone => items
-    .map((item, index) => ({ item, index }))
-    .filter(r => ragOf(r.item.Status) === tone);
+// The filter rail. Counts come from live data and a chip with nothing
+// behind it is disabled rather than hidden, so the shape of the page
+// doesn't jump about as statuses change.
+function _pxRail(kind, items, tones, note) {
+  const count = t => items.filter(f => ragOf(f.Status) === t).length;
+  const chips = [{ tone: 'all', label: 'All' }].concat(tones).map(c => {
+    const n = c.tone === 'all' ? items.length : count(c.tone);
+    return `<button class="px-chip${c.tone === 'all' ? ' active' : ''}${n ? '' : ' empty'}"
+              data-tone="${escAttr(c.tone)}" ${n ? '' : 'disabled'}
+              onclick="filterPx('${kind}','${escAttr(c.tone)}',this)">
+              ${c.tone === 'all' ? '' : `<span class="px-chip-dot ${escAttr(c.tone)}"></span>`}
+              ${escHtml(c.label)}<b>${n}</b>
+            </button>`;
+  }).join('');
+  return `<div class="px-rail">
+    <div class="px-chips">${chips}</div>
+    ${note ? `<div class="px-rail-note">${note}</div>` : ''}
+  </div>`;
+}
 
-  el.innerHTML = `<div class="rag-cols">
-    ${columns.map(c => col(c.label, rowsFor(c.tone))).join('')}
-  </div>` + (other.length ? `<div class="rag-cols" style="margin-top:22px">${
-      col('Other', items.map((item, index) => ({ item, index }))
-                        .filter(r => !named.has(ragOf(r.item.Status))))
-    }</div>` : '');
+function filterPx(kind, tone, btn) {
+  const grid = document.getElementById(kind === 'launch' ? 'px-launch-grid' : 'px-camp-grid');
+  if (grid) grid.setAttribute('data-filter', tone);
+  if (btn && btn.parentElement) {
+    btn.parentElement.querySelectorAll('.px-chip').forEach(b => b.classList.toggle('active', b === btn));
+  }
+}
+
+// The lead spread. Big type, big picture, one clear action.
+function _pxLead(kind, f, i, opts) {
+  const o = opts || {};
+  const fn = kind === 'launch' ? 'openLaunchDetail' : 'openCampaignDetail';
+  const codes = kind === 'launch' ? productCodes(f) : [];
+  return `
+  <section class="px-lead">
+    <div class="px-lead-copy">
+      <div class="px-eyebrow">${escHtml(o.eyebrow || 'Up next')}</div>
+      <h2 class="px-lead-title">${escHtml(f.Title || 'Untitled')}</h2>
+      ${o.sub ? `<p class="px-lead-sub">${escHtml(o.sub)}</p>` : ''}
+      ${codes.length ? `<div class="px-lead-codes">${codes.map(c => `<span class="px-code">${escHtml(c)}</span>`).join('')}</div>` : ''}
+      <div class="px-lead-meta">
+        ${_pxDot(f.Status)}
+        ${o.meta ? `<span class="px-lead-when">${escHtml(o.meta)}</span>` : ''}
+      </div>
+      ${o.stats || ''}
+      <button class="px-cta" onclick="${fn}(${i})">
+        ${escHtml(o.cta || 'View the launch')}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </div>
+    <div class="px-lead-media" id="px-lead-${kind}">
+      <span class="px-lead-initials">${escHtml(_pxInitials(f.Title))}</span>
+    </div>
+  </section>`;
 }
 
 let _launchItems = [];
 
-// Product Launches page. Follows the same card layout as Campaigns
-// (marketing asked for the two pages to match) and colours each card by
-// its RAG stage. The header panel counts launches by stage.
 function renderLaunches(items) {
   const el = document.getElementById('sp-launches-list');
   if (!el) return;
 
   items = items || [];
 
-  // Header panel — counted from live data, zeros when the list is empty.
-  const byTone = t => items.filter(f => ragOf(f.Status) === t).length;
-  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
-  _set('sp-metric-launch-planning',  byTone('red'));
-  _set('sp-metric-launch-scheduled', byTone('amber'));
-  _set('sp-metric-launch-live',      byTone('green'));
-  _set('sp-metric-launch-total',     items.length);
-
   if (!items.length) {
-    el.innerHTML = '<p class="prose dim">No launches in SharePoint yet — add items to the Product Launches list.</p>';
+    el.innerHTML = `<div class="px-empty">
+      <h3>No launches yet</h3>
+      <p>Add items to the <strong>Product Launches</strong> list on the MarketingHub SharePoint site and they appear here — with the artwork from their asset folder.</p>
+    </div>`;
     return;
   }
 
   // Newest first so the current launch leads the page.
-  const sorted = [...items].sort((a, b) => String(b.LaunchDate || '').localeCompare(String(a.LaunchDate || '')));
+  const sorted = [...items].sort((a, b) =>
+    String(b.LaunchDate || '').localeCompare(String(a.LaunchDate || '')));
   _launchItems = sorted;
 
-  renderRagColumns(
-    el, sorted,
-    [{ tone: 'red', label: 'Planning' },
-     { tone: 'amber', label: 'Confirmed' },
-     { tone: 'green', label: 'Launched' }],
-    (f, i) => {
-      const codes = productCodes(f);
-      return `
-    <article class="camp-card" role="button" tabindex="0" onclick="openLaunchDetail(${i})" onkeydown="if(event.key==='Enter')openLaunchDetail(${i})">
-      <div class="camp-thumb rag-${ragOf(f.Status)}">${ragPill(f.Status)}</div>
-      <div class="camp-body">
-        <div class="camp-cat">Product launch</div>
-        <h3 class="camp-name">${escHtml(f.Title || 'Untitled')}</h3>
-        <div class="camp-dates">${escHtml(fmtSpDate(f.LaunchDate) || 'Date to be confirmed')}</div>
-        ${codes.length ? `<div class="camp-codes">${escHtml(codes.join(' · '))}</div>` : ''}
-      </div>
-    </article>`;
-    }
-  );
+  // The lead is the next launch still to come; if they're all behind
+  // us, the most recent one.
+  const now = new Date();
+  let leadIdx = sorted.findIndex(f => f.LaunchDate && new Date(f.LaunchDate) >= now);
+  if (leadIdx < 0) leadIdx = 0;
+  // Among future launches, feature the SOONEST rather than the furthest.
+  const future = sorted
+    .map((f, i) => ({ f, i }))
+    .filter(x => x.f.LaunchDate && new Date(x.f.LaunchDate) >= now)
+    .sort((a, b) => String(a.f.LaunchDate).localeCompare(String(b.f.LaunchDate)));
+  if (future.length) leadIdx = future[0].i;
+
+  const lead = sorted[leadIdx];
+  const isFuture = lead.LaunchDate && new Date(lead.LaunchDate) >= now;
+
+  el.innerHTML =
+    _pxLead('launch', lead, leadIdx, {
+      eyebrow: isFuture ? 'Next launch' : 'Most recent launch',
+      sub: lead.Description || lead.Summary || '',
+      meta: fmtSpDate(lead.LaunchDate) || 'Date to be confirmed',
+      cta: 'View the launch',
+    }) +
+    _pxRail('launch', sorted,
+      [{ tone: 'red', label: 'Planning' },
+       { tone: 'amber', label: 'Confirmed' },
+       { tone: 'green', label: 'Launched' },
+       { tone: 'grey', label: 'Archive' }],
+      'Live from the Product Launches list') +
+    `<div class="px-grid" id="px-launch-grid" data-filter="all">${
+      sorted.map((f, i) => {
+        const codes = productCodes(f);
+        return _pxCard('launch', f, i, {
+          eyebrow: 'Product launch',
+          meta: fmtSpDate(f.LaunchDate) || 'Date to be confirmed',
+          footer: codes.length
+            ? `<div class="px-card-codes">${codes.slice(0, 4).map(c => `<span class="px-code sm">${escHtml(c)}</span>`).join('')}</div>`
+            : '',
+        });
+      }).join('')
+    }</div>`;
+
+  // Artwork arrives after the page is already usable.
+  itemHeroImages(sorted, (HUB_CONFIG.folders && HUB_CONFIG.folders.launches) || 'Launches')
+    .then(map => {
+      _applyHeroImages('px-img-launch-', sorted, map);
+      const leadEl = document.getElementById('px-lead-launch');
+      if (leadEl && map[lead.Title]) {
+        leadEl.style.backgroundImage = `url('${safeCssUrl(map[lead.Title])}')`;
+        leadEl.classList.add('has-img');
+      }
+    });
 }
 
 let _campaignItems = [];
@@ -418,51 +686,84 @@ function renderCampaigns(items) {
   const grid = document.getElementById('sp-campaigns-grid');
   if (!grid) return;
 
-  _campaignItems = items || [];
-
-  // Header metrics — always computed from live data (zeros when empty)
-  const count = re => items.filter(f => re.test(String(f.Status || '').toLowerCase())).length;
-  const _set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
-  _set('sp-metric-live',      count(/live/));
-  _set('sp-metric-planning',  count(/planning|draft/));
-  _set('sp-metric-completed', count(/complete/));
-  const totalBudget = items.reduce((sum, f) => sum + (Number(f.Budget) || 0), 0);
-  _set('sp-metric-budget', totalBudget ? '£' + totalBudget.toLocaleString('en-GB') : '—');
+  items = items || [];
+  _campaignItems = items;
 
   if (!items.length) {
-    grid.innerHTML = '<p class="prose dim">No campaigns in SharePoint yet — add items to the Campaigns list and they\'ll appear here.</p>';
+    grid.classList.remove('camp-grid');
+    grid.innerHTML = `<div class="px-empty">
+      <h3>No campaigns yet</h3>
+      <p>Add items to the <strong>Campaigns</strong> list on the MarketingHub SharePoint site. Drop artwork into <strong>Documents ▸ Campaigns ▸ &lt;campaign name&gt;</strong> and it becomes the card image.</p>
+    </div>`;
     return;
   }
 
-  // Same three-column shape as Product Launches (deck, 24 Aug). The
-  // column names stay Campaigns' own — the deck asked for the layout to
-  // match, not the statuses, and these are what the SharePoint list uses.
-  renderRagColumns(
-    grid, items,
-    [{ tone: 'red', label: 'Planning' },
-     { tone: 'green', label: 'Live' },
-     { tone: 'grey', label: 'Completed' }],
-    (f, i) => {
-    // Same RAG colour code as Product Launches, so a red card means
-    // "still planning" on either page.
-    const channels = Array.isArray(f.Channels) ? f.Channels.join(' · ') : (f.Channels || '');
+  // The old flat layout left .camp-grid (itself a 3-column grid) on this
+  // element; writing a grid into a grid cell squashed every card to a
+  // ninth of the page. Stripped in JS, not the HTML, so the loading
+  // skeleton still lays out before this runs.
+  grid.classList.remove('camp-grid');
 
-    return `
-    <article class="camp-card" role="button" tabindex="0" onclick="openCampaignDetail(${i})" onkeydown="if(event.key==='Enter')openCampaignDetail(${i})">
-      <div class="camp-thumb rag-${ragOf(f.Status)}">${ragPill(f.Status)}</div>
-      <div class="camp-body">
-        <div class="camp-cat">${escHtml(f.CampaignType || 'Campaign')}</div>
-        <h3 class="camp-name">${escHtml(f.Title || 'Untitled')}</h3>
-        <div class="camp-dates">${[fmtSpDate(f.StartDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ')}${f.Region ? ' · ' + escHtml(f.Region) : ''}</div>
-        <div class="camp-kpis">
-          ${f.Budget != null && f.Budget !== '' ? `<div><div class="k">${fmtMoney(f.Budget)}</div><div class="l">Budget</div></div>` : ''}
-          ${channels ? `<div><div class="k">${escHtml(channels)}</div><div class="l">Channels</div></div>` : ''}
-        </div>
-      </div>
-    </article>`;
-    }
-  );
+  // Newest first by start date.
+  const sorted = [...items].sort((a, b) =>
+    String(b.StartDate || '').localeCompare(String(a.StartDate || '')));
+  _campaignItems = sorted;
 
+  // Lead with something live if there is one.
+  let leadIdx = sorted.findIndex(f => ragOf(f.Status) === 'green');
+  if (leadIdx < 0) leadIdx = 0;
+  const lead = sorted[leadIdx];
+
+  const kpi = [
+    { label: 'Emails sent',  value: _num(lead, ['EmailsSent', 'Emails', 'EmailCount']) },
+    { label: 'Social posts', value: _num(lead, ['SocialPosts', 'SocialMediaPosts', 'Social']) },
+    { label: 'Blogs',        value: _num(lead, ['Blogs', 'BlogCount', 'BlogPosts']) },
+    { label: 'PR activity',  value: _num(lead, ['PRActivity', 'PR', 'PRActivities']) },
+  ].filter(m => m.value);
+
+  const totalBudget = sorted.reduce((sum, f) => sum + (Number(f.Budget) || 0), 0);
+
+  grid.innerHTML =
+    _pxLead('campaign', lead, leadIdx, {
+      eyebrow: ragOf(lead.Status) === 'green' ? 'Running now' : 'Latest campaign',
+      sub: lead.Description || lead.Summary || lead.CampaignType || '',
+      meta: [fmtSpDate(lead.StartDate), fmtSpDate(lead.EndDate)].filter(Boolean).join(' – ')
+            + (lead.Region ? ' · ' + lead.Region : ''),
+      cta: 'Open the campaign',
+      stats: kpi.length ? `<div class="px-stats">${kpi.map(m => `
+        <div class="px-stat"><div class="px-stat-v">${m.value}</div><div class="px-stat-l">${escHtml(m.label)}</div></div>
+      `).join('')}</div>` : '',
+    }) +
+    _pxRail('campaign', sorted,
+      [{ tone: 'red', label: 'Planning' },
+       { tone: 'amber', label: 'Scheduled' },
+       { tone: 'green', label: 'Live' },
+       { tone: 'grey', label: 'Completed' }],
+      totalBudget ? `Total budget <b>£${totalBudget.toLocaleString('en-GB')}</b>` : 'Live from the Campaigns list') +
+    `<div class="px-grid" id="px-camp-grid" data-filter="all">${
+      sorted.map((f, i) => {
+        const channels = Array.isArray(f.Channels) ? f.Channels : String(f.Channels || '').split(/[,;/]+/);
+        const chips = channels.map(c => String(c).trim()).filter(Boolean).slice(0, 4);
+        return _pxCard('campaign', f, i, {
+          eyebrow: f.CampaignType || 'Campaign',
+          meta: [fmtSpDate(f.StartDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ')
+                + (f.Region ? ' · ' + f.Region : ''),
+          footer: chips.length
+            ? `<div class="px-card-codes">${chips.map(c => `<span class="px-chan">${escHtml(c)}</span>`).join('')}</div>`
+            : (f.Budget ? `<div class="px-card-codes"><span class="px-chan">${fmtMoney(f.Budget)}</span></div>` : ''),
+        });
+      }).join('')
+    }</div>`;
+
+  itemHeroImages(sorted, (HUB_CONFIG.folders && HUB_CONFIG.folders.campaigns) || 'Campaigns')
+    .then(map => {
+      _applyHeroImages('px-img-campaign-', sorted, map);
+      const leadEl = document.getElementById('px-lead-campaign');
+      if (leadEl && map[lead.Title]) {
+        leadEl.style.backgroundImage = `url('${safeCssUrl(map[lead.Title])}')`;
+        leadEl.classList.add('has-img');
+      }
+    });
 }
 
 let _docFiles = [];
@@ -702,6 +1003,9 @@ async function loadHomeVideos() {
   // Compact hero box: newest 3, each opening the video itself.
   renderHeroVideos(vids);
 
+  // The YouTube section below — works with or without the API key.
+  renderYouTubeSection(vids.filter(v => v.youtubeId));
+
   if (!section || !grid) return;
   if (!vids.length) { section.style.display = 'none'; return; }
 
@@ -724,14 +1028,81 @@ async function loadHomeVideos() {
   section.style.display = '';
 }
 
+// ── CheckFire on YouTube ──────────────────────────────────────
+//
+// The API-key route has been blocked since July: the proxy still
+// answers {"error":"YOUTUBE_API_KEY app setting is not configured."},
+// so the hub has been showing no YouTube videos at all.
+//
+// It doesn't need the key to show the videos. Every channel has an
+// "uploads" playlist — the channel id with UC swapped for UU — and
+// that playlist embeds with no key, no quota, no Google account, and
+// it updates itself the moment marketing publish. That is the player
+// on the left. When the key IS eventually set, the feed on the right
+// fills with real titles and dates; until then it carries the channel
+// card. Either way there are CheckFire videos on the page.
+function renderYouTubeSection(vids) {
+  const sec = document.getElementById('home-youtube');
+  if (!sec) return;
+
+  const yt = (HUB_CONFIG.videos && HUB_CONFIG.videos.youtube) || {};
+  const list = yt.uploadsPlaylistId;
+  const channel = safeUrl(yt.channelUrl || '', '');
+  if (!list && !channel) { sec.style.display = 'none'; return; }
+
+  const player = list
+    ? `<iframe class="yt-player"
+         src="https://www.youtube-nocookie.com/embed/videoseries?list=${escAttr(list)}&rel=0&modestbranding=1"
+         title="CheckFire on YouTube" loading="lazy" frameborder="0"
+         allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+         allowfullscreen></iframe>`
+    : '';
+
+  const side = (vids && vids.length)
+    ? `<div class="yt-list">${vids.slice(0, 5).map(v => `
+        <a class="yt-row" href="${escAttr(safeUrl(v.href, channel))}" target="_blank" rel="noopener">
+          <span class="yt-row-play">▶</span>
+          <span class="yt-row-main">
+            <span class="yt-row-title">${escHtml(v.title)}</span>
+            ${v.date ? `<span class="yt-row-date">${escHtml(fmtSpDate(v.date))}</span>` : ''}
+          </span>
+        </a>`).join('')}</div>`
+    : `<div class="yt-blurb">
+         <p>Everything the marketing team publishes to the CheckFire channel plays here — the newest upload first, updating on its own.</p>
+         <p class="yt-blurb-dim">Video titles and dates will appear in this column once the YouTube API key is added to the Function app. The player above needs nothing.</p>
+       </div>`;
+
+  sec.innerHTML = `
+    <div class="inh-section-head">
+      <h3 class="inh-section-title">CheckFire on YouTube</h3>
+      ${channel ? `<a class="inh-section-link" href="${escAttr(channel)}" target="_blank" rel="noopener">Visit the channel →</a>` : ''}
+    </div>
+    <div class="yt-grid">
+      <div class="yt-stage">${player}</div>
+      <div class="yt-side">
+        ${side}
+        ${channel ? `<a class="yt-cta" href="${escAttr(channel)}" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M21.6 7.2a2.6 2.6 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.6 2.6 0 0 0 2.4 7.2 27 27 0 0 0 2 12a27 27 0 0 0 .4 4.8 2.6 2.6 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.6 2.6 0 0 0 1.8-1.8A27 27 0 0 0 22 12a27 27 0 0 0-.4-4.8zM10 15V9l5 3z"/></svg>
+          Open the channel
+        </a>` : ''}
+      </div>
+    </div>`;
+  sec.style.display = '';
+}
+
 // Compact "Latest Videos" box in the hero — the newest few, each
 // scrolling down to the full video grid where they play inline.
 function renderHeroVideos(vids) {
   const el = document.getElementById('home-hero-videos-body');
   if (!el) return;
   if (!vids || !vids.length) {
+    // No titled feed (the API key still isn't set) — point at the
+    // player further down the page rather than saying "nothing here",
+    // which was never true.
     const ch = safeUrl((HUB_CONFIG.videos && HUB_CONFIG.videos.youtube && HUB_CONFIG.videos.youtube.channelUrl) || '', '');
-    el.innerHTML = '<p class="prose dim">No recent videos.</p>' +
+    el.innerHTML =
+      '<p class="prose dim" style="margin:0 0 6px">The latest uploads from the CheckFire channel are playing further down this page.</p>' +
+      `<a class="hbox-more" onclick="document.getElementById('home-youtube')?.scrollIntoView({behavior:'smooth',block:'center'})">Watch now →</a>` +
       (ch ? `<a class="hbox-more" href="${escAttr(ch)}" target="_blank" rel="noopener">CheckFire on YouTube →</a>` : '');
     return;
   }
@@ -1045,15 +1416,27 @@ async function loadSharePointData() {
   await loadTradeEvents();
 }
 
-// "Latest updates" — the breaking-news band at the foot of the home
-// page. Reads the launches and campaigns already fetched above rather
-// than making another call, so it costs nothing extra. The track is
-// duplicated because the CSS scrolls it by -50%: two identical halves
-// make the loop seamless. Hidden entirely when there is nothing to say.
+// "Latest updates" — a dock in the bottom-right corner.
+//
+// This was a full-width scrolling ticker across the foot of the home
+// page. Marketing liked the idea but wanted it "more in the corner,
+// with it popping up with the latest" (26 Aug), so it is now a small
+// red pill that sits out of the way, pops itself open on load with the
+// newest update, cycles gently through the rest, and expands to the
+// full list when clicked.
+//
+// Still costs nothing extra — it reads the launches and campaigns
+// loadSharePointData() has already fetched. Hidden when there is
+// nothing to say. It lives on every page now, not just home: an
+// update is worth seeing wherever you happen to be.
+let _updates = [];
+let _updIndex = 0;
+let _updTimer = null;
+let _updOpen  = false;
+
 function renderNewsTicker(launches, campaigns) {
-  const band  = document.getElementById('home-news');
-  const track = document.getElementById('home-news-track');
-  if (!band || !track) return;
+  const dock = document.getElementById('updates-dock');
+  if (!dock) return;
 
   const items = [];
 
@@ -1081,21 +1464,117 @@ function renderNewsTicker(launches, campaigns) {
     });
   });
 
-  if (!items.length) { band.style.display = 'none'; return; }
+  if (!items.length) { dock.style.display = 'none'; return; }
 
-  // Newest first, and keep the band short enough to read as it passes.
+  // Newest first. Eight is plenty for a corner panel.
   items.sort((a, b) => b.sort.localeCompare(a.sort));
-  const shown = items.slice(0, 8);
+  _updates = items.slice(0, 8);
+  _updIndex = 0;
+  dock.style.display = '';
 
-  const half = shown.map(n => `
-    <span class="news-item">
-      <span class="news-kind ${n.kind}">${escHtml(n.label)}</span>
-      <span>${escHtml(n.text)}</span>
-      ${n.when ? `<span class="news-when">${escHtml(n.when)}</span>` : ''}
-    </span>`).join('');
+  // Someone who has already dismissed it today shouldn't have it thrown
+  // at them again on every page load — the pill still sits there, just
+  // closed, with the count on it.
+  const dismissed = (() => {
+    try { return localStorage.getItem('cf-updates-seen') === _updStamp(); }
+    catch (_) { return false; }
+  })();
 
-  track.innerHTML = half + half;
-  band.style.display = '';
+  _updRender();
+  if (!dismissed) setTimeout(() => _updSetOpen(true), 1400);
+}
+
+// One "seen" stamp per day per newest-item, so a genuinely new update
+// pops up again even if you dismissed yesterday's.
+function _updStamp() {
+  const newest = _updates[0] ? _updates[0].text : '';
+  return new Date().toISOString().slice(0, 10) + '|' + newest.slice(0, 40);
+}
+
+function _updRender() {
+  const dock = document.getElementById('updates-dock');
+  if (!dock || !_updates.length) return;
+  const n = _updates[_updIndex] || _updates[0];
+
+  dock.className = 'upd-dock' + (_updOpen ? ' open' : '');
+  dock.innerHTML = `
+    <button class="upd-pill" onclick="toggleUpdates()" aria-expanded="${_updOpen}">
+      <span class="upd-spark"></span>
+      <span class="upd-pill-label">Latest updates</span>
+      <span class="upd-count">${_updates.length}</span>
+    </button>
+
+    <div class="upd-panel" role="region" aria-label="Latest updates">
+      <div class="upd-head">
+        <span class="upd-head-title">Latest updates</span>
+        <button class="upd-x" onclick="dismissUpdates()" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Peek: one item at a time, cycling. This is what "pops up". -->
+      <div class="upd-peek" id="upd-peek">
+        ${_updItemHtml(n)}
+      </div>
+
+      <div class="upd-all" id="upd-all">
+        ${_updates.map(_updItemHtml).join('')}
+      </div>
+
+      <button class="upd-more" id="upd-more" onclick="expandUpdates()">
+        See all ${_updates.length} updates
+      </button>
+    </div>`;
+}
+
+function _updItemHtml(n) {
+  if (!n) return '';
+  return `
+    <div class="upd-item">
+      <span class="upd-kind ${escAttr(n.kind)}">${escHtml(n.label)}</span>
+      <div class="upd-text">${escHtml(n.text)}</div>
+      ${n.when ? `<div class="upd-when">${escHtml(n.when)}</div>` : ''}
+    </div>`;
+}
+
+function _updSetOpen(open) {
+  _updOpen = !!open;
+  const dock = document.getElementById('updates-dock');
+  if (dock) dock.classList.toggle('open', _updOpen);
+  clearInterval(_updTimer);
+  if (_updOpen && _updates.length > 1) {
+    // Cycle the peek line every 6s while the panel is open, unless the
+    // user has expanded it to the full list.
+    _updTimer = setInterval(() => {
+      const dockEl = document.getElementById('updates-dock');
+      if (!dockEl || dockEl.classList.contains('expanded')) return;
+      _updIndex = (_updIndex + 1) % _updates.length;
+      const peek = document.getElementById('upd-peek');
+      if (!peek) return;
+      peek.classList.add('swap');
+      setTimeout(() => {
+        peek.innerHTML = _updItemHtml(_updates[_updIndex]);
+        peek.classList.remove('swap');
+      }, 220);
+    }, 6000);
+  }
+}
+
+function toggleUpdates() {
+  _updSetOpen(!_updOpen);
+}
+
+function expandUpdates() {
+  const dock = document.getElementById('updates-dock');
+  if (dock) dock.classList.add('expanded');
+  clearInterval(_updTimer);
+}
+
+function dismissUpdates() {
+  _updSetOpen(false);
+  const dock = document.getElementById('updates-dock');
+  if (dock) dock.classList.remove('expanded');
+  try { localStorage.setItem('cf-updates-seen', _updStamp()); } catch (_) {}
 }
 
 // Resources ▸ Marketing Library — opened via loadResourcesData (ui.js).
@@ -1111,19 +1590,285 @@ async function loadSharePointDocuments() {
                'sp-documents-grid', 'docs-crumbs', 'Marketing Library');
 }
 
-// Resources ▸ Product Portal tab — the second SharePoint site.
+// ═══ Product Portal front door ═══════════════════════════════
+//
+// The Product Portal site files by CERTIFICATION TYPE — DOCs,
+// Kitemark Certificates, MED, MER, NTA 8133 — and buries the product
+// in the filename ("260824 Declaration of Conformity-CO2-AlloySteel").
+// That's a sensible filing cabinet and a poor front door: nobody
+// arrives thinking "NTA 8133", they arrive thinking "the paperwork for
+// the CO2".
+//
+// So the hub reads the whole site once, tags every file with a product
+// and a document type, and lets people come at it from either
+// direction — plus a search box over every filename. The real folder
+// tree is still one click away under "Browse folders": this adds a way
+// in, it doesn't hide anything.
+//
+// Nothing here changes SharePoint. Marketing keep filing exactly as
+// they do now.
+
+const PORTAL = {
+  files: [], loaded: false, driveId: null,
+  product: 'all', category: 'all', q: '',
+};
+
+async function _portalCrawl(driveId, itemId, path, depth, out, cap) {
+  if (depth < 0 || out.length >= cap) return;
+  let kids;
+  try { kids = await fetchDriveChildren(driveId, itemId); }
+  catch (_) { return; }
+
+  const folders = [];
+  for (const k of kids) {
+    if (k.folder) folders.push(k);
+    else if (out.length < cap) out.push(Object.assign({}, k, { _path: path }));
+  }
+  await Promise.all(folders.map(f =>
+    _portalCrawl(driveId, f.id, path.concat(f.name), depth - 1, out, cap)));
+}
+
+function _portalCatLabel(folder) {
+  const rows = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.categories) || [];
+  const hit = rows.find(r => String(r.folder).toLowerCase() === String(folder || '').toLowerCase());
+  return hit ? hit.label : (folder || 'Other documents');
+}
+
+function _portalProduct(f) {
+  const rows = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.productTypes) || [];
+  const hay = [f.name].concat(f._path || []).join(' ').toLowerCase();
+  for (const r of rows) {
+    try { if (new RegExp(r.match, 'i').test(hay)) return r; }
+    catch (_) { /* a bad pattern in config shouldn't break the page */ }
+  }
+  return null;
+}
+
 async function loadProductPortal() {
-  const grid = document.getElementById('pp-documents-grid');
-  if (!grid) return;
+  const host = document.getElementById('pp-index');
+  if (!host) return;
+
   const signedIn = window.AUTH && window.AUTH.account;
   if (window.HUB_DEMO_MODE || !signedIn) {
-    grid.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to browse the Product Portal.</p>';
+    host.innerHTML = '<p class="prose dim">Sign in with your CheckFire account to open the Product Portal.</p>';
     return;
   }
-  if (_fbLoaded.product) { renderBrowser('product'); return; }
-  _fbLoaded.product = true;
-  await fbInit('product', HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary,
-               'pp-documents-grid', 'pp-crumbs', 'Product Portal');
+
+  if (PORTAL.loaded) { renderPortalIndex(); return; }
+
+  host.innerHTML = `<div class="pp-loading">
+    <div class="skeleton sk-line med"></div>
+    <div class="skeleton sk-line"></div>
+    <div class="skeleton sk-line short"></div>
+    <p class="prose dim" style="margin-top:12px">Reading the Product Portal…</p>
+  </div>`;
+
+  try {
+    const cfg   = HUB_CONFIG.productPortal || {};
+    const drive = await resolveDrive(HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary);
+    PORTAL.driveId = drive.id;
+
+    const out = [];
+    await _portalCrawl(drive.id, null, [], (cfg.crawlDepth || 3), out, (cfg.maxFiles || 400));
+
+    PORTAL.files = out.map(f => {
+      const p = _portalProduct(f);
+      return Object.assign({}, f, {
+        _product:    p ? p.key : 'other',
+        _productLbl: p ? p.label : 'Other',
+        _catFolder:  (f._path || [])[0] || '',
+        _cat:        _portalCatLabel((f._path || [])[0]),
+        _brand:      (f._path || [])[1] || '',
+      });
+    });
+    PORTAL.loaded = true;
+    renderPortalIndex();
+  } catch (e) {
+    const msg = e.message === 'NOT_FOUND'
+      ? 'The Product Portal site or its library could not be found — check the URL in config.js and that you have access to the site.'
+      : `Couldn't read the Product Portal: ${e.message}`;
+    host.innerHTML = `<p class="sp-error">${escHtml(msg)}</p>`;
+  }
+}
+
+function renderPortalIndex() {
+  const host = document.getElementById('pp-index');
+  if (!host) return;
+
+  const cfg   = HUB_CONFIG.productPortal || {};
+  const files = PORTAL.files;
+
+  if (!files.length) {
+    host.innerHTML = '<p class="prose dim">No documents found in the Product Portal library.</p>';
+    return;
+  }
+
+  // Product tiles — only the types that actually have documents.
+  const types = (cfg.productTypes || []).map(t => ({
+    key: t.key, label: t.label,
+    n: files.filter(f => f._product === t.key).length,
+  })).filter(t => t.n);
+  const otherN = files.filter(f => f._product === 'other').length;
+  if (otherN) types.push({ key: 'other', label: 'Other', n: otherN });
+
+  // Document-type chips in config order, then anything unexpected.
+  const catOrder = (cfg.categories || []).map(c => c.label);
+  const cats = [...new Set(files.map(f => f._cat))].sort((a, b) => {
+    const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  }).map(label => ({ label, n: files.filter(f => f._cat === label).length }));
+
+  const recent = [...files]
+    .sort((a, b) => String(b.lastModifiedDateTime || '').localeCompare(String(a.lastModifiedDateTime || '')))
+    .slice(0, cfg.recentCount || 6);
+
+  host.innerHTML = `
+    <div class="pp-search-wrap">
+      <svg class="pp-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="pp-search" id="pp-q" type="search" autocomplete="off"
+             placeholder="Search every certificate and declaration…"
+             oninput="portalSearch(this.value)">
+      <span class="pp-search-count">${files.length} documents</span>
+    </div>
+
+    <div class="pp-sec-head"><h2 class="pp-sec-title">By product</h2>
+      <button class="pp-reset" onclick="portalReset()">Reset</button></div>
+    <div class="pp-tiles" id="pp-tiles">
+      ${types.map((t, i) => `
+        <button class="pp-tile" style="--i:${i}" data-key="${escAttr(t.key)}" onclick="portalPick('${escAttr(t.key)}',this)">
+          <span class="pp-tile-n">${t.n}</span>
+          <span class="pp-tile-l">${escHtml(t.label)}</span>
+        </button>`).join('')}
+    </div>
+
+    <div class="pp-sec-head"><h2 class="pp-sec-title">By document type</h2></div>
+    <div class="pp-cats" id="pp-cats">
+      <button class="pp-cat active" onclick="portalCat('all',this)">All<b>${files.length}</b></button>
+      ${cats.map(c => `<button class="pp-cat" onclick="portalCat('${escAttr(c.label)}',this)">${escHtml(c.label)}<b>${c.n}</b></button>`).join('')}
+    </div>
+
+    ${recent.length ? `
+    <div class="pp-recent" id="pp-recent">
+      <div class="pp-recent-lbl">Recently updated</div>
+      <div class="pp-recent-row">
+        ${recent.map(f => `
+          <button class="pp-recent-card" onclick="portalOpen('${escAttr(f.id)}')">
+            <span class="pp-recent-name">${escHtml(f.name.replace(/\.[a-z0-9]+$/i, ''))}</span>
+            <span class="pp-recent-meta">${escHtml(f._cat)} · ${escHtml(fmtSpDate(f.lastModifiedDateTime))}</span>
+          </button>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <div class="pp-results" id="pp-results"></div>`;
+
+  renderPortalResults();
+}
+
+function renderPortalResults() {
+  const box = document.getElementById('pp-results');
+  if (!box) return;
+
+  const q = PORTAL.q.trim().toLowerCase();
+  let rows = PORTAL.files.filter(f =>
+    (PORTAL.product  === 'all' || f._product === PORTAL.product) &&
+    (PORTAL.category === 'all' || f._cat === PORTAL.category) &&
+    (!q || (f.name + ' ' + (f._path || []).join(' ')).toLowerCase().includes(q)));
+
+  const filtered = PORTAL.product !== 'all' || PORTAL.category !== 'all' || q;
+
+  if (!rows.length) {
+    box.innerHTML = `<div class="px-empty"><h3>Nothing matches</h3>
+      <p>No documents for that combination. <button class="pp-reset inline" onclick="portalReset()">Clear the filters</button> and try again.</p></div>`;
+    return;
+  }
+
+  // Group by document type so a product's paperwork arrives sorted the
+  // way you'd hand it to a customer.
+  const groups = {};
+  rows.forEach(f => { (groups[f._cat] = groups[f._cat] || []).push(f); });
+
+  const catOrder = ((HUB_CONFIG.productPortal || {}).categories || []).map(c => c.label);
+  const keys = Object.keys(groups).sort((a, b) => {
+    const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+
+  box.innerHTML = `
+    <div class="pp-results-head">
+      <span>${rows.length} document${rows.length === 1 ? '' : 's'}${filtered ? ' matching' : ''}</span>
+      ${filtered ? '<button class="pp-reset inline" onclick="portalReset()">Clear filters</button>' : ''}
+    </div>
+    ${keys.map(k => `
+      <section class="pp-group">
+        <h3 class="pp-group-head">${escHtml(k)}<span>${groups[k].length}</span></h3>
+        <div class="pp-files">
+          ${groups[k].sort((a, b) => String(a.name).localeCompare(String(b.name))).map(f => `
+            <button class="pp-file" onclick="portalOpen('${escAttr(f.id)}')">
+              <span class="pp-file-ico">${escHtml((String(f.name).split('.').pop() || 'FILE').slice(0, 4).toUpperCase())}</span>
+              <span class="pp-file-main">
+                <span class="pp-file-name">${escHtml(f.name.replace(/\.[a-z0-9]+$/i, ''))}</span>
+                <span class="pp-file-meta">${[f._brand, f._productLbl, humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).map(escHtml).join(' · ')}</span>
+              </span>
+              <span class="pp-file-go">Open in hub →</span>
+            </button>`).join('')}
+        </div>
+      </section>`).join('')}`;
+}
+
+function portalPick(key, btn) {
+  PORTAL.product = (PORTAL.product === key) ? 'all' : key;
+  document.querySelectorAll('#pp-tiles .pp-tile')
+    .forEach(b => b.classList.toggle('active', b === btn && PORTAL.product === key));
+  renderPortalResults();
+}
+
+function portalCat(label, btn) {
+  PORTAL.category = label;
+  document.querySelectorAll('#pp-cats .pp-cat')
+    .forEach(b => b.classList.toggle('active', b === btn));
+  renderPortalResults();
+}
+
+function portalSearch(v) {
+  PORTAL.q = v || '';
+  clearTimeout(portalSearch._t);
+  portalSearch._t = setTimeout(renderPortalResults, 140);
+}
+
+function portalReset() {
+  PORTAL.product = 'all';
+  PORTAL.category = 'all';
+  PORTAL.q = '';
+  const q = document.getElementById('pp-q');
+  if (q) q.value = '';
+  document.querySelectorAll('#pp-tiles .pp-tile').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#pp-cats .pp-cat').forEach((b, i) => b.classList.toggle('active', i === 0));
+  renderPortalResults();
+}
+
+function portalOpen(id) {
+  const f = PORTAL.files.find(x => x.id === id);
+  if (f) openDocFile(f);
+}
+
+// "Browse folders" — the original file browser, unchanged, for anyone
+// who wants the SharePoint tree exactly as it is.
+async function togglePortalBrowse(btn) {
+  const idx = document.getElementById('pp-index');
+  const br  = document.getElementById('pp-browser');
+  if (!idx || !br) return;
+  const showBrowser = br.style.display === 'none' || !br.style.display;
+  br.style.display  = showBrowser ? '' : 'none';
+  idx.style.display = showBrowser ? 'none' : '';
+  if (btn) btn.textContent = showBrowser ? 'Back to products' : 'Browse folders';
+
+  if (showBrowser && !_fbLoaded.product) {
+    _fbLoaded.product = true;
+    await fbInit('product', HUB_CONFIG.productPortalSite, HUB_CONFIG.documentsLibrary,
+                 'pp-documents-grid', 'pp-crumbs', 'Product Portal');
+  } else if (showBrowser) {
+    renderBrowser('product');
+  }
 }
 
 // ═══ In-hub file browser ═════════════════════════════════════

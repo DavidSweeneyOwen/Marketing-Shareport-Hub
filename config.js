@@ -140,6 +140,25 @@ HUB_CONFIG.videos = {
   youtube: {
     proxyUrl:   'https://checkfire-jotform-fhagcybsfvg5fth8.uksouth-01.azurewebsites.net/api/videos',
     channelUrl: 'https://www.youtube.com/@CheckFireGroup',
+
+    // KEYLESS FALLBACK — added 26 Aug 2026.
+    // The proxy above still answers
+    //   {"error":"YOUTUBE_API_KEY app setting is not configured."}
+    // so the hub was showing no YouTube videos at all. It no longer has
+    // to wait for that key: every YouTube channel has an "uploads"
+    // playlist whose id is the channel id with UC swapped for UU, and
+    // that playlist embeds with NO API key, NO quota and NO Google
+    // account — and it refreshes itself the moment marketing publish.
+    //
+    //   channel  UC9EwvNr5cfQJW7GRrqCyphg
+    //   uploads  UU9EwvNr5cfQJW7GRrqCyphg
+    //
+    // The hub prefers the API feed when the proxy answers (real titles
+    // and dates for the hero list) and falls back to the embedded
+    // player when it doesn't. Set the key later and the richer version
+    // starts working on its own — nothing here needs changing.
+    channelId:         'UC9EwvNr5cfQJW7GRrqCyphg',
+    uploadsPlaylistId: 'UU9EwvNr5cfQJW7GRrqCyphg',
   },
   // Marketing asked (deck, 24 Aug) for the stray WordPress mp4 to come
   // off the home page. Turned off here rather than deleted in code, so
@@ -267,4 +286,117 @@ HUB_CONFIG.social = {
 
   commsList: 'Comms',    // read-only fallback feed
   commsMax:  8,
+};
+
+// ── Landing page images ───────────────────────────────────────
+// "Updated landing pages" on the home page reads WordPress *pages*,
+// and WordPress pages almost never carry a featured image — which is
+// why those cards were bare. Marketing now drop artwork into a folder
+// in the marketing Documents library instead, and the hub matches an
+// image to a page BY FILENAME.
+//
+//   Documents ▸ Images for Landing Pages ▸ fire-extinguishers.jpg
+//        matches   checkfire.co.uk/fire-extinguishers
+//
+// Matching is forgiving — case, spaces, underscores, hyphens and the
+// extension are all ignored, and a file whose name merely contains the
+// page slug (or the other way round) still counts. So
+// "Fire Extinguishers.png", "fire_extinguishers.jpg" and
+// "01 fire-extinguishers hero.jpg" all land on the same page.
+// Anything with no match keeps the current no-image card, so a missing
+// picture never leaves an empty grey box.
+HUB_CONFIG.landingImages = {
+  folder: 'Images for Landing Pages',
+  // Where to look for that folder. 'marketing' = the MarketingHub
+  // Documents library (where Jess is putting them).
+  site: 'marketing',
+};
+
+// ── Product Portal front door ─────────────────────────────────
+// The Product Portal SharePoint site is organised by CERTIFICATION
+// TYPE — DOCs, Kitemark Certificates, Marine Equipment Directive
+// (MED), Marine Equipment Regulations (MER), NTA 8133 — with the
+// product buried in each filename ("...Declaration of Conformity-CO2-
+// AlloySteel.pdf"). Fine for filing, useless if what you actually have
+// is a customer asking "send me the paperwork for the 6kg powder".
+//
+// So the hub indexes the whole site once, then lets people come at it
+// from either direction: by PRODUCT or by DOCUMENT TYPE, with a search
+// box over every filename. The raw folder browser is still there
+// behind "Browse folders" — nothing is hidden.
+//
+// productTypes: the first pattern that matches a filename wins, so
+// order matters (W3E before the general Water rule, for instance).
+// Marketing can add a row here without touching any code.
+HUB_CONFIG.productPortal = {
+  crawlDepth: 3,          // the site is shallow; 3 covers it comfortably
+  maxFiles:   400,
+
+  productTypes: [
+    { key:'co2',      label:'CO₂',            match:'co2|carbon dioxide' },
+    { key:'w3e',      label:'Water W3E',      match:'w3e' },
+    { key:'water',    label:'Water',          match:'water|h2o' },
+    { key:'foam',     label:'Foam',           match:'foam|\\bff\\b|afff|f3' },
+    { key:'powder',   label:'Powder',         match:'powder|\\babc\\b|\\bbc\\b' },
+    { key:'wetchem',  label:'Wet chemical',   match:'wetchem|wet chem|wet-chem' },
+    { key:'blanket',  label:'Fire blankets',  match:'blanket' },
+    { key:'lfx',      label:'LFX',            match:'lfx' },
+    { key:'hose',     label:'Hose reels',     match:'hose|en ?671|1866' },
+  ],
+
+  // Friendlier names for the top-level folders, and the order the
+  // document-type chips appear in. Anything not listed keeps its own
+  // folder name and sorts to the end.
+  categories: [
+    { folder:'DOCs',                               label:'Declarations of Conformity' },
+    { folder:'Kitemark Certificates',              label:'Kitemark certificates' },
+    { folder:'Marine Equipment Directive (MED)',   label:'MED' },
+    { folder:'Marine Equipment Regulations (MER)', label:'MER' },
+    { folder:'NTA 8133',                           label:'NTA 8133' },
+  ],
+
+  recentCount: 6,
+};
+
+// ── Ember — the CheckFire AI assistant ────────────────────────
+// Ember lives in a slide-over panel on every page of the hub.
+//
+// TWO MODES, and it picks whichever is available:
+//
+// 1. COPILOT STUDIO (the real Ember). Build the agent in Copilot
+//    Studio, point its knowledge at the MarketingHub, Product Portal
+//    and Media Portal sites, publish it to a custom website, then
+//    paste the embed URL below. Copilot Studio honours each person's
+//    own SharePoint permissions, so nobody sees a document they
+//    couldn't already open, and there is no API key to leak.
+//    Step-by-step in EMBER-COPILOT-STUDIO-SETUP.md.
+//
+// 2. SEARCH MODE (what runs until then). Ember searches all three
+//    SharePoint sites through Graph and answers with the documents
+//    themselves, opened in-hub. No AI, no cost, and genuinely the
+//    fastest way to find a certificate — so the panel is worth
+//    shipping before the agent exists.
+HUB_CONFIG.ember = {
+  enabled: true,
+  name: 'Ember',
+  tagline: 'CheckFire’s assistant',
+
+  // Paste the Copilot Studio "custom website" embed URL here to switch
+  // Ember from search mode to the real agent. Leave '' for search mode.
+  copilotEmbedUrl: '',
+
+  // Sites Ember searches in search mode, in the order results group.
+  searchSites: [
+    { key:'marketing', label:'Marketing Hub',  url:'https://checkfireltd.sharepoint.com/sites/MarketingHub' },
+    { key:'product',   label:'Product Portal', url:'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal' },
+    { key:'media',     label:'Media Portal',   url:'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal' },
+  ],
+
+  // Shown as tap-to-run examples on the empty panel.
+  suggestions: [
+    'Kitemark certificate for fire blankets',
+    'Declaration of conformity CO2',
+    'MED certificate LFX',
+    'Brand guidelines',
+  ],
 };

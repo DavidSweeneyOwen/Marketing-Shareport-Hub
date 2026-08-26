@@ -99,14 +99,15 @@ async function openProductPortal() {
 // ─── WordPress News ───────────────────────────────────────────
 
 // Build one horizontal carousel card from a WordPress post/page object.
-function _caraCard(item) {
+function _caraCard(item, idx) {
   const link  = safeUrl(item.link);
   const image = safeCssUrl(item.image);
   // No featured image (most WordPress *pages* have none) — drop the image
   // area entirely rather than leaving an empty grey box, and let the CSS
-  // give the card a red rule instead.
+  // give the card a red rule instead. loadLandingPages() may then slot a
+  // picture in from SharePoint, which is why the card carries an id.
   return `
-    <a class="cara-card${image ? '' : ' no-img'}" href="${escAttr(link)}" target="_blank" rel="noopener">
+    <a class="cara-card${image ? '' : ' no-img'}" ${idx === undefined ? '' : `id="cara-${idx}"`} href="${escAttr(link)}" target="_blank" rel="noopener">
       ${image ? `<div class="cara-img" style="background-image:url('${image}')"></div>` : ''}
       <div class="cara-body">
         <div class="cara-date">${escHtml(item.date)}</div>
@@ -123,7 +124,9 @@ async function loadBlogsCarousel() {
   try {
     const posts = await fetchWordPressNews();
     if (!posts.length) { track.innerHTML = '<p class="prose dim">No blog posts found.</p>'; return; }
-    track.innerHTML = posts.map(_caraCard).join('');
+    // No index passed — only the landing-page cards need ids (the
+    // SharePoint artwork is slotted into them by id later).
+    track.innerHTML = posts.map(p => _caraCard(p)).join('');
   } catch (e) {
     track.innerHTML = `<p class="sp-error">Couldn't load blogs: ${escHtml(e.message)}</p>`;
   }
@@ -131,6 +134,13 @@ async function loadBlogsCarousel() {
 
 // Updated Landing Pages carousel — WordPress pages, newest-modified.
 // Section hides itself if the pages endpoint returns nothing.
+//
+// 26 Aug 2026: marketing are putting artwork for these pages into
+// Documents ▸ Images for Landing Pages, matched to a page by filename
+// (see config.js). The carousel renders straight away with the
+// text-only cards and takes the pictures when SharePoint answers, so a
+// slow library never holds the home page up. Any page with no matching
+// image keeps the text-only card — never an empty grey box.
 async function loadLandingPages() {
   const section = document.getElementById('home-pages-section');
   const track   = document.getElementById('home-pages-track');
@@ -138,8 +148,24 @@ async function loadLandingPages() {
   try {
     const pages = await fetchWordPressPages();
     if (!pages.length) { if (section) section.style.display = 'none'; return; }
-    track.innerHTML = pages.map(_caraCard).join('');
+    track.innerHTML = pages.map((p, i) => _caraCard(p, i)).join('');
     if (section) section.style.display = '';
+
+    if (typeof fetchLandingImages === 'function') {
+      const images = await fetchLandingImages();
+      if (!images.length) return;
+      pages.forEach((p, i) => {
+        const url = matchLandingImage(images, p);
+        if (!url) return;
+        const card = document.getElementById('cara-' + i);
+        if (!card) return;
+        card.classList.remove('no-img');
+        const media = document.createElement('div');
+        media.className = 'cara-img';
+        media.style.backgroundImage = `url('${safeCssUrl(url)}')`;
+        card.insertBefore(media, card.firstElementChild);
+      });
+    }
   } catch (e) {
     console.warn('Landing pages unavailable:', e.message);
     if (section) section.style.display = 'none';
@@ -371,9 +397,22 @@ function folderIcon() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
 }
 
+// ─── Sticky-header height ────────────────────────────────────
+// The filter rail on Launches and Campaigns sticks BELOW the hub's
+// own sticky header. That header's height depends on the viewport, so
+// publish it as a CSS variable rather than guessing a number.
+function syncHeaderHeight() {
+  const h = document.getElementById('intranet-header');
+  if (!h) return;
+  document.documentElement.style.setProperty('--hub-header-h', h.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncHeaderHeight);
+window.addEventListener('load', syncHeaderHeight);
+
 // ─── Init ────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
+  syncHeaderHeight();
   const launchDays = document.getElementById('launchDays');
   if (launchDays) launchDays.textContent = '—';
 

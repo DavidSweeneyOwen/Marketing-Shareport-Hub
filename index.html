@@ -282,53 +282,664 @@
     .rag-col-empty{font-size:12.5px;color:#9A9A9A;padding:6px 0}
     @media (max-width:900px){ .rag-cols{grid-template-columns:1fr} }
 
-    /* ── Latest updates band ────────────────────────────────
-       Pinned to the bottom of the window like a news ticker, so you
-       don't have to scroll the page to find it. The element itself sits
-       outside every page element (see the markup note further down) and is
-       scoped back to the home page by the sibling rule below. The home
-       page carries matching bottom padding so the band never covers its
-       last section. */
-    .news-band{
-      display:flex;align-items:stretch;gap:0;
-      position:fixed;left:0;right:0;bottom:0;z-index:90;
-      background:#141414;overflow:hidden;
-      box-shadow:0 -6px 22px rgba(0,0,0,0.22);
+    /* ══════════════════════════════════════════════════════════
+       26 AUG 2026 — the editorial pass.
+
+       Launches and Campaigns were a metric rail over three columns of
+       small cards: accurate, and unmistakably a project tracker.
+       Marketing's note was "we're not sure on how to make this look,
+       really want this to look like a website". So both pages now run
+       one shape — dark masthead, a light editorial LEAD SPREAD, a
+       sticky FILTER RAIL carrying the counts that used to just sit
+       there, then a generous CARD GRID with real artwork out of
+       SharePoint.
+
+       Everything here is prefixed .px- (product experience) so none of
+       it can collide with the existing .camp-* / .rag-* rules in
+       styles.css, which other pages still use.
+       ══════════════════════════════════════════════════════════ */
+
+    /* Shared tokens for this layer. Warm paper against the hub's
+       existing cold white gives the editorial band its own footing
+       without introducing a second brand. */
+    :root{
+      --px-paper:#F7F5F2;
+      --px-paper-2:#EFEBE5;
+      --px-rule:#E3DDD4;
+      --px-ink:#12100E;
+      --px-red:#D1242B;
     }
-    /* Home only. The band is a later sibling of every page, so this hides
-       it whenever the home page is not the active one. !important because
-       renderNewsTicker sets display inline when it has something to show. */
-    #page-home:not(.active) ~ .news-band{display:none !important}
-    #page-home.active{padding-bottom:64px}
-    .news-label{
-      flex:0 0 auto;display:flex;align-items:center;padding:13px 18px;
-      background:#D1242B;color:#fff;font-size:11px;font-weight:800;
-      text-transform:uppercase;letter-spacing:.09em;white-space:nowrap;
+
+    /* The masthead sits directly on top of the lead spread now, so it
+       doesn't need the deep bottom padding it carried when a metric
+       rail hung off it. */
+    .ph.slim .container{padding-bottom:34px}
+
+    .px-boot{max-width:1280px;margin:0 auto;padding:40px 32px}
+
+    /* ── Lead spread ────────────────────────────────────────── */
+    .px-lead{
+      display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);
+      align-items:stretch;background:var(--px-paper);
+      border-bottom:1px solid var(--px-rule);position:relative;overflow:hidden;
     }
-    .news-viewport{flex:1 1 auto;overflow:hidden;position:relative}
-    .news-track{
-      display:flex;align-items:center;gap:38px;white-space:nowrap;
-      padding:13px 20px;will-change:transform;
-      animation:news-scroll 46s linear infinite;
+    /* A hairline of brand red across the top of the band, so the join
+       with the dark masthead reads as deliberate. */
+    .px-lead::before{
+      content:'';position:absolute;top:0;left:0;right:0;height:3px;
+      background:linear-gradient(90deg,var(--px-red) 0%,var(--px-red) 32%,transparent 32%);
     }
-    .news-band:hover .news-track{animation-play-state:paused}
-    .news-item{display:inline-flex;align-items:center;gap:9px;font-size:13px;color:#EDEDED}
-    .news-kind{
-      font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
-      padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.12);color:#fff;
+    .px-lead-copy{
+      padding:64px 56px 64px max(32px,calc((100vw - 1280px)/2 + 32px));
+      display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
+      animation:px-rise .55s cubic-bezier(.22,1,.36,1) both;
     }
-    .news-kind.launch{background:#D1242B}
-    .news-kind.campaign{background:#E0A320;color:#1A1A1A}
-    .news-when{color:#9A9A9A;font-size:12px}
-    @keyframes news-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+    .px-eyebrow{
+      font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;
+      color:var(--px-red);margin-bottom:16px;
+    }
+    .px-lead-title{
+      font-family:'Fraunces',Georgia,serif;font-weight:600;
+      font-size:clamp(34px,4.4vw,60px);line-height:1.02;letter-spacing:-.02em;
+      color:var(--px-ink);margin:0 0 16px;text-wrap:balance;
+    }
+    .px-lead-sub{
+      font-size:16.5px;line-height:1.6;color:#5C554C;margin:0 0 20px;max-width:46ch;
+    }
+    .px-lead-codes{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px}
+    .px-code{
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;
+      letter-spacing:.02em;color:var(--px-ink);background:#fff;
+      border:1px solid var(--px-rule);padding:5px 11px;border-radius:7px;
+    }
+    .px-code.sm{font-size:11px;padding:3px 8px}
+    .px-lead-meta{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:24px}
+    .px-lead-when{font-size:13.5px;color:#6B645A;font-weight:600}
+
+    .px-stats{display:flex;flex-wrap:wrap;gap:30px;margin:0 0 26px}
+    .px-stat-v{
+      font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;
+      line-height:1;color:var(--px-ink);
+    }
+    .px-stat-l{
+      font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+      color:#8B8378;margin-top:6px;
+    }
+
+    .px-cta{
+      display:inline-flex;align-items:center;gap:9px;font:inherit;
+      font-size:14px;font-weight:700;color:#fff;background:var(--px-ink);
+      border:none;border-radius:99px;padding:13px 22px;cursor:pointer;
+      transition:background .18s,transform .18s,box-shadow .18s;
+    }
+    .px-cta:hover{
+      background:var(--px-red);transform:translateY(-1px);
+      box-shadow:0 10px 24px rgba(209,36,43,.26);
+    }
+
+    /* The picture bleeds to the right edge of the window — the single
+       biggest reason the page now reads as a site rather than a view. */
+    /* With no artwork yet the panel would be a flat dark void, so it
+       carries a faint diagonal rule pattern — it reads as a designed
+       placeholder rather than a failed image. The pattern is on a
+       ::before so a real background-image simply covers it. */
+    .px-lead-media{
+      min-height:400px;background:linear-gradient(135deg,#241012 0%,#0C0C0C 100%);
+      background-size:cover;background-position:center;
+      display:flex;align-items:center;justify-content:center;position:relative;
+    }
+    .px-lead-media::before,.px-card-media::before{
+      content:'';position:absolute;inset:0;pointer-events:none;
+      background:repeating-linear-gradient(135deg,
+        rgba(255,255,255,.028) 0 2px, transparent 2px 11px);
+    }
+    .px-lead-media.has-img::before,.px-card-media.has-img::before{display:none}
+    .px-lead-media.has-img::after{
+      content:'';position:absolute;inset:0;
+      background:linear-gradient(90deg,var(--px-paper) 0%,rgba(247,245,242,0) 22%);
+    }
+    .px-lead-initials{
+      font-family:'Fraunces',Georgia,serif;font-size:96px;font-weight:600;
+      color:rgba(255,255,255,.13);letter-spacing:.02em;user-select:none;
+    }
+    .px-lead-media.has-img .px-lead-initials{display:none}
+
+    @media(max-width:960px){
+      .px-lead{grid-template-columns:1fr}
+      .px-lead-copy{padding:44px 24px 36px;order:2}
+      .px-lead-media{min-height:230px;order:1}
+      .px-lead-media.has-img::after{
+        background:linear-gradient(0deg,rgba(247,245,242,.85) 0%,rgba(247,245,242,0) 45%);
+      }
+    }
+
+    /* ── Filter rail ────────────────────────────────────────── */
+    /* Sticks under the hub's own sticky header rather than at the top
+       of the window — #intranet-header is position:sticky;top:0 with
+       z-index 800, so a rail pinned to 0 would slide underneath it and
+       vanish. app.js measures the header and publishes its height as
+       --hub-header-h on load and on resize; the fallback keeps this
+       sensible if that ever doesn't run. */
+    .px-rail{
+      position:sticky;top:var(--hub-header-h,104px);z-index:40;background:rgba(255,255,255,.92);
+      backdrop-filter:saturate(160%) blur(10px);
+      border-bottom:1px solid var(--line);
+      display:flex;align-items:center;justify-content:space-between;gap:20px;
+      padding:12px max(32px,calc((100vw - 1280px)/2 + 32px));flex-wrap:wrap;
+    }
+    .px-chips{display:flex;flex-wrap:wrap;gap:8px}
+    .px-chip{
+      display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:13px;
+      font-weight:600;color:#3D3831;background:#fff;border:1px solid var(--line);
+      border-radius:99px;padding:8px 15px;cursor:pointer;
+      transition:background .15s,color .15s,border-color .15s;
+    }
+    .px-chip b{font-size:11.5px;font-weight:800;color:#9A938A}
+    .px-chip:hover:not(:disabled){border-color:#B9B2A7}
+    .px-chip.active{background:var(--px-ink);border-color:var(--px-ink);color:#fff}
+    .px-chip.active b{color:rgba(255,255,255,.55)}
+    .px-chip.empty{opacity:.4;cursor:default}
+    .px-chip-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+    .px-chip-dot.red{background:#D1242B}
+    .px-chip-dot.amber{background:#E0A320}
+    .px-chip-dot.green{background:#1f7a34}
+    .px-chip-dot.grey{background:#9A9A9A}
+    .px-rail-note{font-size:12px;color:#8B8378}
+    .px-rail-note b{color:var(--px-ink);font-weight:800}
+
+    /* ── Card grid ──────────────────────────────────────────── */
+    .px-grid{
+      display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 26px;
+      max-width:1280px;margin:0 auto;padding:44px 32px 80px;
+    }
+    @media(max-width:1080px){.px-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:680px){.px-grid{grid-template-columns:1fr;padding:32px 20px 60px}}
+
+    /* Filtering by status hides rather than re-flows, so cards keep
+       their place in the reading order when you come back to All. */
+    .px-grid[data-filter="red"]   .px-card:not([data-tone="red"]),
+    .px-grid[data-filter="amber"] .px-card:not([data-tone="amber"]),
+    .px-grid[data-filter="green"] .px-card:not([data-tone="green"]),
+    .px-grid[data-filter="grey"]  .px-card:not([data-tone="grey"]){display:none}
+
+    .px-card{
+      display:flex;flex-direction:column;background:#fff;
+      border:1px solid var(--line);border-radius:16px;overflow:hidden;
+      cursor:pointer;position:relative;
+      transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s,border-color .22s;
+      animation:px-rise .5s cubic-bezier(.22,1,.36,1) both;
+      animation-delay:calc(var(--i,0) * 55ms);
+    }
+    .px-card:hover{
+      transform:translateY(-4px);border-color:#D8D2C8;
+      box-shadow:0 16px 40px rgba(18,16,14,.10);
+    }
+    .px-card:focus-visible{outline:2px solid var(--px-red);outline-offset:3px}
+    .px-card-media{
+      aspect-ratio:16/10;background:linear-gradient(135deg,#241012 0%,#0C0C0C 100%);
+      background-size:cover;background-position:center;
+      display:flex;align-items:center;justify-content:center;position:relative;
+      transition:transform .5s cubic-bezier(.22,1,.36,1);
+    }
+    .px-card:hover .px-card-media{transform:scale(1.035)}
+    .px-card-initials{
+      font-family:'Fraunces',Georgia,serif;font-size:44px;font-weight:600;
+      color:rgba(255,255,255,.15);user-select:none;
+    }
+    .px-card-media.has-img .px-card-initials{display:none}
+    .px-badge{
+      position:absolute;left:12px;top:12px;display:inline-flex;align-items:center;gap:7px;
+      font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+      background:rgba(255,255,255,.94);color:#2A2620;padding:5px 10px;border-radius:99px;
+      box-shadow:0 2px 8px rgba(0,0,0,.18);
+    }
+    .px-badge-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+    .px-badge-dot.red{background:#D1242B}
+    .px-badge-dot.amber{background:#E0A320}
+    .px-badge-dot.green{background:#1f7a34}
+    .px-badge-dot.grey{background:#9A9A9A}
+    .px-lead .px-badge{position:static;box-shadow:none;background:#fff;border:1px solid var(--px-rule)}
+
+    .px-card-body{padding:18px 20px 20px;flex:1;display:flex;flex-direction:column;gap:7px}
+    .px-card-eyebrow{
+      font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
+      color:var(--px-red);
+    }
+    .px-card-title{
+      font-family:'Fraunces',Georgia,serif;font-size:21px;font-weight:600;
+      line-height:1.2;letter-spacing:-.01em;color:var(--px-ink);margin:0;
+      transition:color .15s;
+    }
+    .px-card:hover .px-card-title{color:var(--px-red)}
+    .px-card-meta{font-size:12.5px;color:#8B8378}
+    .px-card-codes{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:10px}
+    .px-chan{
+      font-size:11px;font-weight:700;color:#4A443C;background:var(--px-paper);
+      border:1px solid var(--px-rule);padding:3px 9px;border-radius:99px;
+    }
+    .px-card-go{
+      display:flex;align-items:center;gap:6px;padding:0 20px 18px;
+      font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+      color:#B4ADA2;transition:color .15s;
+    }
+    .px-card:hover .px-card-go{color:var(--px-red)}
+
+    .px-empty{
+      max-width:640px;margin:0 auto;padding:70px 32px;text-align:center;
+    }
+    .px-empty h3{
+      font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:600;
+      color:var(--px-ink);margin:0 0 10px;
+    }
+    .px-empty p{font-size:14.5px;line-height:1.6;color:#7A736A;margin:0}
+
+    @keyframes px-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
     @media (prefers-reduced-motion:reduce){
-      .news-track{animation:none;overflow-x:auto;white-space:nowrap}
+      .px-card,.px-lead-copy{animation:none}
+      .px-card:hover{transform:none}
+      .px-card:hover .px-card-media{transform:none}
     }
-    @media (max-width:640px){
-      .news-label{padding:11px 12px;font-size:10px}
-      .news-item{font-size:12px}
-      #page-home.active{padding-bottom:58px}
+
+    /* ══ LATEST UPDATES — corner dock ═══════════════════════════
+       Was a full-width ticker across the foot of the home page.
+       Marketing wanted it "more in the corner with it popping up with
+       the latest", so: a pill that opens itself once on load with the
+       newest item, cycles through the rest, and expands to the full
+       list on request. It now runs on every page, not just home. */
+    .upd-dock{
+      position:fixed;right:24px;bottom:96px;z-index:9200;
+      display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+      max-width:min(370px,calc(100vw - 40px));
     }
+    .upd-pill{
+      display:inline-flex;align-items:center;gap:9px;font:inherit;
+      font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+      color:#fff;background:#141414;border:none;border-radius:99px;
+      padding:11px 16px;cursor:pointer;order:2;
+      box-shadow:0 8px 24px rgba(0,0,0,.28);transition:background .18s,transform .18s;
+    }
+    .upd-pill:hover{background:var(--px-red);transform:translateY(-1px)}
+    .upd-count{
+      font-size:10.5px;font-weight:800;background:var(--px-red);color:#fff;
+      border-radius:99px;padding:2px 7px;min-width:18px;text-align:center;
+    }
+    .upd-dock.open .upd-count{background:rgba(255,255,255,.2)}
+    .upd-spark{
+      width:8px;height:8px;border-radius:50%;background:var(--px-red);flex:0 0 auto;
+      box-shadow:0 0 0 0 rgba(209,36,43,.6);animation:upd-ping 2.6s ease-out infinite;
+    }
+    .upd-dock.open .upd-spark{background:#fff;animation:none;box-shadow:none}
+    @keyframes upd-ping{
+      0%{box-shadow:0 0 0 0 rgba(209,36,43,.55)}
+      70%{box-shadow:0 0 0 9px rgba(209,36,43,0)}
+      100%{box-shadow:0 0 0 0 rgba(209,36,43,0)}
+    }
+
+    .upd-panel{
+      order:1;width:340px;max-width:100%;background:#fff;
+      border:1px solid var(--line);border-radius:16px;overflow:hidden;
+      box-shadow:0 20px 50px rgba(0,0,0,.20);
+      transform-origin:bottom right;
+      opacity:0;transform:translateY(10px) scale(.96);pointer-events:none;
+      transition:opacity .24s ease,transform .28s cubic-bezier(.22,1,.36,1);
+    }
+    .upd-dock.open .upd-panel{opacity:1;transform:none;pointer-events:auto}
+    .upd-head{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:11px 14px;background:#141414;color:#fff;
+    }
+    .upd-head-title{
+      font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
+    }
+    .upd-x{background:none;border:none;color:rgba(255,255,255,.65);cursor:pointer;padding:2px;line-height:0}
+    .upd-x:hover{color:#fff}
+    .upd-peek{padding:4px 4px 0;transition:opacity .2s}
+    .upd-peek.swap{opacity:0}
+    .upd-all{display:none;padding:4px 4px 0;max-height:300px;overflow-y:auto}
+    .upd-dock.expanded .upd-peek{display:none}
+    .upd-dock.expanded .upd-all{display:block}
+    .upd-dock.expanded .upd-more{display:none}
+    .upd-item{padding:12px 12px 13px;border-radius:11px}
+    .upd-all .upd-item + .upd-item{border-top:1px solid var(--line-2)}
+    .upd-kind{
+      display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.08em;padding:2px 8px;border-radius:99px;margin-bottom:7px;
+    }
+    .upd-kind.launch{background:#FDECEC;color:#B3261E}
+    .upd-kind.campaign{background:#FBF1DD;color:#7A5E13}
+    .upd-text{font-size:13.5px;font-weight:600;line-height:1.4;color:#1A1713}
+    .upd-when{font-size:11.5px;color:#9A938A;margin-top:5px}
+    .upd-more{
+      display:block;width:100%;font:inherit;font-size:12px;font-weight:700;
+      color:var(--px-red);background:none;border:none;border-top:1px solid var(--line-2);
+      padding:11px;cursor:pointer;
+    }
+    .upd-more:hover{background:#FDF6F6}
+
+    /* Ember takes over that corner while it's open — two panels
+       fighting for the same 340px is noise, and the dock would sit
+       behind the panel anyway. */
+    body.ember-open .upd-dock{opacity:0;pointer-events:none;transition:opacity .2s}
+
+    @media(max-width:640px){
+      .upd-dock{right:14px;bottom:84px}
+      .upd-panel{width:min(300px,calc(100vw - 28px))}
+      .upd-pill-label{display:none}
+    }
+
+    /* ══ EMBER ══════════════════════════════════════════════════
+       Slide-over panel, launcher in the bottom-right under the
+       updates dock. Search mode today; the Copilot Studio agent drops
+       into the same frame later without moving anything. */
+    .ember-launch{
+      position:fixed;right:24px;bottom:24px;z-index:9300;
+      display:inline-flex;align-items:center;gap:10px;font:inherit;
+      font-size:13.5px;font-weight:700;color:#fff;border:none;cursor:pointer;
+      background:linear-gradient(135deg,#D1242B 0%,#8E1418 100%);
+      border-radius:99px;padding:13px 20px 13px 15px;
+      box-shadow:0 10px 30px rgba(209,36,43,.38);
+      transition:transform .2s cubic-bezier(.22,1,.36,1),box-shadow .2s;
+    }
+    .ember-launch:hover{transform:translateY(-2px);box-shadow:0 16px 38px rgba(209,36,43,.46)}
+    .ember-flame{display:flex;animation:ember-flicker 3.4s ease-in-out infinite}
+    @keyframes ember-flicker{
+      0%,100%{opacity:1;transform:scale(1)}
+      45%{opacity:.82;transform:scale(1.07)}
+      70%{opacity:.95;transform:scale(.98)}
+    }
+    .ember-dock.open .ember-launch{transform:translateY(90px) scale(.9);opacity:0;pointer-events:none}
+
+    .ember-panel{
+      position:fixed;right:20px;bottom:20px;z-index:9400;
+      width:min(420px,calc(100vw - 32px));height:min(660px,calc(100vh - 40px));
+      background:#fff;border:1px solid var(--line);border-radius:20px;
+      display:flex;flex-direction:column;overflow:hidden;
+      box-shadow:0 30px 70px rgba(0,0,0,.28);
+      opacity:0;transform:translateY(18px) scale(.97);pointer-events:none;
+      transition:opacity .26s ease,transform .3s cubic-bezier(.22,1,.36,1);
+    }
+    .ember-dock.open .ember-panel{opacity:1;transform:none;pointer-events:auto}
+
+    .ember-head{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:14px 16px;background:linear-gradient(135deg,#1A0E0F 0%,#0A0A0A 100%);color:#fff;
+    }
+    .ember-id{display:flex;align-items:center;gap:11px}
+    .ember-av{
+      width:26px;height:26px;border-radius:50%;flex:0 0 auto;
+      background:linear-gradient(135deg,#D1242B,#8E1418);color:#fff;
+      display:flex;align-items:center;justify-content:center;
+      font-size:12px;font-weight:800;
+    }
+    .ember-av.lg{width:34px;height:34px;font-size:14px}
+    .ember-name{font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;line-height:1.1}
+    .ember-tag{font-size:11px;color:rgba(255,255,255,.55);margin-top:2px}
+    .ember-head-acts{display:flex;align-items:center;gap:4px}
+    .ember-x{background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;padding:5px;line-height:0;border-radius:7px}
+    .ember-x:hover{color:#fff;background:rgba(255,255,255,.1)}
+
+    .ember-body{flex:1;overflow-y:auto;padding:16px;background:#FBFAF9}
+    .ember-frame{width:100%;height:100%;border:0}
+
+    .ember-welcome{text-align:center;padding:28px 8px}
+    .ember-mark{
+      width:56px;height:56px;border-radius:50%;margin:0 auto 14px;
+      display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,#FDECEC,#F7DEDE);color:#D1242B;
+    }
+    .ember-welcome h3{
+      font-family:'Fraunces',Georgia,serif;font-size:21px;font-weight:600;
+      color:var(--px-ink);margin:0 0 8px;
+    }
+    .ember-welcome p{font-size:13.5px;line-height:1.6;color:#6E675E;margin:0 auto;max-width:31ch}
+    .ember-sugg{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin:18px 0 22px}
+    .ember-chip{
+      font:inherit;font-size:12px;font-weight:600;color:#3D3831;background:#fff;
+      border:1px solid var(--line);border-radius:99px;padding:7px 13px;cursor:pointer;
+      transition:border-color .15s,color .15s;
+    }
+    .ember-chip:hover{border-color:var(--px-red);color:var(--px-red)}
+    .ember-mode{
+      font-size:11.5px;line-height:1.55;color:#9A938A;
+      border-top:1px solid var(--line-2);padding-top:14px;
+    }
+    .ember-mode span{display:block;color:#B4ADA2;margin-top:3px}
+
+    .ember-msg{display:flex;gap:9px;margin-bottom:14px;align-items:flex-start}
+    .ember-msg.you{justify-content:flex-end}
+    .ember-bubble{
+      max-width:86%;font-size:13.5px;line-height:1.55;
+      border-radius:14px;padding:11px 13px;
+    }
+    .ember-msg.you .ember-bubble{background:var(--px-ink);color:#fff;border-bottom-right-radius:5px}
+    .ember-msg.ember .ember-bubble{background:#fff;border:1px solid var(--line);color:#25211C;border-bottom-left-radius:5px}
+    .ember-bubble p{margin:0 0 9px}
+    .ember-bubble p:last-child{margin-bottom:0}
+    .ember-tip{font-size:12.5px;color:#8B8378}
+
+    .ember-group{margin-top:10px}
+    .ember-group-head{
+      display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;
+      text-transform:uppercase;letter-spacing:.1em;color:#9A938A;margin:0 0 6px;
+    }
+    .ember-group-head span{
+      font-size:10px;background:var(--px-paper);border:1px solid var(--px-rule);
+      border-radius:99px;padding:1px 6px;letter-spacing:0;
+    }
+    .ember-hit{
+      display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;
+      background:#FBFAF9;border:1px solid var(--line-2);border-radius:11px;
+      padding:9px 10px;margin-bottom:6px;cursor:pointer;
+      transition:border-color .15s,background .15s;
+    }
+    .ember-hit:hover{border-color:var(--px-red);background:#fff}
+    .ember-hit-ico{
+      flex:0 0 auto;width:34px;height:34px;border-radius:8px;background:#fff;
+      border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+      font-size:9px;font-weight:800;color:#8B8378;letter-spacing:.02em;
+    }
+    .ember-hit-main{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .ember-hit-name{
+      font-size:12.5px;font-weight:700;color:#25211C;line-height:1.3;
+      overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    }
+    .ember-hit-meta{font-size:11px;color:#9A938A}
+    .ember-jump{
+      display:inline-block;font:inherit;font-size:12px;font-weight:700;margin-top:8px;
+      color:#fff;background:var(--px-red);border:none;border-radius:99px;
+      padding:8px 14px;cursor:pointer;
+    }
+    .ember-jump:hover{background:#A81A20}
+
+    .ember-dots{display:inline-flex;gap:4px;padding:2px 0}
+    .ember-dots i{
+      width:6px;height:6px;border-radius:50%;background:#C9C2B8;
+      animation:ember-bounce 1.1s infinite ease-in-out;
+    }
+    .ember-dots i:nth-child(2){animation-delay:.15s}
+    .ember-dots i:nth-child(3){animation-delay:.3s}
+    @keyframes ember-bounce{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-4px);opacity:1}}
+
+    .ember-form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line);background:#fff}
+    .ember-input{
+      flex:1;min-width:0;font:inherit;font-size:13.5px;color:#25211C;
+      background:#FBFAF9;border:1px solid var(--line);border-radius:99px;padding:11px 15px;
+    }
+    .ember-input:focus{outline:none;border-color:var(--px-red);box-shadow:0 0 0 3px rgba(209,36,43,.08)}
+    .ember-send{
+      flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;
+      background:var(--px-ink);color:#fff;display:flex;align-items:center;justify-content:center;
+      transition:background .15s;
+    }
+    .ember-send:hover{background:var(--px-red)}
+
+    @media(max-width:640px){
+      .ember-launch{right:14px;bottom:14px;padding:12px 16px 12px 13px}
+      .ember-launch-label{display:none}
+      .ember-panel{right:10px;left:10px;bottom:10px;width:auto;height:min(78vh,620px)}
+    }
+
+    /* ══ CHECKFIRE ON YOUTUBE (home) ═══════════════════════════ */
+    .yt-grid{display:grid;grid-template-columns:1.7fr 1fr;gap:20px;align-items:stretch}
+    @media(max-width:900px){.yt-grid{grid-template-columns:1fr}}
+    .yt-stage{
+      background:#0A0A0A;border-radius:16px;overflow:hidden;aspect-ratio:16/9;
+      border:1px solid #E5E5E5;
+    }
+    .yt-player{width:100%;height:100%;border:0;display:block}
+    .yt-side{display:flex;flex-direction:column;gap:10px;min-width:0}
+    .yt-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto}
+    .yt-row{
+      display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;
+      text-decoration:none;color:inherit;transition:background .15s;
+    }
+    .yt-row:hover{background:#FAFAFA}
+    .yt-row-play{
+      flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:#D1242B;color:#fff;
+      display:flex;align-items:center;justify-content:center;font-size:11px;
+    }
+    .yt-row-main{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .yt-row-title{
+      font-size:12.5px;font-weight:700;line-height:1.35;color:#1A1A1A;
+      overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    }
+    .yt-row-date{font-size:11px;color:#9A938A}
+    /* Deliberately NOT flex:1 — stretched to the height of the player
+       it became a tall empty box. It sizes to its text and the button
+       sits under it. */
+    .yt-blurb{
+      background:#FBFAF9;border:1px solid var(--line-2);border-radius:14px;padding:16px;
+    }
+    .yt-blurb p{font-size:13px;line-height:1.6;color:#5C554C;margin:0 0 10px}
+    .yt-blurb-dim{color:#9A938A !important;font-size:11.5px !important;margin:0 !important}
+    .yt-cta{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      font-size:12.5px;font-weight:700;color:#fff;background:#D1242B;
+      border-radius:10px;padding:11px;text-decoration:none;transition:background .15s;
+    }
+    .yt-cta:hover{background:#A81A20}
+
+    /* ══ PRODUCT PORTAL front door ═════════════════════════════
+       The site files by certification type and hides the product in
+       the filename. This gives people the other way in. */
+    .pp-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:34px}
+    .pp-search-ico{position:absolute;left:18px;color:#9A938A;pointer-events:none}
+    .pp-search{
+      width:100%;font:inherit;font-size:16px;color:var(--px-ink);
+      background:var(--px-paper);border:1px solid var(--px-rule);border-radius:14px;
+      padding:16px 130px 16px 50px;
+    }
+    .pp-search:focus{outline:none;border-color:var(--px-red);background:#fff;box-shadow:0 0 0 4px rgba(209,36,43,.07)}
+    .pp-search-count{
+      position:absolute;right:16px;font-size:11.5px;font-weight:700;color:#9A938A;
+      text-transform:uppercase;letter-spacing:.06em;pointer-events:none;
+    }
+    @media(max-width:600px){.pp-search{padding-right:20px}.pp-search-count{display:none}}
+
+    .pp-sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:0 0 14px}
+    .pp-sec-title{
+      font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;
+      color:#9A938A;margin:0;
+    }
+    .pp-reset{
+      font:inherit;font-size:12px;font-weight:700;color:var(--px-red);
+      background:none;border:none;cursor:pointer;padding:0;
+    }
+    .pp-reset:hover{text-decoration:underline}
+    .pp-reset.inline{margin-left:8px}
+
+    .pp-tiles{
+      display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:34px;
+    }
+    .pp-tile{
+      display:flex;flex-direction:column;align-items:flex-start;gap:6px;font:inherit;
+      background:#fff;border:1px solid var(--line);border-radius:14px;
+      padding:18px 16px;cursor:pointer;text-align:left;
+      transition:border-color .16s,transform .16s,box-shadow .16s,background .16s;
+      animation:px-rise .45s cubic-bezier(.22,1,.36,1) both;
+      animation-delay:calc(var(--i,0) * 40ms);
+    }
+    .pp-tile:hover{border-color:#C9C2B8;transform:translateY(-2px);box-shadow:0 10px 26px rgba(18,16,14,.07)}
+    .pp-tile.active{background:var(--px-ink);border-color:var(--px-ink)}
+    .pp-tile-n{
+      font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;
+      line-height:1;color:var(--px-red);
+    }
+    .pp-tile.active .pp-tile-n{color:#fff}
+    .pp-tile-l{font-size:13px;font-weight:700;color:#3D3831}
+    .pp-tile.active .pp-tile-l{color:rgba(255,255,255,.8)}
+
+    .pp-cats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:30px}
+    .pp-cat{
+      display:inline-flex;align-items:center;gap:8px;font:inherit;font-size:13px;font-weight:600;
+      color:#3D3831;background:#fff;border:1px solid var(--line);border-radius:99px;
+      padding:8px 15px;cursor:pointer;transition:background .15s,color .15s,border-color .15s;
+    }
+    .pp-cat b{font-size:11px;font-weight:800;color:#9A938A}
+    .pp-cat:hover{border-color:#B9B2A7}
+    .pp-cat.active{background:var(--px-ink);border-color:var(--px-ink);color:#fff}
+    .pp-cat.active b{color:rgba(255,255,255,.55)}
+
+    .pp-recent{
+      background:var(--px-paper);border:1px solid var(--px-rule);border-radius:16px;
+      padding:16px 18px;margin-bottom:34px;
+    }
+    .pp-recent-lbl{
+      font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
+      color:#9A938A;margin-bottom:11px;
+    }
+    .pp-recent-row{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+    .pp-recent-card{
+      flex:0 0 230px;display:flex;flex-direction:column;gap:5px;text-align:left;font:inherit;
+      background:#fff;border:1px solid var(--px-rule);border-radius:11px;
+      padding:11px 13px;cursor:pointer;transition:border-color .15s;
+    }
+    .pp-recent-card:hover{border-color:var(--px-red)}
+    .pp-recent-name{
+      font-size:12.5px;font-weight:700;color:#25211C;line-height:1.35;
+      overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    }
+    .pp-recent-meta{font-size:11px;color:#9A938A}
+
+    .pp-results-head{
+      display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+      color:#9A938A;text-transform:uppercase;letter-spacing:.08em;
+      padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:22px;
+    }
+    .pp-group{margin-bottom:30px}
+    .pp-group-head{
+      display:flex;align-items:center;gap:9px;
+      font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;
+      color:var(--px-ink);margin:0 0 12px;
+    }
+    .pp-group-head span{
+      font-family:'Manrope',system-ui,sans-serif;font-size:11px;font-weight:800;
+      color:#9A938A;background:var(--px-paper);border:1px solid var(--px-rule);
+      border-radius:99px;padding:2px 8px;
+    }
+    .pp-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+    .pp-file{
+      display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;
+      background:#fff;border:1px solid var(--line);border-radius:12px;
+      padding:12px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s;
+    }
+    .pp-file:hover{border-color:var(--px-red);box-shadow:0 6px 18px rgba(18,16,14,.07)}
+    .pp-file-ico{
+      flex:0 0 auto;width:38px;height:38px;border-radius:9px;background:var(--px-paper);
+      border:1px solid var(--px-rule);display:flex;align-items:center;justify-content:center;
+      font-size:9.5px;font-weight:800;color:#8B8378;
+    }
+    .pp-file-main{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+    .pp-file-name{
+      font-size:13.5px;font-weight:700;color:#25211C;line-height:1.35;
+      overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    }
+    .pp-file-meta{font-size:11.5px;color:#9A938A}
+    .pp-file-go{
+      flex:0 0 auto;font-size:11px;font-weight:800;color:#C9C2B8;
+      text-transform:uppercase;letter-spacing:.05em;
+    }
+    .pp-file:hover .pp-file-go{color:var(--px-red)}
 
     /* ── Carousel cards with no featured image ──────────────
        WordPress pages rarely have one, so "Updated landing pages" was a
@@ -563,6 +1174,13 @@
     </div>
   </section>
 
+  <!-- ══ CHECKFIRE ON YOUTUBE ════════════════════════════════
+       Built by renderYouTubeSection() in graph.js. The player is the
+       channel's own uploads playlist, which embeds with no API key
+       and refreshes itself — so this works today rather than waiting
+       on YOUTUBE_API_KEY. ══ -->
+  <section class="wall-section" id="home-youtube" style="display:none"></section>
+
   <!-- ══ LATEST BLOGS (carousel) ═════════════════════════════ -->
   <section class="inh-carousel-section" id="home-blogs-section">
     <div class="inh-section-head">
@@ -598,7 +1216,11 @@
 
 
 <main id="page-launches" class="page" data-screen-label="02 Launches">
-  <section class="ph" id="launches-head">
+  <!-- The masthead stays dark and slim; everything below it is the
+       editorial layout built by renderLaunches() in graph.js. The old
+       metric rail has moved into the filter rail, where the numbers
+       are something you can click rather than just read. -->
+  <section class="ph slim" id="launches-head">
     <div class="container">
       <div class="ph-head">
         <div>
@@ -607,26 +1229,19 @@
           <p class="ph-sub">Find the latest launches and upcoming NPD here.</p>
         </div>
         <div class="ph-actions">
-          <a class="btn primary" id="launches-portal-link" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">Open Product Portal</a>
+          <a class="btn primary" id="launches-portal-link" onclick="openProductPortal()">Open Product Portal</a>
         </div>
-      </div>
-      <div class="metric-rail-row inline">
-        <div class="metric"><div class="metric-label">Planning</div><div class="metric-value"><span id="sp-metric-launch-planning">–</span></div></div>
-        <div class="metric"><div class="metric-label">Scheduled</div><div class="metric-value"><span id="sp-metric-launch-scheduled">–</span></div></div>
-        <div class="metric"><div class="metric-label">Launched</div><div class="metric-value"><span id="sp-metric-launch-live">–</span></div></div>
-        <div class="metric"><div class="metric-label">Total launches</div><div class="metric-value"><span id="sp-metric-launch-total">–</span></div></div>
       </div>
     </div>
   </section>
 
-  <section class="container py-lg" id="launches-list-wrap">
-    <div class="section-head tight" style="margin-bottom:12px">
-      <h2 class="section-title small">All launches</h2>
-    </div>
+  <section id="launches-list-wrap">
     <div id="sp-launches-list">
-      <div class="skeleton sk-line"></div>
-      <div class="skeleton sk-line"></div>
-      <div class="skeleton sk-line short"></div>
+      <div class="px-boot">
+        <div class="skeleton sk-line med"></div>
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line short"></div>
+      </div>
     </div>
   </section>
 
@@ -636,7 +1251,7 @@
 
 <!-- ─── CAMPAIGNS ─────────────────────────────────────────────── -->
 <main id="page-campaigns" class="page" data-screen-label="03 Campaigns">
-  <section class="ph" id="campaigns-head">
+  <section class="ph slim" id="campaigns-head">
     <div class="container">
       <div class="ph-head">
         <div>
@@ -645,16 +1260,10 @@
           <p class="ph-sub">See the latest and previous campaigns run across our digital platforms.</p>
         </div>
       </div>
-      <div class="metric-rail-row inline">
-        <div class="metric"><div class="metric-label">Live</div><div class="metric-value"><span id="sp-metric-live">–</span></div></div>
-        <div class="metric"><div class="metric-label">Planning</div><div class="metric-value"><span id="sp-metric-planning">–</span></div></div>
-        <div class="metric"><div class="metric-label">Completed</div><div class="metric-value"><span id="sp-metric-completed">–</span></div></div>
-        <div class="metric"><div class="metric-label">Total budget</div><div class="metric-value"><span id="sp-metric-budget">–</span></div></div>
-      </div>
     </div>
   </section>
 
-  <section class="container py-lg" id="campaigns-list">
+  <section id="campaigns-list">
     <div class="camp-grid" id="sp-campaigns-grid">
       <div class="skeleton-card" style="height:260px;border-radius:14px"></div>
       <div class="skeleton-card" style="height:260px;border-radius:14px"></div>
@@ -804,14 +1413,25 @@
           <p class="ph-sub">Find data sheets, certifications, and regulations for our products here.</p>
         </div>
         <div class="ph-actions">
-          <a class="btn primary" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">Open in SharePoint</a>
+          <button class="btn primary" id="pp-browse-btn" onclick="togglePortalBrowse(this)">Browse folders</button>
         </div>
       </div>
     </div>
   </section>
 
   <section class="container py-lg">
-    <div id="ttab-product">
+    <!-- The front door: everything in the Product Portal, indexed by
+         product and by document type, with a search box over the lot.
+         Built by renderPortalIndex() in graph.js. -->
+    <div id="pp-index">
+      <div class="skeleton sk-line med"></div>
+      <div class="skeleton sk-line"></div>
+      <div class="skeleton sk-line short"></div>
+    </div>
+
+    <!-- The raw SharePoint folder tree, exactly as it was. Hidden
+         until someone asks for it with "Browse folders". -->
+    <div id="pp-browser" style="display:none">
       <nav class="fb-crumbs" id="pp-crumbs" aria-label="Folder path"></nav>
       <div id="pp-documents-grid">
         <div class="skeleton sk-line med"></div>
@@ -819,24 +1439,68 @@
         <div class="skeleton sk-line short"></div>
       </div>
     </div>
-
   </section>
 </main>
 
 
-<!-- ══ LATEST UPDATES — the breaking-news band.
-     It deliberately sits OUTSIDE every <main>. .page.active carries a
+<!-- ══ CORNER STACK — Latest updates, then Ember ═══════════════
+     Both sit OUTSIDE every <main> and both are position:fixed. That
+     placement is load-bearing, not tidiness: .page.active carries a
      fadeIn animation whose keyframes touch `transform`, and an element
      with a filled transform animation becomes the containing block for
-     its fixed-position children — so while this lived inside #page-home
-     it pinned to the bottom of that element instead of the window, which
-     is exactly the "still right at the bottom" problem. Out here it pins
-     to the viewport, and the sibling rule in the CSS keeps it to the
-     home page only. Filled by renderNewsTicker() in graph.js. ══ -->
-<section class="news-band" id="home-news" style="display:none">
-  <span class="news-label">Latest updates</span>
-  <div class="news-viewport"><div class="news-track" id="home-news-track"></div></div>
-</section>
+     its fixed-position descendants. Inside a <main> these would pin to
+     the bottom of the page element instead of the window — which is
+     exactly the "it still sits right at the bottom off the sheet"
+     problem from the 24 Aug round. Leave them here.
+
+     Updates was a full-width ticker; marketing asked (26 Aug) for it
+     "more in the corner, with it popping up with the latest", so it is
+     now a pill that opens itself once with the newest item and cycles.
+     Built by renderNewsTicker() in graph.js. ══ -->
+<div class="upd-dock" id="updates-dock" style="display:none"></div>
+
+<!-- ══ EMBER — the assistant panel. See ember.js. ══ -->
+<div class="ember-dock" id="ember-dock">
+  <button class="ember-launch" onclick="toggleEmber()" aria-label="Ask Ember">
+    <span class="ember-flame">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+        <path d="M12 2s5 4.5 5 9a5 5 0 0 1-10 0c0-1.6.6-3.1 1.4-4.3"/>
+        <path d="M12 22a4 4 0 0 0 4-4c0-2-2-3.5-4-6-2 2.5-4 4-4 6a4 4 0 0 0 4 4z"/>
+      </svg>
+    </span>
+    <span class="ember-launch-label">Ask Ember</span>
+  </button>
+
+  <section class="ember-panel" role="dialog" aria-label="Ember">
+    <header class="ember-head">
+      <div class="ember-id">
+        <span class="ember-av lg">E</span>
+        <div>
+          <div class="ember-name">Ember</div>
+          <div class="ember-tag">CheckFire’s assistant</div>
+        </div>
+      </div>
+      <div class="ember-head-acts">
+        <button class="ember-x" onclick="emberClear()" title="Start again" aria-label="Start again">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+        </button>
+        <button class="ember-x" onclick="toggleEmber(false)" title="Close" aria-label="Close Ember">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="ember-body" id="ember-body"></div>
+
+    <form class="ember-form" id="ember-form" onsubmit="return emberSubmit(event)">
+      <input class="ember-input" id="ember-input" type="text" autocomplete="off"
+             placeholder="Ask Ember to find something…">
+      <button class="ember-send" type="submit" aria-label="Ask">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </form>
+  </section>
+</div>
 
 <!-- ── App init ── -->
 <script>
@@ -850,14 +1514,15 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=9"></script>
+<script src="config.js?v=10"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=2"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=10"></script>
-<script src="app.js?v=13"></script>
+<script src="graph.js?v=11"></script>
+<script src="app.js?v=14"></script>
 <script src="jotform.js?v=12"></script>
+<script src="ember.js?v=1"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
