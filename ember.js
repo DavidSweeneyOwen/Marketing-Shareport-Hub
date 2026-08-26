@@ -444,8 +444,10 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape' && EMBER.open) {
-    const reader = document.getElementById('doc-modal');
-    if (reader && !reader.classList.contains('hidden')) return;
+    // The reader is a page now, not an overlay, so Ember can never be
+    // covering it — but if both are somehow up, the reader takes Escape.
+    const reader = document.getElementById('page-reader');
+    if (reader && reader.classList.contains('active')) return;
     toggleEmber(false);
   }
 });

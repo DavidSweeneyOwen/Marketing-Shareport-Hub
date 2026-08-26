@@ -45,6 +45,8 @@ async function loadPageData(pageId) {
     // Product Portal is its own page now — Resources is just the
     // Marketing Library, per marketing's Aug feedback.
     case 'portal':    await loadProductPortal();  break;
+    // 'reader' and 'search' are filled by whatever navigated to them —
+    // openDocFile() and openSiteSearch() — so they have no loader here.
   }
 }
 
@@ -404,6 +406,15 @@ function folderIcon() {
 // being there ("you also can't search anything", 26 Aug). It now hands
 // the query to Ember, who searches all three SharePoint sites and
 // answers in the corner panel. Enter or the icon runs it.
+// 26 Aug 2026 (fix 4): this used to hand the query to Ember. David:
+// "I'd rather the search bar be able to search the site not talk to
+// ember through it." It now runs a real search over the hub's own
+// content — launches, campaigns, events, training and both document
+// libraries — and lands on the results page. Ember keeps her own
+// button for the questions that need a document read properly.
+//
+// The query stays in the box, because after a search people narrow it
+// rather than start again.
 function initHeaderSearch() {
   const input = document.getElementById('hub-search-input');
   if (!input) return;
@@ -412,14 +423,8 @@ function initHeaderSearch() {
     if (e.key !== 'Enter') return;
     const q = input.value.trim();
     if (!q) return;
-    input.value = '';
     input.blur();
-    if (typeof toggleEmber === 'function') {
-      toggleEmber(true);
-      // Ember focuses her own input on open; hand the query over after
-      // the panel has finished appearing.
-      setTimeout(() => { if (typeof emberAsk === 'function') emberAsk(q); }, 120);
-    }
+    if (typeof openSiteSearch === 'function') openSiteSearch(q);
   });
 }
 

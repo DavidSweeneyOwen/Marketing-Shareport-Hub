@@ -870,10 +870,48 @@ function _rdrStage(html) {
   if (stage) stage.innerHTML = html;
 }
 
+// Where Back goes, and what it's called. Captured the moment a file is
+// opened so the reader can hand you back to the exact page — and scroll
+// position — you left, which is what makes it feel like a website
+// rather than something that popped up at you.
+let _rdrReturn = { id: 'home', scroll: 0 };
+
+const _RDR_BACK = {
+  home:      'Back to the home page',
+  launches:  'Back to product launches',
+  campaigns: 'Back to campaigns',
+  trade:     'Back to trade & events',
+  training:  'Back to resources',
+  portal:    'Back to the product portal',
+  search:    'Back to the search results',
+};
+
+function _rdrGoToPage() {
+  const active = document.querySelector('.page.active');
+  const from   = active ? active.id.replace(/^page-/, '') : 'home';
+
+  // Opening a second file from inside the reader must not make Back
+  // point at the reader itself.
+  if (from !== 'reader') {
+    _rdrReturn = { id: from, scroll: window.scrollY || window.pageYOffset || 0 };
+  }
+
+  const lbl = document.getElementById('rdr-back-label');
+  if (lbl) lbl.textContent = _RDR_BACK[_rdrReturn.id] || 'Back';
+
+  // Ember's panel would otherwise sit over the document she found.
+  if (typeof toggleEmber === 'function') toggleEmber(false);
+
+  if (typeof showPage === 'function') showPage('reader');
+  // showPage clears the nav; keep the section you came from lit, because
+  // as far as the reader is concerned you are still inside it.
+  if (typeof updateNavActive === 'function') updateNavActive(_rdrReturn.id);
+}
+
 async function openDocFile(f) {
   if (!f) return;
-  const modal = document.getElementById('doc-modal');
-  if (!modal) { if (f.webUrl) window.open(safeUrl(f.webUrl, '#'), '_blank', 'noopener'); return; }
+  const page = document.getElementById('page-reader');
+  if (!page) { if (f.webUrl) window.open(safeUrl(f.webUrl, '#'), '_blank', 'noopener'); return; }
 
   _rdrRevoke();
   RDR.file = f;
@@ -884,8 +922,7 @@ async function openDocFile(f) {
   set('rdr-type', (ext || 'file').toUpperCase().slice(0, 4));
   set('rdr-sub', [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' · '));
 
-  modal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  _rdrGoToPage();
   _rdrStage('<div class="rdr-wait"><span class="rdr-spin"></span>Opening…</div>');
 
   if (!f._driveId || !f.id) {
@@ -1053,21 +1090,33 @@ function popOutDoc() {
   if (f && f.webUrl) window.open(safeUrl(f.webUrl, '#'), '_blank', 'noopener');
 }
 
+// "Back" from the reader. Not a close button — a navigation, which is
+// why it restores the scroll position too: you land back on the row you
+// clicked, not at the top of the page.
 function closeDocPreview() {
-  const modal = document.getElementById('doc-modal');
-  if (!modal) return;
-  modal.classList.add('hidden');
-  document.body.classList.remove('modal-open');
+  const page = document.getElementById('page-reader');
+  if (!page) return;
+
   _rdrStage('');
   _rdrRevoke();
   RDR.file = null;
+
+  const back = _rdrReturn || { id: 'home', scroll: 0 };
+  if (typeof showPage === 'function') showPage(back.id);
+  if (typeof updateNavActive === 'function') updateNavActive(back.id);
+  // showPage scrolls to the top on the way in, so put us back after it.
+  if (back.scroll) setTimeout(() => window.scrollTo({ top: back.scroll, behavior: 'auto' }), 140);
 }
 
-// Escape closes the reader — it's the biggest thing on screen when open.
+function _readerIsOpen() {
+  const page = document.getElementById('page-reader');
+  return !!(page && page.classList.contains('active'));
+}
+
+// Escape goes back, the same as the Back link.
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  const m = document.getElementById('doc-modal');
-  if (m && !m.classList.contains('hidden')) closeDocPreview();
+  if (_readerIsOpen()) closeDocPreview();
 });
 
 // ── Download / share on every file row ────────────────────────
@@ -2311,7 +2360,13 @@ function _renderDetail(opts) {
   const channels = Array.isArray(f.Channels) ? f.Channels : String(f.Channels || '').split(/[,;/]+/);
   const chips    = channels.map(c => String(c).trim()).filter(Boolean);
 
-  const blocks = (HUB_CONFIG.campaignAssetBlocks || []);
+  // NO config placeholder blocks. 26 Aug 2026 (fix 4): the page used to
+  // render HUB_CONFIG.campaignAssetBlocks straight away — six tiles
+  // ("Infographic", "Email signature", "Data card"…) named after folders
+  // that don't exist in SharePoint. They looked real, said "Open", and
+  // did nothing when clicked, which is exactly what David reported:
+  // "Campaigns doesn't open anything". The tiles are now built from the
+  // folders that are actually there, and nothing is drawn until they are.
 
   box.innerHTML = `
     <div class="dt-backbar">
@@ -2351,18 +2406,19 @@ function _renderDetail(opts) {
         <h2 class="dt-sec-title">Assets &amp; resources</h2>
         <p class="dt-sec-sub">Everything filed for this ${isLaunch ? 'launch' : 'campaign'}. Open it here, download it, or copy a link to send on.</p>
       </div>
-      <div class="dt-folders" id="cd-blocks">${_blocksHtml(blocks)}</div>
+      <div class="dt-folders" id="cd-blocks">
+        <div class="skeleton sk-line med"></div>
+        <div class="skeleton sk-line"></div>
+      </div>
       <div id="cd-asset-panel"></div>
     </div>`;
 
-  // Remember what the asset blocks should resolve against.
+  // Remember what the assets should resolve against.
   _detailContext = { folderRoot: opts.folderRoot, campaignFolder: f.CampaignFolder || f.Folder || f.Title };
-  _detailBlocks  = blocks;
+  _detailBlocks  = [];
+  _detailFolder  = null;
 
-  // Then swap the config placeholders for the real SharePoint folders,
-  // and fetch the artwork for the hero.
-  _loadDetailBlocks();
-  _loadDetailHero();
+  _loadDetailAssets();
 }
 
 // Folder tiles. Each one is a real folder in SharePoint with a live
@@ -2382,17 +2438,133 @@ function _blocksHtml(blocks) {
 
 // The item's own artwork, from its asset folder — same source the
 // cards use, so the detail page matches the card you clicked.
-async function _loadDetailHero() {
-  const ctx = _detailContext;
-  const el  = document.getElementById('dt-hero-img');
-  if (!ctx || !el) return;
+// Resolve  Documents/<root>/<item>  with a console trail, because when
+// this misses the page has nothing to show and the old code failed
+// SILENTLY — it just left the config placeholders sitting there looking
+// like real folders. Every step now says what it found.
+//
+// The exact-name walk is the fast path. When it misses (a list Title
+// that has drifted from the folder name, an extra word, a stray
+// apostrophe) it falls back to a drive-wide search for the name and
+// keeps only folders whose parent really is <root>.
+async function _resolveItemFolder(driveId, rootName, itemName) {
+  const root = await _findChildFolder(driveId, null, rootName);
+  if (!root) {
+    console.warn(`[Assets] there is no “${rootName}” folder at the top of the document library.`);
+    return null;
+  }
+
+  const item = await _findChildFolder(driveId, root.id, itemName);
+  if (item) return item;
+
+  console.warn(`[Assets] no folder called “${itemName}” inside “${rootName}” — searching instead.`);
   try {
-    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
-    const root  = await _findChildFolder(drive.id, null, ctx.folderRoot);
-    if (!root) return;
-    const item = await _findChildFolder(drive.id, root.id, ctx.campaignFolder);
-    if (!item) return;
-    const url = await folderHeroImage(drive.id, item.id);
+    const q = encodeURIComponent(String(itemName).slice(0, 60).replace(/'/g, "''"));
+    const res = await graphFetch(
+      `/drives/${driveId}/root/search(q='${q}')?$select=id,name,folder,parentReference&$top=50`);
+    const tail = '/' + String(rootName).toLowerCase();
+    const hits = (res.value || []).filter(x => x.folder &&
+      String((x.parentReference && x.parentReference.path) || '').toLowerCase().endsWith(tail));
+    if (hits.length) {
+      const key = _slugKey(itemName) || '';
+      hits.sort((a, b) =>
+        Math.abs((_slugKey(a.name) || '').length - key.length) -
+        Math.abs((_slugKey(b.name) || '').length - key.length));
+      console.info(`[Assets] search matched “${hits[0].name}”.`);
+      return Object.assign({}, hits[0], { _driveId: driveId });
+    }
+    console.warn(`[Assets] search found nothing under “${rootName}” for “${itemName}”.`);
+  } catch (err) {
+    console.warn('[Assets] folder search failed:', err.message);
+  }
+  return null;
+}
+
+// One pass: find the item's folder, then use it for BOTH the hero
+// artwork and the asset tiles. The old code resolved the same path
+// twice, so a miss cost two round trips and produced two silent
+// failures instead of one honest message.
+async function _loadDetailAssets() {
+  const ctx = _detailContext;
+  const box = document.getElementById('cd-blocks');
+  if (!ctx || !box) return;
+
+  const say = msg => {
+    if (_detailContext !== ctx) return;
+    _detailBlocks = [];
+    box.innerHTML = `<p class="prose dim">${escHtml(msg)}</p>`;
+  };
+
+  let drive, folder;
+  try {
+    drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+    console.info(`[Assets] library “${drive.name}” — looking for ${ctx.folderRoot} ▸ ${ctx.campaignFolder}`);
+    folder = await _resolveItemFolder(drive.id, ctx.folderRoot, ctx.campaignFolder);
+  } catch (e) {
+    console.warn('[Assets] could not reach the document library:', e.message);
+    say(`Couldn’t reach the document library — ${e.message}`);
+    return;
+  }
+
+  if (!folder) {
+    say(`Nothing is filed under ${ctx.folderRoot} ▸ ${ctx.campaignFolder} yet.`);
+    return;
+  }
+  if (_detailContext !== ctx) return;
+
+  _detailFolder = { driveId: drive.id, id: folder.id, name: folder.name };
+  _loadDetailHero(ctx, drive.id, folder.id);
+
+  let kids;
+  try {
+    kids = await fetchDriveChildren(drive.id, folder.id);
+  } catch (e) {
+    say(`Couldn’t read “${folder.name}” — ${e.message}`);
+    return;
+  }
+  if (_detailContext !== ctx) return;
+
+  const folders = kids.filter(x => x.folder)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const loose = kids.filter(x => !x.folder)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  console.info(`[Assets] “${folder.name}” has ${folders.length} folder(s) and ${loose.length} loose file(s).`);
+
+  if (!folders.length && !loose.length) {
+    say(`“${folder.name}” is empty at the moment.`);
+    return;
+  }
+
+  _detailBlocks = folders.map(k => ({
+    label:   k.name,
+    folder:  k.name,
+    id:      k.id,
+    driveId: drive.id,
+    count:   (k.folder && k.folder.childCount) || 0,
+  }));
+
+  box.innerHTML = folders.length ? _blocksHtml(_detailBlocks) : '';
+
+  // Files sitting loose in the campaign folder used to be invisible —
+  // there was no tile for them because there was no sub-folder.
+  if (loose.length) {
+    const panel = document.getElementById('cd-asset-panel');
+    if (panel) {
+      panel.innerHTML = `
+        <h3 class="dt-panel-head">In this folder<span>${loose.length}</span></h3>
+        <div class="lib-files">${loose.map(f => libFileRow(f)).join('')}</div>`;
+    }
+  }
+}
+
+// The item's own artwork, from its asset folder — same source the cards
+// use, so the detail page matches the card you clicked.
+async function _loadDetailHero(ctx, driveId, folderId) {
+  const el = document.getElementById('dt-hero-img');
+  if (!el) return;
+  try {
+    const url = await folderHeroImage(driveId, folderId);
     if (!url) return;
     if (_detailContext !== ctx) return;          // navigated away meanwhile
     el.style.backgroundImage = `url('${safeCssUrl(url)}')`;
@@ -2400,38 +2572,11 @@ async function _loadDetailHero() {
   } catch (_) { /* the initials placeholder is a fine fallback */ }
 }
 
-// Read the real sub-folders under Documents/<root>/<item>/ so the tiles
-// match what's actually in SharePoint instead of a fixed list in
-// config.js. Falls back silently to the config blocks.
-async function _loadDetailBlocks() {
-  const ctx = _detailContext;
-  const box = document.getElementById('cd-blocks');
-  if (!ctx || !box) return;
-
-  try {
-    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
-    const rootFolder = await _findChildFolder(drive.id, null, ctx.folderRoot);
-    if (!rootFolder) return;
-    const itemFolder = await _findChildFolder(drive.id, rootFolder.id, ctx.campaignFolder);
-    if (!itemFolder) return;
-
-    const kids = (await fetchDriveChildren(drive.id, itemFolder.id)).filter(x => x.folder);
-    if (!kids.length) return;
-
-    _detailBlocks = kids
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-      .map(k => ({ label: k.name, folder: k.name, count: (k.folder && k.folder.childCount) || 0 }));
-
-    // Guard against the user having navigated away while we were loading.
-    if (_detailContext === ctx && document.getElementById('cd-blocks') === box) {
-      box.innerHTML = _blocksHtml(_detailBlocks);
-    }
-  } catch (e) {
-    console.info('[Assets] using the config block list:', e.message);
-  }
-}
-
 let _detailBlocks = [];
+
+// The item's own folder, once resolved — so opening a tile is a single
+// call on a known id rather than walking the path again by name.
+let _detailFolder = null;
 
 let _detailContext = null;
 
@@ -2527,44 +2672,75 @@ async function _findChildFolder(driveId, parentId, name) {
 // its file(s) in-hub. One file opens straight into the preview; several are
 // listed in a panel; none shows a friendly "not set up yet" note.
 async function openDetailAsset(blockIdx) {
-  const ctx   = _detailContext;
-  const block = (_detailBlocks && _detailBlocks.length ? _detailBlocks : (HUB_CONFIG.campaignAssetBlocks || []))[blockIdx];
+  const block = (_detailBlocks || [])[blockIdx];
   const panel = document.getElementById('cd-asset-panel');
-  if (!ctx || !block || !panel) return;
+  if (!block || !panel) return;
 
   panel.innerHTML = `<p class="prose dim">Opening &ldquo;${escHtml(block.label)}&rdquo;&hellip;</p>`;
 
+  // The tiles now carry the real drive and item ids, resolved once when
+  // the page loaded. No walking the path by name a second time, which is
+  // what used to fail here and leave the panel empty.
   try {
-    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
-    const rootFolder = await _findChildFolder(drive.id, null, ctx.folderRoot);
-    if (!rootFolder) throw new Error(`No “${ctx.folderRoot}” folder in the document library yet.`);
-    const itemFolder = await _findChildFolder(drive.id, rootFolder.id, ctx.campaignFolder);
-    if (!itemFolder) throw new Error(`No folder named “${ctx.campaignFolder}” inside ${ctx.folderRoot} yet.`);
-    const blockFolder = await _findChildFolder(drive.id, itemFolder.id, block.folder);
-    if (!blockFolder) throw new Error(`No “${block.label}” folder set up for this item yet.`);
-
-    const files = (await fetchDriveChildren(drive.id, blockFolder.id)).filter(x => !x.folder);
-    if (!files.length) {
-      panel.innerHTML = `<p class="prose dim">Nothing in &ldquo;${escHtml(block.label)}&rdquo; yet.</p>`;
-      return;
-    }
-
-    _lastAssetFiles = files;
-
-    // Always LIST the files rather than auto-opening a single one —
-    // people want the download and copy-link buttons at least as often
-    // as they want to read it, and a page that opens a modal at you
-    // the moment you click a folder is the opposite of website-like.
-    panel.innerHTML = `
-      <h3 class="dt-panel-head">${escHtml(block.label)}<span>${files.length}</span></h3>
-      <div class="lib-files">${files
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-        .map(f => libFileRow(f)).join('')}</div>`;
-
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    await _showAssetFolder(block.driveId || (_detailFolder && _detailFolder.driveId),
+                           block.id, block.label, panel);
   } catch (e) {
     panel.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
   }
+}
+
+// Drill into a sub-folder of an asset folder without leaving the page.
+async function openDetailSubfolder(driveId, folderId, label) {
+  const panel = document.getElementById('cd-asset-panel');
+  if (!panel) return;
+  try {
+    await _showAssetFolder(driveId, folderId, label, panel);
+  } catch (e) {
+    panel.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
+  }
+}
+
+async function _showAssetFolder(driveId, folderId, label, panel) {
+  if (!driveId || !folderId) throw new Error(`“${label}” could not be opened — its folder is missing.`);
+
+  const kids    = await fetchDriveChildren(driveId, folderId);
+  const folders = kids.filter(x => x.folder).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const files   = kids.filter(x => !x.folder).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  if (!folders.length && !files.length) {
+    panel.innerHTML = `<h3 class="dt-panel-head">${escHtml(label)}<span>0</span></h3>
+      <p class="prose dim">Nothing in &ldquo;${escHtml(label)}&rdquo; yet.</p>`;
+    return;
+  }
+
+  _lastAssetFiles = files;
+
+  const folderRows = folders.map(k => {
+    const n = (k.folder && k.folder.childCount) || 0;
+    const args = `'${escAttr(driveId)}','${escAttr(k.id)}','${escAttr(String(k.name).replace(/'/g, ''))}'`;
+    return `
+      <div class="lib-file folder" role="button" tabindex="0"
+           onclick="openDetailSubfolder(${args})"
+           onkeydown="if(event.key==='Enter')openDetailSubfolder(${args})">
+        <span class="lib-file-ico folder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <span class="lib-file-main">
+          <span class="lib-file-name">${escHtml(k.name)}</span>
+          <span class="lib-file-meta">${n} item${n === 1 ? '' : 's'}</span>
+        </span>
+        <span class="lib-file-go">Open →</span>
+      </div>`;
+  }).join('');
+
+  // Always LIST the files rather than auto-opening a single one — people
+  // want the download and copy-link buttons at least as often as they
+  // want to read it.
+  panel.innerHTML = `
+    <h3 class="dt-panel-head">${escHtml(label)}<span>${files.length}</span></h3>
+    <div class="lib-files">${folderRows}${files.map(f => libFileRow(f)).join('')}</div>`;
+
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function _eventYear(name) {
@@ -3337,4 +3513,232 @@ function submitPollAnswer() {
   const el = document.getElementById('poll-text');
   if (!el) return;
   _pollSubmit(el.value);
+}
+
+
+// ═══ Site search ═════════════════════════════════════════════
+//
+// 26 Aug 2026 (fix 4). The header box used to open Ember and ask her the
+// question. David: "I'd rather the search bar be able to search the site
+// not talk to ember through it." So Enter now runs a real search over the
+// hub's own content and lands on a results PAGE. Ember is still there on
+// her own button for the questions that need reading and reasoning; this
+// is for the far more common "where is that thing".
+//
+// Two halves, run in parallel:
+//   ITEMS  — launches, campaigns, events and training sessions, matched
+//            against the fields people actually search by.
+//   FILES  — a Graph drive search across the Marketing Library and the
+//            Product Portal, so a certificate is findable by name from
+//            anywhere in the hub.
+// Files open in the reader page; items land on their own page with the
+// detail already open.
+
+const SRCH = { q: '', seq: 0 };
+
+function _srchWords(q) {
+  return String(q || '').toLowerCase().split(/\s+/).map(w => w.trim()).filter(Boolean);
+}
+
+function _srchHit(hay, words) {
+  const h = String(hay || '').toLowerCase();
+  return words.every(w => h.includes(w));
+}
+
+async function openSiteSearch(q) {
+  const query = String(q || '').trim();
+  if (!query) return;
+
+  const host = document.getElementById('srch-results');
+  if (!host) return;
+
+  const seq = ++SRCH.seq;
+  SRCH.q = query;
+
+  const title = document.getElementById('srch-title');
+  const count = document.getElementById('srch-count');
+  if (title) title.innerHTML = 'Results for <em>' + escHtml(query) + '</em>';
+  if (count) count.textContent = '';
+
+  if (typeof toggleEmber === 'function') toggleEmber(false);
+  if (typeof showPage === 'function') showPage('search');
+  if (typeof updateNavActive === 'function') updateNavActive('search');
+
+  host.innerHTML = '<div class="srch-wait"><span class="rdr-spin"></span>Searching the hub…</div>';
+
+  const words = _srchWords(query);
+  const [items, files] = await Promise.all([
+    _srchItems(words).catch(e => { console.warn('[Search] items:', e.message); return []; }),
+    _srchFiles(query).catch(e => { console.warn('[Search] files:', e.message); return []; }),
+  ]);
+
+  if (seq !== SRCH.seq) return;    // a newer search overtook this one
+
+  const total = items.length + files.length;
+  if (count) {
+    count.textContent = total
+      ? `${total} result${total === 1 ? '' : 's'} — ${items.length} page${items.length === 1 ? '' : 's'}, ${files.length} document${files.length === 1 ? '' : 's'}`
+      : '';
+  }
+
+  if (!total) {
+    host.innerHTML = `<div class="srch-empty">
+      Nothing in the hub matches &ldquo;${escHtml(query)}&rdquo;.<br>
+      Try fewer words, or ask Ember — she reads the documents themselves.
+    </div>`;
+    return;
+  }
+
+  let html = '';
+  if (items.length) {
+    html += `<div class="srch-group">
+      <div class="srch-group-head">Pages &amp; items <span>${items.length}</span></div>
+      <div class="srch-items">${items.map(_srchItemHtml).join('')}</div>
+    </div>`;
+  }
+  if (files.length) {
+    html += `<div class="srch-group">
+      <div class="srch-group-head">Documents <span>${files.length}</span></div>
+      <div class="lib-files">${files.map(f => libFileRow(f, f._site)).join('')}</div>
+    </div>`;
+  }
+  host.innerHTML = html;
+}
+
+function _srchItemHtml(it) {
+  const args = `'${escAttr(it.kind)}','${escAttr(String(it.title).replace(/'/g, ''))}'`;
+  return `
+    <button class="srch-item" onclick="srchOpenItem(${args})">
+      <span class="srch-kind ${escAttr(it.kind)}">${escHtml(it.kindLabel)}</span>
+      <span class="srch-item-main">
+        <span class="srch-item-name">${escHtml(it.title)}</span>
+        ${it.meta ? `<span class="srch-item-meta">${escHtml(it.meta)}</span>` : ''}
+      </span>
+    </button>`;
+}
+
+async function _srchItems(words) {
+  const L = HUB_CONFIG.lists || {};
+  const [launches, campaigns, training, events] = await Promise.all([
+    fetchListItems(L.launches).catch(() => []),
+    fetchListItems(L.campaigns).catch(() => []),
+    _fetchListRows((HUB_CONFIG.training && HUB_CONFIG.training.list) || 'Training Events', 100)
+      .then(rows => rows.map(r => Object.assign({ id: r.id }, r.fields || {})))
+      .catch(() => []),
+    _srchEventFolders().catch(() => []),
+  ]);
+
+  const out = [];
+
+  launches.forEach(f => {
+    const hay = [f.Title, f.Description, f.Summary, f.Status, f.ProductCodes, f.Region].join(' ');
+    if (_srchHit(hay, words)) {
+      out.push({ kind: 'launch', kindLabel: 'Launch', title: f.Title || 'Untitled',
+                 meta: [f.Status, fmtSpDate(f.LaunchDate || f.StartDate)].filter(Boolean).join(' · ') });
+    }
+  });
+
+  campaigns.forEach(f => {
+    const hay = [f.Title, f.Description, f.Summary, f.CampaignType, f.Channels, f.Status, f.Region].join(' ');
+    if (_srchHit(hay, words)) {
+      out.push({ kind: 'campaign', kindLabel: 'Campaign', title: f.Title || 'Untitled',
+                 meta: [f.CampaignType, f.Status, fmtSpDate(f.StartDate)].filter(Boolean).join(' · ') });
+    }
+  });
+
+  events.forEach(e => {
+    if (_srchHit(e.name, words)) {
+      out.push({ kind: 'event', kindLabel: 'Event', title: e.name,
+                 meta: `${e.count} file${e.count === 1 ? '' : 's'}` });
+    }
+  });
+
+  training.forEach(s => {
+    const hay = [s.Title, s.Description, s.Trainer, s.Location, s.Audience].join(' ');
+    if (_srchHit(hay, words)) {
+      out.push({ kind: 'training', kindLabel: 'Training', title: s.Title || 'Training session',
+                 meta: [fmtSpDate(s.TrainingDate), s.Location].filter(Boolean).join(' · ') });
+    }
+  });
+
+  return out.slice(0, 40);
+}
+
+// Events live as folders, not a list. Reuse what the Trade page already
+// loaded when it has been visited; otherwise read the folder once.
+async function _srchEventFolders() {
+  if (_eventFolders && _eventFolders.length) return _eventFolders;
+  const drive  = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+  const rootNm = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.folder) || 'Events';
+  const root   = await _findChildFolder(drive.id, null, rootNm);
+  if (!root) return [];
+  return (await fetchDriveChildren(drive.id, root.id))
+    .filter(x => x.folder)
+    .map(k => ({ id: k.id, name: k.name, driveId: drive.id,
+                 count: (k.folder && k.folder.childCount) || 0 }));
+}
+
+// Graph's drive search, across both libraries. `id` and `_driveId` are
+// selected deliberately — without them a result can't be opened in the
+// reader and would fall back to a SharePoint tab.
+async function _srchFiles(query) {
+  const sites = [
+    { label: 'Marketing Library', url: HUB_CONFIG.sharepointSite,    lib: HUB_CONFIG.documentsLibrary },
+    { label: 'Product Portal',    url: HUB_CONFIG.productPortalSite, lib: HUB_CONFIG.documentsLibrary },
+  ].filter(s => s.url);
+
+  const q = encodeURIComponent(String(query).slice(0, 80).replace(/'/g, "''"));
+
+  const per = await Promise.all(sites.map(async s => {
+    try {
+      const drive = await resolveDrive(s.url, s.lib);
+      const res = await graphFetch(
+        `/drives/${drive.id}/root/search(q='${q}')` +
+        `?$select=id,name,size,lastModifiedDateTime,webUrl,file,folder&$top=25`);
+      return (res.value || [])
+        .filter(x => !x.folder)
+        .map(x => Object.assign({}, x, { _driveId: drive.id, _site: s.label }));
+    } catch (e) {
+      console.warn(`[Search] ${s.label}:`, e.message);
+      return [];
+    }
+  }));
+
+  const seen = new Set();
+  return per.flat().filter(f => {
+    const k = f._driveId + '|' + f.id;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 40);
+}
+
+// Open a result. Items go to their own page with the detail already
+// showing — the same place you'd have got to by clicking through.
+async function srchOpenItem(kind, title) {
+  const want = String(title || '').toLowerCase();
+  const find = list => (list || []).findIndex(x => String(x.Title || x.name || '').toLowerCase() === want);
+
+  if (kind === 'launch' || kind === 'campaign') {
+    const isLaunch = kind === 'launch';
+    if (typeof showPage === 'function') await showPage(isLaunch ? 'launches' : 'campaigns', isLaunch ? 1 : 2);
+    const i = find(isLaunch ? _launchItems : _campaignItems);
+    if (i >= 0) (isLaunch ? openLaunchDetail : openCampaignDetail)(i);
+    return;
+  }
+
+  if (kind === 'event') {
+    if (typeof showPage === 'function') await showPage('trade', 3);
+    const i = find(_eventFolders);
+    if (i >= 0 && typeof openEventFolder === 'function') openEventFolder(i);
+    return;
+  }
+
+  if (kind === 'training') {
+    if (typeof showPage === 'function') await showPage('trade', 3);
+    setTimeout(() => {
+      const band = document.getElementById('ev-training');
+      if (band) band.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 220);
+  }
 }

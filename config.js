@@ -39,20 +39,20 @@ const HUB_CONFIG = {
     events:    'Events',
   },
 
-  // Fallback asset blocks for the Campaign / Product Launch detail pages.
-  // The hub now reads the REAL sub-folders inside
+  // REMOVED 26 Aug 2026 (fix 4) — campaignAssetBlocks.
+  //
+  // This was a hard-coded list of six folder names used as a "friendly
+  // day one" fallback on the Campaign and Product Launch detail pages.
+  // In practice it was neither friendly nor a fallback: the tiles drew
+  // instantly, said "Open", and did nothing, because no campaign folder
+  // in SharePoint is actually called "Data card" or "PR activities".
+  // David: "Campaigns doesn't open anything."
+  //
+  // The detail pages now read the real sub-folders of
   //   Documents/<Campaigns|Launches>/<item name>/
-  // and builds a block for each one, with a live file count. These
-  // entries are only used when that folder doesn't exist yet, so the
-  // page still shows something sensible on day one.
-  campaignAssetBlocks: [
-    { label: 'Infographic',         folder: 'Infographic'         },
-    { label: 'Email signature',     folder: 'Email signature'     },
-    { label: 'Email',               folder: 'Email'               },
-    { label: 'Data card',           folder: 'Data card'           },
-    { label: 'Social media assets', folder: 'Social media assets' },
-    { label: 'PR activities',       folder: 'PR activities'       },
-  ],
+  // and show a plain sentence when there aren't any. Do not put a
+  // placeholder list back — an empty state that tells the truth beats a
+  // full one that lies.
 
   redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
 
@@ -435,7 +435,7 @@ HUB_CONFIG.ember = {
   // The checkfire-ai Function app. Set this and Ember becomes a real
   // conversation. Deploy guide: checkfire-ai-function/DEPLOY.md.
   // Example: 'https://checkfire-ai-xxxx.uksouth-01.azurewebsites.net/api'
-  aiProxyUrl: 'https://checkfire-ai-eee3fpemdpb0g7g8.uksouth-01.azurewebsites.net/api',
+  aiProxyUrl: 'https://checkfire-ai-eee3fpemdpb0g7g8.uksouth-01.azurewebsites.net/',
 
   // Alternative brain — a Copilot Studio agent published to a custom
   // website. If BOTH are set, Claude wins; clear aiProxyUrl to switch.

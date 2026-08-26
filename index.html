@@ -48,52 +48,46 @@
     .cm-date{font-size:11px;color:#AAA;margin-top:8px}
 
     /* ── The reader ────────────────────────────────────────
-       Was a SharePoint preview iframe with SharePoint's chrome around
-       it. Now the file renders on our own origin off a blob: URL, so a
-       PDF opens in the browser's own PDF viewer and an image is just
-       an image — the way a document opens on any normal website. */
-    .rdr{
-      position:fixed;inset:0;z-index:9996;background:rgba(12,10,9,.72);
-      backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;
-      padding:28px;animation:rdr-in .18s ease both;
+       26 Aug 2026 (fix 4). It used to be a modal that floated over the
+       page. David: "I want it to feel like a website, open in to the
+       site not in to a pop for everything." So it is now a PAGE — a
+       real <main id="page-reader"> that showPage() switches to, with
+       the site header and nav still above it and a Back link that
+       returns you to exactly where you were. No overlay anywhere. */
+    .rdr-page{max-width:1240px;margin:0 auto;padding:22px 26px 46px}
+    .rdr-backbar{margin-bottom:14px}
+    .rdr-back{
+      display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:13px;font-weight:700;
+      color:#6B655C;background:none;border:none;padding:6px 2px;cursor:pointer;
     }
-    .rdr.hidden{display:none}
-    @keyframes rdr-in{from{opacity:0}to{opacity:1}}
-    .rdr-sheet{
-      background:#fff;border-radius:16px;width:min(1180px,96vw);height:min(92vh,1000px);
-      display:flex;flex-direction:column;overflow:hidden;
-      box-shadow:0 30px 80px rgba(0,0,0,.42);
-      animation:rdr-up .28s cubic-bezier(.22,1,.36,1) both;
-    }
-    @keyframes rdr-up{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
-    .rdr-bar{
+    .rdr-back:hover{color:#D1242B}
+    .rdr-head{
       display:flex;align-items:center;justify-content:space-between;gap:18px;
-      padding:12px 14px 12px 16px;border-bottom:1px solid #ECE8E2;background:#fff;flex:0 0 auto;
+      padding-bottom:16px;border-bottom:1px solid #ECE8E2;margin-bottom:18px;flex-wrap:wrap;
     }
-    .rdr-id{display:flex;align-items:center;gap:12px;min-width:0}
+    .rdr-id{display:flex;align-items:center;gap:13px;min-width:0}
     .rdr-type{
       flex:0 0 auto;font-size:9.5px;font-weight:800;letter-spacing:.04em;color:#8B8378;
-      background:#F7F5F2;border:1px solid #E3DDD4;border-radius:8px;padding:7px 8px;
+      background:#F7F5F2;border:1px solid #E3DDD4;border-radius:8px;padding:8px 9px;
     }
-    .rdr-titles{display:flex;flex-direction:column;min-width:0;gap:2px}
+    .rdr-titles{display:flex;flex-direction:column;min-width:0;gap:3px}
     .rdr-name{
-      font-size:14px;font-weight:700;color:#12100E;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      font-size:21px;font-weight:800;color:#12100E;letter-spacing:-.01em;line-height:1.2;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;
     }
-    .rdr-sub{font-size:11.5px;color:#9A938A}
+    .rdr-sub{font-size:12px;color:#9A938A;margin:0}
     .rdr-acts{display:flex;align-items:center;gap:7px;flex:0 0 auto}
     .rdr-btn{
       display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:12.5px;font-weight:700;
       color:#3D3831;background:#fff;border:1px solid #E5E5E7;border-radius:99px;
       padding:8px 14px;cursor:pointer;transition:border-color .15s,color .15s,background .15s;
+      text-decoration:none;
     }
     .rdr-btn:hover{border-color:#D1242B;color:#D1242B;background:#FDF6F6}
-    .rdr-close{
-      background:none;border:none;cursor:pointer;color:#8B8378;display:flex;padding:6px;
-      border-radius:8px;margin-left:4px;
+    .rdr-stage{
+      background:#3A3733;border-radius:14px;position:relative;overflow:auto;
+      height:calc(100vh - 250px);min-height:460px;
     }
-    .rdr-close:hover{color:#12100E;background:#F2F0EC}
-    .rdr-stage{flex:1;background:#3A3733;position:relative;overflow:auto}
     .rdr-frame{width:100%;height:100%;border:0;display:block;background:#3A3733}
     .rdr-centre{
       min-height:100%;display:flex;align-items:center;justify-content:center;padding:26px;
@@ -122,11 +116,61 @@
       animation:rdr-spin .8s linear infinite;
     }
     @keyframes rdr-spin{to{transform:rotate(360deg)}}
-    @media(max-width:640px){
-      .rdr{padding:0}
-      .rdr-sheet{width:100vw;height:100vh;border-radius:0}
-      .rdr-btn span,.rdr-btn{font-size:0;padding:9px 11px;gap:0}
-      .rdr-btn svg{font-size:initial}
+    @media(max-width:860px){
+      .rdr-page{padding:16px 16px 36px}
+      .rdr-name{font-size:17px}
+      .rdr-stage{height:calc(100vh - 300px)}
+      .rdr-btn span{display:none}
+      .rdr-btn{padding:9px 11px;gap:0}
+    }
+
+    /* ── Site search ───────────────────────────────────────
+       The header box used to open Ember and ask it the question. David:
+       "I'd rather the search bar be able to search the site not talk to
+       ember through it." So Enter now runs a real search over the hub's
+       own content and lands on a results PAGE. Ember still has its own
+       button. */
+    .srch-page{max-width:1240px;margin:0 auto;padding:26px 26px 60px}
+    .srch-head{border-bottom:1px solid #ECE8E2;padding-bottom:18px;margin-bottom:22px}
+    .srch-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.12em;color:#B4ADA2;text-transform:uppercase}
+    .srch-title{font-size:27px;font-weight:800;letter-spacing:-.02em;color:#12100E;margin:8px 0 0}
+    .srch-title em{font-style:normal;color:#D1242B}
+    .srch-count{font-size:13px;color:#8B8378;margin:8px 0 0}
+    .srch-group{margin-bottom:30px}
+    .srch-group-head{
+      display:flex;align-items:center;gap:9px;font-size:11px;font-weight:800;
+      letter-spacing:.1em;text-transform:uppercase;color:#8B8378;margin-bottom:12px;
+    }
+    .srch-group-head span{
+      background:#F2F0EC;border-radius:99px;padding:2px 8px;font-size:10.5px;letter-spacing:0;color:#6B655C;
+    }
+    .srch-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+    .srch-item{
+      display:flex;align-items:flex-start;gap:12px;text-align:left;width:100%;
+      background:#fff;border:1px solid #E9E5DF;border-radius:13px;padding:14px 15px;
+      cursor:pointer;font:inherit;transition:border-color .15s,box-shadow .15s;
+    }
+    .srch-item:hover{border-color:#D1242B;box-shadow:0 3px 14px rgba(0,0,0,.06)}
+    .srch-kind{
+      flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+      color:#fff;background:#12100E;border-radius:6px;padding:5px 7px;margin-top:1px;
+    }
+    .srch-kind.campaign{background:#D1242B}
+    .srch-kind.launch{background:#1F6F4A}
+    .srch-kind.event{background:#8A5A00}
+    .srch-kind.training{background:#3457A8}
+    .srch-item-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+    .srch-item-name{font-size:14px;font-weight:700;color:#12100E;line-height:1.3}
+    .srch-item-meta{font-size:11.5px;color:#8B8378}
+    .srch-empty{
+      background:#FAF9F7;border:1px dashed #DED8CF;border-radius:14px;
+      padding:34px 26px;text-align:center;color:#6B655C;font-size:14px;
+    }
+    .srch-wait{display:flex;align-items:center;gap:11px;color:#6B655C;font-size:14px;padding:18px 0}
+    .srch-wait .rdr-spin{border-color:rgba(0,0,0,.12);border-top-color:#D1242B}
+    @media(max-width:860px){
+      .srch-page{padding:18px 16px 44px}
+      .srch-title{font-size:21px}
     }
 
     /* Download / copy-link buttons on every file row in the hub. */
@@ -1689,6 +1733,67 @@
 </main>
 
 
+<!-- ══ THE READER — a PAGE, not a pop-up ══════════════════════
+     26 Aug 2026 (fix 4). Opening a document used to throw a modal over
+     whatever you were looking at. It now navigates here, with the site
+     header and nav still above it, and Back returns you to exactly the
+     page and scroll position you came from. Everything that opens a
+     file — the libraries, the folder browser, campaign and launch
+     assets, Ember's sources, search results — lands on this page. -->
+<main id="page-reader" class="page" data-screen-label="Document">
+  <div class="rdr-page">
+    <div class="rdr-backbar">
+      <button class="rdr-back" onclick="closeDocPreview()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
+        <span id="rdr-back-label">Back</span>
+      </button>
+    </div>
+
+    <header class="rdr-head">
+      <div class="rdr-id">
+        <span class="rdr-type" id="rdr-type">PDF</span>
+        <span class="rdr-titles">
+          <h1 class="rdr-name" id="rdr-name">Document</h1>
+          <p class="rdr-sub" id="rdr-sub"></p>
+        </span>
+      </div>
+      <div class="rdr-acts">
+        <button class="rdr-btn" onclick="downloadDoc()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Download</span>
+        </button>
+        <button class="rdr-btn" onclick="shareDoc(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span>Copy link</span>
+        </button>
+        <button class="rdr-btn" onclick="popOutDoc()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          <span>New tab</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="rdr-stage" id="doc-stage"></div>
+  </div>
+</main>
+
+
+<!-- ══ SITE SEARCH — also a page ══════════════════════════════
+     The header box searches the hub itself: launches, campaigns,
+     events, training sessions and the files in both libraries. It does
+     NOT talk to Ember any more; Ember has its own button. -->
+<main id="page-search" class="page" data-screen-label="Search">
+  <div class="srch-page">
+    <div class="srch-head">
+      <div class="srch-eyebrow">Search</div>
+      <h1 class="srch-title" id="srch-title">Results</h1>
+      <p class="srch-count" id="srch-count"></p>
+    </div>
+    <div id="srch-results"></div>
+  </div>
+</main>
+
+
 <!-- ══ CORNER STACK — Latest updates, then Ember ═══════════════
      Both sit OUTSIDE every <main> and both are position:fixed. That
      placement is load-bearing, not tidiness: .page.active carries a
@@ -1765,10 +1870,10 @@
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=14"></script>
-<script src="app.js?v=17"></script>
+<script src="graph.js?v=15"></script>
+<script src="app.js?v=18"></script>
 <script src="jotform.js?v=12"></script>
-<script src="ember.js?v=2"></script>
+<script src="ember.js?v=3"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
@@ -1831,37 +1936,5 @@
      PDF in the browser's own PDF viewer, an image as an image. No
      SharePoint toolbars, ribbons or branding anywhere. Built by
      openDocFile() in graph.js. ═══ -->
-<div id="doc-modal" class="rdr hidden" onclick="if(event.target===this)closeDocPreview()">
-  <div class="rdr-sheet">
-    <header class="rdr-bar">
-      <div class="rdr-id">
-        <span class="rdr-type" id="rdr-type">PDF</span>
-        <span class="rdr-titles">
-          <span class="rdr-name" id="rdr-name">Document</span>
-          <span class="rdr-sub" id="rdr-sub"></span>
-        </span>
-      </div>
-      <div class="rdr-acts">
-        <button class="rdr-btn" onclick="downloadDoc()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download
-        </button>
-        <button class="rdr-btn" onclick="shareDoc(this)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          Copy link
-        </button>
-        <button class="rdr-btn" onclick="popOutDoc()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          New tab
-        </button>
-        <button class="rdr-close" onclick="closeDocPreview()" aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    </header>
-    <div class="rdr-stage" id="doc-stage"></div>
-  </div>
-</div>
-
 </body>
 </html>
