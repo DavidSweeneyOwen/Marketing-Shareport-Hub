@@ -631,7 +631,6 @@ function _pxLead(kind, f, i, opts) {
         ${_pxDot(f.Status)}
         ${o.meta ? `<span class="px-lead-when">${escHtml(o.meta)}</span>` : ''}
       </div>
-      ${o.stats || ''}
       <button class="px-cta" onclick="${fn}(${i})">
         ${escHtml(o.cta || 'View the launch')}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -750,12 +749,10 @@ function renderCampaigns(items) {
   if (leadIdx < 0) leadIdx = 0;
   const lead = sorted[leadIdx];
 
-  const kpi = [
-    { label: 'Emails sent',  value: _num(lead, ['EmailsSent', 'Emails', 'EmailCount']) },
-    { label: 'Social posts', value: _num(lead, ['SocialPosts', 'SocialMediaPosts', 'Social']) },
-    { label: 'Blogs',        value: _num(lead, ['Blogs', 'BlogCount', 'BlogPosts']) },
-    { label: 'PR activity',  value: _num(lead, ['PRActivity', 'PR', 'PRActivities']) },
-  ].filter(m => m.value);
+  // No KPI strip. Emails sent / social posts / blogs / PR activity are
+  // not tracked anywhere and there is no plan to track them, so they
+  // only ever rendered as zeroes. Removed on David's instruction,
+  // along with the metrics band on the detail page.
 
   grid.innerHTML =
     _pxLead('campaign', lead, leadIdx, {
@@ -764,9 +761,6 @@ function renderCampaigns(items) {
       meta: [fmtSpDate(lead.StartDate), fmtSpDate(lead.EndDate)].filter(Boolean).join(' – ')
             + (lead.Region ? ' · ' + lead.Region : ''),
       cta: 'Open the campaign',
-      stats: kpi.length ? `<div class="px-stats">${kpi.map(m => `
-        <div class="px-stat"><div class="px-stat-v">${m.value}</div><div class="px-stat-l">${escHtml(m.label)}</div></div>
-      `).join('')}</div>` : '',
     }) +
     _pxRail('campaign', sorted,
       [{ tone: 'red', label: 'Planning' },
@@ -797,43 +791,6 @@ function renderCampaigns(items) {
         leadEl.classList.add('has-img');
       }
     });
-}
-
-let _docFiles = [];
-
-function renderDocuments(files) {
-  const grid = document.getElementById('sp-documents-grid');
-  if (!grid) return;
-
-  if (!files.length) {
-    grid.innerHTML = '<p class="prose dim">The library is empty — upload files to SharePoint and they\'ll appear here.</p>';
-    return;
-  }
-
-  _docFiles = files;
-
-  grid.innerHTML = `<div class="asset-grid">${files.map((f, i) => {
-    const icon = fileIcon(f.name, !!f.folder);
-    const url = safeUrl(f.webUrl, '');
-    const meta = [
-      f.folder ? `${f.folder.childCount ?? ''} items`.trim() : humanSize(f.size),
-      fmtSpDate(f.lastModifiedDateTime),
-    ].filter(Boolean).join(' · ');
-
-    // Files open in an in-hub preview modal; folders open in SharePoint.
-    const canPreview = !f.folder && f._driveId && f.id;
-    const inner = `
-      <div class="asset-icon ${icon.cls}">${escHtml(icon.label)}</div>
-      <div class="asset-info">
-        <div class="asset-name">${escHtml(f.name)}</div>
-        <div class="asset-meta">${escHtml(meta)}</div>
-      </div>
-      ${canPreview ? '<span class="asset-open">Open in hub →</span>' : ''}`;
-
-    return canPreview
-      ? `<div class="asset asset-preview" role="button" tabindex="0" onclick="openDocPreview(${i})" onkeydown="if(event.key==='Enter')openDocPreview(${i})">${inner}</div>`
-      : `<a class="asset" ${url ? `href="${escAttr(url)}" target="_blank" rel="noopener"` : ''}>${inner}</a>`;
-  }).join('')}</div>`;
 }
 
 // ═══ The reader ══════════════════════════════════════════════
@@ -911,12 +868,6 @@ function _rdrRevoke() {
 function _rdrStage(html) {
   const stage = document.getElementById('doc-stage');
   if (stage) stage.innerHTML = html;
-}
-
-// Kept for any legacy callers: open by index into the last-rendered
-// _docFiles array. Everything else calls openDocFile(fileObject).
-function openDocPreview(i) {
-  return openDocFile(_docFiles[i]);
 }
 
 async function openDocFile(f) {
@@ -1255,12 +1206,21 @@ async function loadHomeVideos() {
 
 // ── Latest videos (home hero box) ─────────────────────────────
 //
-// REWRITTEN 26 Aug 2026 (second round). The in-page YouTube player is
-// blocked by CheckFire's web filter — David could open the same video
-// straight from Google, just not embedded — so nothing is embedded any
-// more. The box shows the MOST RECENT UPLOAD as a proper thumbnail
-// card and links out to YouTube, which the filter allows, with the
-// next couple listed underneath and a link to the channel.
+// REWRITTEN 26 Aug 2026 (round 2, then fixed). Two things were wrong
+// on the live site:
+//
+//  1. The card was a full-width 16:9 thumbnail. This box only gets
+//     about 200px of the hero grid, and styles.css pins that grid to
+//     height:420px — so the card overflowed and painted over the row
+//     underneath. That was the "sizing has gone off" break. The card
+//     is horizontal now and fits.
+//
+//  2. It was showing a Media Portal video, so clicking "Latest"
+//     dropped you into SharePoint. This box is YOUTUBE ONLY now —
+//     anything else is filtered out here as well as switched off in
+//     config, so it can't come back by accident. With no YouTube feed
+//     it says so and offers the channel, rather than substituting
+//     something that isn't a YouTube video.
 function renderHeroVideos(vids) {
   const el = document.getElementById('home-hero-videos-body');
   if (!el) return;
@@ -1269,46 +1229,45 @@ function renderHeroVideos(vids) {
   const channel = safeUrl(yt.channelUrl || '', '');
 
   const channelLink = channel
-    ? `<a class="hbox-more" href="${escAttr(channel)}" target="_blank" rel="noopener">
-         Go to our YouTube channel →
-       </a>`
+    ? `<a class="hbox-more" href="${escAttr(channel)}" target="_blank" rel="noopener">Go to our YouTube channel &rarr;</a>`
     : '';
 
-  if (!vids || !vids.length) {
+  const only = (vids || []).filter(v => v.youtubeId);
+
+  if (!only.length) {
     el.innerHTML =
-      `<p class="prose dim" style="margin:0 0 8px">Everything we publish is on the CheckFire channel.</p>` +
-      channelLink;
+      `<p class="vempty">Everything we publish is on the CheckFire channel.</p>` + channelLink;
     return;
   }
 
-  // Newest first — loadHomeVideos already sorted, but be explicit,
-  // because "the most recent uploaded" is the whole point of the box.
-  const sorted = [...vids].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  // Newest first — "the most recent uploaded" is the whole point of
+  // the box, so don't rely on an upstream sort.
+  const sorted = [...only].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   const lead = sorted[0];
   const rest = sorted.slice(1, 3);
 
-  const leadHref = safeUrl(lead.href, channel || '#');
-
   // The thumbnail is an <img>, not a background image, so it can remove
-  // ITSELF if it fails to load. CheckFire's web filter is why the
-  // embedded player had to go, and it may well block i.ytimg.com too —
-  // if it does the card falls back to the brand gradient underneath
-  // rather than showing a broken image.
+  // ITSELF if it fails to load. The web filter is why the embedded
+  // player had to go, and it may well block i.ytimg.com too — if it
+  // does, the card falls back to the brand gradient underneath rather
+  // than showing a broken image.
   const thumbImg = url => url
     ? `<img class="vthumb-img" src="${escAttr(safeUrl(url, ''))}" alt="" loading="lazy" onerror="this.remove()">`
     : '';
 
   el.innerHTML = `
-    <a class="vlead" href="${escAttr(leadHref)}" target="_blank" rel="noopener">
+    <a class="vlead" href="${escAttr(safeUrl(lead.href, channel || '#'))}" target="_blank" rel="noopener">
       <span class="vlead-thumb">
         ${thumbImg(lead.thumb)}
         <span class="vlead-play">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M8 5v14l11-7z"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M8 5v14l11-7z"/></svg>
         </span>
-        <span class="vlead-badge">Latest</span>
       </span>
-      <span class="vlead-title">${escHtml(lead.title)}</span>
-      <span class="vlead-meta">${escHtml([lead.source, lead.date ? fmtSpDate(lead.date) : ''].filter(Boolean).join(' · '))}</span>
+      <span class="vlead-copy">
+        <span class="vlead-badge">Latest</span>
+        <span class="vlead-title">${escHtml(lead.title)}</span>
+        <span class="vlead-meta">${escHtml(lead.date ? fmtSpDate(lead.date) : 'YouTube')}</span>
+      </span>
     </a>
     ${rest.length ? `<div class="vrest">${rest.map(v => `
       <a class="hbox-vid" href="${escAttr(safeUrl(v.href, channel || '#'))}" target="_blank" rel="noopener">
@@ -1771,6 +1730,26 @@ function dismissUpdates() {
   try { localStorage.setItem('cf-updates-seen', _updStamp()); } catch (_) {}
 }
 
+// The corner dock is meant to be on EVERY page, but it only ever got
+// rendered by loadSharePointData(), which runs on Launches/Campaigns.
+// Land on the home page and there was nothing there until you'd been
+// somewhere else first. This gives it its own loader; both lists are
+// already in the 5-minute cache by the time anyone clicks through, so
+// it costs nothing.
+async function loadUpdatesDock() {
+  if (window.HUB_DEMO_MODE) return;
+  if (typeof getAccessToken !== 'function') return;
+  try {
+    const [launches, campaigns] = await Promise.all([
+      fetchListItems(HUB_CONFIG.lists.launches).catch(() => []),
+      fetchListItems(HUB_CONFIG.lists.campaigns).catch(() => []),
+    ]);
+    renderNewsTicker(launches, campaigns);
+  } catch (e) {
+    console.info('[Updates] unavailable:', e.message);
+  }
+}
+
 // Which in-hub folder browsers have been started. Keyed by library, so
 // 'product' and 'resources' each keep their own place in the tree.
 const _fbLoaded = {};
@@ -2231,25 +2210,23 @@ function fbPreview(key, idx) {
 //   Documents/Campaigns/<Campaign folder>/<Block folder>
 // and opens the file(s) inside — in-hub, never bouncing to SharePoint.
 
-function _num(f, names) {
-  for (const n of names) {
-    if (f[n] !== undefined && f[n] !== null && f[n] !== '') {
-      const v = Number(f[n]);
-      if (!isNaN(v)) return v;
-    }
-  }
-  return 0;
-}
 
-function _campaignStatusPill(status) {
-  const s = String(status || '').toLowerCase();
-  if (/live/.test(s))      return '<span class="cd-pill">Live</span>';
-  if (/launched/.test(s))  return '<span class="cd-pill">Launched</span>';
-  if (/complete/.test(s))  return '<span class="cd-pill done">Completed</span>';
-  return `<span class="cd-pill planning">${escHtml(status || 'Planning')}</span>`;
-}
+// ── Launch / campaign detail ──────────────────────────────────
+//
+// REBUILT 26 Aug 2026 (round 2 fix). David: "Nothing is opening as
+// should on Product launches or Campaigns. not like I asked for."
+// He was right — the index pages had been rebuilt as a website but
+// clicking a card still opened the old dark panel with a grey grid of
+// blocks under it. The detail now uses the SAME editorial shape as the
+// page it came from: a lead spread with the item's own artwork, then
+// its assets as real, openable, downloadable files.
+//
+// The metrics band ("Emails sent 0 / Social media posts 0 / Blogs 0 /
+// PR activity 0") is GONE. Nothing feeds those columns and there is no
+// plan to, so it was four zeroes taking up the width of the page.
+// David: "Not sure how we can track this so think we should remove
+// it!!" If tracking ever arrives, put it back deliberately.
 
-// Shared renderer for both Campaigns and Product Launches detail pages.
 function _renderDetail(opts) {
   // opts: { containerId, hideIds, item, kind, folderRoot, backLabel, backFn }
   const box = document.getElementById(opts.containerId);
@@ -2260,71 +2237,101 @@ function _renderDetail(opts) {
   box.style.display = '';
   window.scrollTo(0, 0);
 
-  const landing = safeUrl(linkOf(f.LinkURL), '');
-  const dates = [fmtSpDate(f.StartDate || f.LaunchDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ');
   const isLaunch = opts.kind === 'launch';
-  // Marketing asked for the launch page to show product codes rather
-  // than a marketing blurb.
-  const codes = isLaunch ? productCodes(f) : [];
-  const sub = isLaunch ? '' : (f.Description || f.Summary || f.CampaignType || '');
-  const portal = safeUrl(HUB_CONFIG.productPortalSite || '', '');
-
-  const metrics = opts.kind === 'campaign' ? [
-    { label: 'Emails sent',       value: _num(f, ['EmailsSent', 'Emails', 'EmailCount']) },
-    { label: 'Social media posts', value: _num(f, ['SocialPosts', 'SocialMediaPosts', 'Social']) },
-    { label: 'Blogs',             value: _num(f, ['Blogs', 'BlogCount', 'BlogPosts']) },
-    { label: 'PR activity',       value: _num(f, ['PRActivity', 'PR', 'PRActivities']) },
-  ] : [];
+  const landing  = safeUrl(linkOf(f.LinkURL), '');
+  const dates    = [fmtSpDate(f.StartDate || f.LaunchDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ');
+  const codes    = isLaunch ? productCodes(f) : [];
+  const sub      = f.Description || f.Summary || (isLaunch ? '' : f.CampaignType) || '';
+  const channels = Array.isArray(f.Channels) ? f.Channels : String(f.Channels || '').split(/[,;/]+/);
+  const chips    = channels.map(c => String(c).trim()).filter(Boolean);
 
   const blocks = (HUB_CONFIG.campaignAssetBlocks || []);
 
   box.innerHTML = `
-    <div class="cd-back" role="button" tabindex="0" onclick="${opts.backFn}" onkeydown="if(event.key==='Enter')${opts.backFn}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
-      ${escHtml(opts.backLabel)}
+    <div class="dt-backbar">
+      <button class="dt-back" onclick="${opts.backFn}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
+        ${escHtml(opts.backLabel)}
+      </button>
     </div>
 
-    <div class="cd-hero">
-      <div class="eyebrow" style="color:#D1242B;margin-bottom:8px">${escHtml(opts.kind === 'campaign' ? 'Campaign' : 'Product launch')}</div>
-      <h1 class="cd-hero-title">${escHtml(f.Title || 'Untitled')}</h1>
-      ${sub ? `<p class="cd-hero-sub">${escHtml(sub)}</p>` : ''}
-      ${codes.length ? `<div class="cd-codes">${codes.map(c => `<span class="cd-code">${escHtml(c)}</span>`).join('')}</div>` : ''}
-      <div class="cd-hero-meta">
-        ${ragChip(f.Status)}
-        ${dates ? `<span>${escHtml(dates)}</span>` : ''}
-        ${f.Region ? `<span>${escHtml(f.Region)}</span>` : ''}
-        ${landing ? `<a class="cd-landing" href="${escAttr(landing)}" target="_blank" rel="noopener">View landing page →</a>` : ''}
-        ${isLaunch && portal ? `<a class="cd-portal" href="${escAttr(portal)}" target="_blank" rel="noopener">Open in Product Portal →</a>` : ''}
+    <section class="px-lead dark">
+      <div class="px-lead-copy">
+        <div class="px-eyebrow">${escHtml(isLaunch ? 'Product launch' : (f.CampaignType || 'Campaign'))}</div>
+        <h1 class="px-lead-title">${escHtml(f.Title || 'Untitled')}</h1>
+        ${sub ? `<p class="px-lead-sub">${escHtml(sub)}</p>` : ''}
+        ${codes.length ? `<div class="px-lead-codes">${codes.map(c => `<span class="px-code">${escHtml(c)}</span>`).join('')}</div>` : ''}
+        ${!isLaunch && chips.length ? `<div class="px-lead-codes">${chips.map(c => `<span class="px-chan">${escHtml(c)}</span>`).join('')}</div>` : ''}
+        <div class="px-lead-meta">
+          <span class="px-badge"><span class="px-badge-dot ${ragOf(f.Status)}"></span>${escHtml(f.Status || 'Not set')}</span>
+          ${dates ? `<span class="px-lead-when">${escHtml(dates)}</span>` : ''}
+          ${f.Region ? `<span class="px-lead-when">${escHtml(f.Region)}</span>` : ''}
+        </div>
+        <div class="dt-actions">
+          ${landing ? `<a class="px-cta" href="${escAttr(landing)}" target="_blank" rel="noopener">
+            View the landing page
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>` : ''}
+          ${isLaunch ? `<button class="px-cta ghost" onclick="openProductPortal()">Certificates &amp; datasheets</button>` : ''}
+        </div>
       </div>
-    </div>
+      <div class="px-lead-media" id="dt-hero-img">
+        <span class="px-lead-initials">${escHtml(_pxInitials(f.Title))}</span>
+      </div>
+    </section>
 
-    ${metrics.length ? `<div class="cd-metrics">${metrics.map(m => `
-      <div class="cd-metric"><div class="cd-metric-label">${escHtml(m.label)}</div><div class="cd-metric-value">${m.value}</div></div>
-    `).join('')}</div>` : ''}
-
-    <p class="cd-blocks-title">Assets &amp; resources</p>
-    <div class="cd-blocks" id="cd-blocks">${_blocksHtml(blocks)}</div>
-
-    <div id="cd-asset-panel" style="margin-top:20px"></div>`;
+    <div class="dt-main">
+      <div class="dt-sec-head">
+        <h2 class="dt-sec-title">Assets &amp; resources</h2>
+        <p class="dt-sec-sub">Everything filed for this ${isLaunch ? 'launch' : 'campaign'}. Open it here, download it, or copy a link to send on.</p>
+      </div>
+      <div class="dt-folders" id="cd-blocks">${_blocksHtml(blocks)}</div>
+      <div id="cd-asset-panel"></div>
+    </div>`;
 
   // Remember what the asset blocks should resolve against.
   _detailContext = { folderRoot: opts.folderRoot, campaignFolder: f.CampaignFolder || f.Folder || f.Title };
   _detailBlocks  = blocks;
 
-  // Then swap the config placeholders for the real SharePoint folders.
+  // Then swap the config placeholders for the real SharePoint folders,
+  // and fetch the artwork for the hero.
   _loadDetailBlocks();
+  _loadDetailHero();
 }
 
-// Render the asset-block tiles. Each tile shows how many files are in
-// its folder once we've read the library.
+// Folder tiles. Each one is a real folder in SharePoint with a live
+// file count; clicking it lists the files underneath.
 function _blocksHtml(blocks) {
   return (blocks || []).map((bl, bi) => `
-      <div class="cd-block" role="button" tabindex="0" onclick="openDetailAsset(${bi})" onkeydown="if(event.key==='Enter')openDetailAsset(${bi})">
-        <span class="cd-block-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
-        ${escHtml(bl.label)}
-        <span class="cd-block-note">${bl.count === undefined ? 'Open in hub'
-          : `${bl.count} item${bl.count === 1 ? '' : 's'} · Open in hub`}</span>
-      </div>`).join('');
+      <button class="dt-folder" onclick="openDetailAsset(${bi})">
+        <span class="dt-folder-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <span class="dt-folder-main">
+          <span class="dt-folder-name">${escHtml(bl.label)}</span>
+          <span class="dt-folder-note">${bl.count === undefined ? 'Open' : `${bl.count} file${bl.count === 1 ? '' : 's'}`}</span>
+        </span>
+      </button>`).join('');
+}
+
+// The item's own artwork, from its asset folder — same source the
+// cards use, so the detail page matches the card you clicked.
+async function _loadDetailHero() {
+  const ctx = _detailContext;
+  const el  = document.getElementById('dt-hero-img');
+  if (!ctx || !el) return;
+  try {
+    const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
+    const root  = await _findChildFolder(drive.id, null, ctx.folderRoot);
+    if (!root) return;
+    const item = await _findChildFolder(drive.id, root.id, ctx.campaignFolder);
+    if (!item) return;
+    const url = await folderHeroImage(drive.id, item.id);
+    if (!url) return;
+    if (_detailContext !== ctx) return;          // navigated away meanwhile
+    el.style.backgroundImage = `url('${safeCssUrl(url)}')`;
+    el.classList.add('has-img');
+  } catch (_) { /* the initials placeholder is a fine fallback */ }
 }
 
 // Read the real sub-folders under Documents/<root>/<item>/ so the tiles
@@ -2424,7 +2431,7 @@ async function openDetailAsset(blockIdx) {
   const panel = document.getElementById('cd-asset-panel');
   if (!ctx || !block || !panel) return;
 
-  panel.innerHTML = `<p class="prose dim">Opening “${escHtml(block.label)}”…</p>`;
+  panel.innerHTML = `<p class="prose dim">Opening &ldquo;${escHtml(block.label)}&rdquo;&hellip;</p>`;
 
   try {
     const drive = await resolveDrive(HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary);
@@ -2436,32 +2443,28 @@ async function openDetailAsset(blockIdx) {
     if (!blockFolder) throw new Error(`No “${block.label}” folder set up for this item yet.`);
 
     const files = (await fetchDriveChildren(drive.id, blockFolder.id)).filter(x => !x.folder);
-    if (!files.length) { panel.innerHTML = `<p class="prose dim">No files in “${escHtml(block.label)}” yet.</p>`; return; }
-
-    if (files.length === 1) {
-      _lastAssetFiles = files;
-      openDocFile(files[0]);
-      panel.innerHTML = `<p class="prose dim">Opened <strong>${escHtml(files[0].name)}</strong> — <a class="fb-crumb" onclick="openDocFile(_lastAssetFiles[0])">reopen</a></p>`;
+    if (!files.length) {
+      panel.innerHTML = `<p class="prose dim">Nothing in &ldquo;${escHtml(block.label)}&rdquo; yet.</p>`;
       return;
     }
 
     _lastAssetFiles = files;
+
+    // Always LIST the files rather than auto-opening a single one —
+    // people want the download and copy-link buttons at least as often
+    // as they want to read it, and a page that opens a modal at you
+    // the moment you click a folder is the opposite of website-like.
     panel.innerHTML = `
-      <p class="cd-blocks-title" style="margin-bottom:10px">${escHtml(block.label)} — ${files.length} files</p>
-      <div class="lib-files">${files.map(f => libFileRow(f)).join('')}</div>`;
+      <h3 class="dt-panel-head">${escHtml(block.label)}<span>${files.length}</span></h3>
+      <div class="lib-files">${files
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .map(f => libFileRow(f)).join('')}</div>`;
+
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (e) {
     panel.innerHTML = `<p class="prose dim">${escHtml(e.message)}</p>`;
   }
 }
-
-
-// ═══ Trade & customer events ═════════════════════════════════
-// Everything on this page comes from the "Events" folder in the
-// marketing document library. Each sub-folder is one event (e.g.
-// "FSE 2027") and holds the forms the sales team need beforehand.
-// A four-digit year in the folder name splits upcoming from previous.
-
-let _eventFolders = [];
 
 function _eventYear(name) {
   const m = String(name || '').match(/(19|20)\d{2}/);

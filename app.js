@@ -62,6 +62,7 @@ async function loadHomeData() {
     loadWall(),
     loadTraining(),
     loadPolls(),
+    loadUpdatesDock(),
   ]);
 }
 

@@ -432,16 +432,6 @@
     .px-lead-meta{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:24px}
     .px-lead-when{font-size:13.5px;color:#6B645A;font-weight:600}
 
-    .px-stats{display:flex;flex-wrap:wrap;gap:30px;margin:0 0 26px}
-    .px-stat-v{
-      font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;
-      line-height:1;color:var(--px-ink);
-    }
-    .px-stat-l{
-      font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
-      color:#8B8378;margin-top:6px;
-    }
-
     .px-cta{
       display:inline-flex;align-items:center;gap:9px;font:inherit;
       font-size:14px;font-weight:700;color:#fff;background:var(--px-ink);
@@ -608,6 +598,83 @@
       color:var(--px-ink);margin:0 0 10px;
     }
     .px-empty p{font-size:14.5px;line-height:1.6;color:#7A736A;margin:0}
+
+    /* ══ LAUNCH / CAMPAIGN DETAIL ══════════════════════════════
+       Clicking a card used to open a dark panel with a grey grid of
+       blocks — nothing like the page it came from. It now reuses the
+       lead spread in a dark variant, so the detail reads as the same
+       website. The metrics band (four permanent zeroes) is gone. */
+    .dt-backbar{max-width:1280px;margin:0 auto;padding:22px 32px 14px}
+    .dt-back{
+      display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:13px;font-weight:700;
+      color:#6B645A;background:none;border:none;padding:0;cursor:pointer;transition:color .15s;
+    }
+    .dt-back:hover{color:var(--px-red)}
+
+    /* Dark variant of the lead spread, so a detail page is obviously a
+       level down from the light index page it came from. */
+    .px-lead.dark{background:var(--px-ink);border-bottom-color:#241F1A}
+    .px-lead.dark::before{
+      background:linear-gradient(90deg,var(--px-red) 0%,var(--px-red) 32%,transparent 32%);
+    }
+    .px-lead.dark .px-lead-title{color:#fff}
+    .px-lead.dark .px-lead-sub{color:#B4ADA2}
+    .px-lead.dark .px-lead-when{color:#B4ADA2}
+    .px-lead.dark .px-code{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#F2EFEA}
+    .px-lead.dark .px-chan{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#F2EFEA}
+    .px-lead.dark .px-badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#F2EFEA}
+    .px-lead.dark .px-cta{background:#fff;color:var(--px-ink)}
+    .px-lead.dark .px-cta:hover{background:var(--px-red);color:#fff}
+    .px-lead.dark .px-lead-media.has-img::after{
+      background:linear-gradient(90deg,var(--px-ink) 0%,rgba(18,16,14,0) 22%);
+    }
+    @media(max-width:960px){
+      .px-lead.dark .px-lead-media.has-img::after{
+        background:linear-gradient(0deg,rgba(18,16,14,.85) 0%,rgba(18,16,14,0) 45%);
+      }
+    }
+    .dt-actions{display:flex;flex-wrap:wrap;gap:10px}
+    .px-cta.ghost{
+      background:transparent;color:#fff;border:1px solid rgba(255,255,255,.28);
+    }
+    .px-cta.ghost:hover{background:rgba(255,255,255,.1);color:#fff;box-shadow:none}
+
+    .dt-main{max-width:1280px;margin:0 auto;padding:46px 32px 80px}
+    .dt-sec-head{margin-bottom:20px}
+    .dt-sec-title{
+      font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;
+      letter-spacing:-.015em;color:var(--px-ink);margin:0 0 6px;
+    }
+    .dt-sec-sub{font-size:14px;line-height:1.6;color:#6B645A;margin:0;max-width:58ch}
+    .dt-folders{
+      display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:30px;
+    }
+    .dt-folder{
+      display:flex;align-items:center;gap:12px;text-align:left;font:inherit;
+      background:#fff;border:1px solid var(--line);border-radius:14px;
+      padding:15px 16px;cursor:pointer;
+      transition:border-color .16s,transform .16s,box-shadow .16s;
+      animation:px-rise .45s cubic-bezier(.22,1,.36,1) both;
+    }
+    .dt-folder:hover{border-color:var(--px-red);transform:translateY(-2px);box-shadow:0 10px 26px rgba(18,16,14,.07)}
+    .dt-folder-ico{
+      flex:0 0 auto;width:40px;height:40px;border-radius:10px;background:#FDF0F0;
+      border:1px solid #F3D9D9;color:var(--px-red);
+      display:flex;align-items:center;justify-content:center;
+    }
+    .dt-folder-main{min-width:0;display:flex;flex-direction:column;gap:3px}
+    .dt-folder-name{font-size:14px;font-weight:700;color:#25211C;line-height:1.3}
+    .dt-folder-note{font-size:11.5px;color:#9A938A}
+    .dt-panel-head{
+      display:flex;align-items:baseline;gap:10px;
+      font-family:'Fraunces',Georgia,serif;font-size:20px;font-weight:600;
+      color:var(--px-ink);margin:0 0 12px;
+    }
+    .dt-panel-head span{
+      font-family:'Manrope',system-ui,sans-serif;font-size:11px;font-weight:800;
+      color:#9A938A;background:var(--px-paper);border:1px solid var(--px-rule);
+      border-radius:99px;padding:2px 8px;
+    }
 
     @keyframes px-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
     @media (prefers-reduced-motion:reduce){
@@ -868,40 +935,63 @@
       .ember-panel{right:10px;left:10px;bottom:10px;width:auto;height:min(78vh,620px)}
     }
 
+
+    /* ══ LAYOUT SAFETY — the 26 Aug (round 2) break ════════════
+       styles.css sets .inh-hero-grid{height:420px}. That is a HARD
+       height: grid rows still size to their content, so anything
+       taller simply overflows the box and paints straight over the
+       Visits / Calendar / Quick links row underneath. That is what
+       broke the home page — the new Latest videos card was taller
+       than its share of 420px.
+
+       Two belts here. The card content is now compact enough to fit
+       (see .vlead below), AND the grid may grow if it ever doesn't,
+       so this class of bug can't come back silently. */
+    #page-home .inh-hero-grid{height:auto;min-height:420px}
+    #page-home .hero-side-boxes{min-height:0}
+    #page-home .hbox{min-height:0}
+    #page-home .hbox-body{min-height:0;overflow:hidden;display:flex;flex-direction:column}
+
     /* ══ LATEST VIDEOS (home hero box) ═════════════════════════
-       No embedded player any more — CheckFire's web filter blocks it,
-       so all anyone saw was a dead frame. The newest upload is a
-       thumbnail card that links out to YouTube instead. */
+       No embedded player — CheckFire's web filter blocks it, so all
+       anyone saw was a dead frame. The newest upload is a thumbnail
+       card linking out to YouTube.
+
+       Laid out HORIZONTALLY on purpose: this box only gets about
+       200px of the hero, and a full-width 16:9 thumbnail needs more
+       than that on its own. That was the sizing break. */
     .vlead{
-      display:block;text-decoration:none;color:inherit;margin-bottom:10px;
+      display:flex;gap:11px;align-items:flex-start;text-decoration:none;color:inherit;
+      padding-bottom:10px;border-bottom:1px solid #F0EEEA;margin-bottom:8px;
     }
     .vlead-thumb{
-      display:block;position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;
-      background:linear-gradient(135deg,#241012,#0A0A0A);
-      overflow:hidden;margin-bottom:9px;
+      flex:0 0 auto;position:relative;width:104px;aspect-ratio:16/9;border-radius:8px;
+      background:linear-gradient(135deg,#241012,#0A0A0A);overflow:hidden;
     }
     /* The gradient shows through if a thumbnail is blocked or missing. */
     .vthumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
     .vlead-play{
-      position:absolute;inset:0;margin:auto;width:44px;height:44px;border-radius:50%;
+      position:absolute;inset:0;margin:auto;width:28px;height:28px;border-radius:50%;
       background:rgba(209,36,43,.94);color:#fff;
-      display:flex;align-items:center;justify-content:center;padding-left:3px;
-      box-shadow:0 6px 20px rgba(0,0,0,.4);transition:transform .18s;
+      display:flex;align-items:center;justify-content:center;padding-left:2px;
+      box-shadow:0 3px 10px rgba(0,0,0,.4);transition:transform .18s;
     }
-    .vlead:hover .vlead-play{transform:scale(1.09)}
+    .vlead:hover .vlead-play{transform:scale(1.12)}
+    .vlead-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
     .vlead-badge{
-      position:absolute;left:9px;top:9px;font-size:9.5px;font-weight:800;
-      text-transform:uppercase;letter-spacing:.08em;color:#fff;background:#D1242B;
-      padding:3px 8px;border-radius:99px;
+      align-self:flex-start;font-size:9px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.09em;color:#fff;background:#D1242B;padding:2px 7px;border-radius:99px;
     }
     .vlead-title{
-      display:block;font-size:13px;font-weight:700;line-height:1.35;color:#1A1713;
+      font-size:12.5px;font-weight:700;line-height:1.35;color:#1A1713;
       overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
     }
     .vlead:hover .vlead-title{color:#D1242B}
-    .vlead-meta{display:block;font-size:11px;color:#9A938A;margin-top:3px}
-    .vrest{border-top:1px solid #F0EEEA;margin-bottom:4px}
+    .vlead-meta{font-size:10.5px;color:#9A938A}
+    .vrest{min-height:0;overflow:hidden}
+    .vrest .hbox-vid{padding:5px 0}
     .hbox-vid-thumb{position:relative;overflow:hidden;padding:0}
+    .vempty{font-size:12.5px;line-height:1.55;color:#8B8378;margin:0 0 10px}
 
     /* ══ TRAINING & SESSIONS (Trade & events) ══════════════════
        David: "if Marketing put a training session in place you can
@@ -1406,7 +1496,7 @@
   </section>
 
   <!-- Launch detail view (same organisation as Campaigns) -->
-  <section class="container py-lg" id="launch-detail" style="display:none"></section>
+  <section id="launch-detail" style="display:none"></section>
 </main>
 
 <!-- ─── CAMPAIGNS ─────────────────────────────────────────────── -->
@@ -1431,7 +1521,7 @@
   </section>
 
   <!-- Campaign detail view (shown when a campaign card is clicked) -->
-  <section class="container py-lg" id="campaign-detail" style="display:none"></section>
+  <section id="campaign-detail" style="display:none"></section>
 </main>
 
 <!-- ─── TRADE, EVENTS & TRAINING ─────────────────────────────── -->
@@ -1575,7 +1665,7 @@
   <section class="container py-lg">
     <!-- The front door: everything in the Product Portal, indexed by
          product and by document type, with a search box over the lot.
-         Built by renderPortalIndex() in graph.js. -->
+         Built by loadLibrary('product') in graph.js. -->
     <div id="pp-index">
       <div class="skeleton sk-line med"></div>
       <div class="skeleton sk-line"></div>
@@ -1667,13 +1757,13 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=11"></script>
+<script src="config.js?v=12"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=12"></script>
-<script src="app.js?v=15"></script>
+<script src="graph.js?v=13"></script>
+<script src="app.js?v=16"></script>
 <script src="jotform.js?v=12"></script>
 <script src="ember.js?v=2"></script>
 

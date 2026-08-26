@@ -157,13 +157,16 @@ HUB_CONFIG.videos = {
     // ever does get set.
     channelId: 'UC9EwvNr5cfQJW7GRrqCyphg',
   },
-  // Marketing asked (deck, 24 Aug) for the stray WordPress mp4 to come
-  // off the home page. Turned off here rather than deleted in code, so
-  // flipping it back is a one-word change. The YouTube feed fills this
-  // box once YOUTUBE_API_KEY is set on the checkfire-jotform Function
-  // app — an API key, never the Google account password.
+  // BOTH OFF, 26 Aug 2026 (round 2 fix). The Latest videos box was
+  // showing a Media Portal file, so clicking it dropped you into
+  // SharePoint instead of YouTube — David's second point. That box is
+  // now YouTube only, and renderHeroVideos() filters to YouTube as
+  // well, so this can't come back by accident.
+  //
+  // Flip either back to true if you ever want the box to include
+  // WordPress uploads or Media Portal files again.
   includeWordPress:  false,
-  includeSharePoint: true,
+  includeSharePoint: false,
   mediaPortalSite: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
   max: 6,            // how many to show on the home page
   maxAgeMonths: 3,   // only show videos published within the last N months (0 = no limit)
