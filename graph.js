@@ -894,51 +894,114 @@ async function openDocFile(f) {
     return;
   }
 
+  // ── The plan, in order of preference ──────────────────────
+  // Images, video and audio never need the file's BYTES — an <img> or
+  // <video> src doesn't do CORS, so the pre-authenticated downloadUrl
+  // goes straight into the tag and just works.
+  //
+  // PDFs and text DO need the bytes (blob → the browser's own PDF
+  // viewer — the "opens like a website" experience). But fetching the
+  // downloadUrl is a cross-origin fetch, and whether SharePoint sends
+  // CORS headers on it varies by tenant — which is exactly why David
+  // saw "This file type can't be shown" on a plain 445 KB PDF. So:
+  //
+  //   1. try the blob            (best: native viewer, no chrome)
+  //   2. fall back to the Graph  (always works — it's an iframe, and
+  //      preview iframe, nb=true  it's what the hub used for months)
+  //   3. only then offer download
+  //
+  // Every failure is logged with the REAL reason, so the console says
+  // what actually happened instead of a generic shrug.
+
   try {
-    if (Number(f.size) > RDR_MAX_BYTES) throw new Error('TOO_BIG');
+    if (Number(f.size) > RDR_MAX_BYTES) {
+      _rdrFallbackPreview(f, 'the file is over the ' + Math.round(RDR_MAX_BYTES / 1048576) + ' MB in-page limit');
+      return;
+    }
 
-    if (RDR_PDF.test(f.name)) {
-      RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
-      _rdrStage(`<iframe class="rdr-frame" src="${escAttr(RDR.blobUrl)}#view=FitH" title="${escAttr(f.name)}"></iframe>`);
-
-    } else if (RDR_IMG.test(f.name)) {
-      RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
-      _rdrStage(`<div class="rdr-centre"><img class="rdr-img" src="${escAttr(RDR.blobUrl)}" alt="${escAttr(f.name)}"></div>`);
+    if (RDR_IMG.test(f.name)) {
+      const url = await _rdrDownloadUrl(f);
+      if (!url) throw new Error('no download URL');
+      // If even the direct URL won't render (rare), fall back to the
+      // large thumbnail, which is served from a different, always-
+      // embeddable endpoint.
+      _rdrStage(`<div class="rdr-centre"><img class="rdr-img" src="${escAttr(url)}" alt="${escAttr(f.name)}"
+        onerror="_rdrImgFallback(this)"></div>`);
 
     } else if (RDR_AV.test(f.name)) {
-      RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
+      const url = await _rdrDownloadUrl(f);
+      if (!url) throw new Error('no download URL');
       const audio = /\.(mp3|m4a|wav|ogg)$/i.test(f.name);
       _rdrStage(audio
-        ? `<div class="rdr-centre"><audio class="rdr-audio" src="${escAttr(RDR.blobUrl)}" controls></audio></div>`
-        : `<div class="rdr-centre"><video class="rdr-video" src="${escAttr(RDR.blobUrl)}" controls playsinline></video></div>`);
+        ? `<div class="rdr-centre"><audio class="rdr-audio" src="${escAttr(url)}" controls></audio></div>`
+        : `<div class="rdr-centre"><video class="rdr-video" src="${escAttr(url)}" controls playsinline></video></div>`);
+
+    } else if (RDR_PDF.test(f.name)) {
+      try {
+        RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, false));
+        _rdrStage(`<iframe class="rdr-frame" src="${escAttr(RDR.blobUrl)}#view=FitH" title="${escAttr(f.name)}"></iframe>`);
+      } catch (e) {
+        console.warn('[Reader] PDF blob route failed (' + e.message + ') — using the preview service.');
+        await _rdrFallbackPreview(f);
+      }
 
     } else if (RDR_TXT.test(f.name)) {
-      const text = await (await _rdrBlob(f, false)).text();
-      _rdrStage(`<pre class="rdr-text">${escHtml(text.slice(0, 400000))}</pre>`);
+      try {
+        const text = await (await _rdrBlob(f, false)).text();
+        _rdrStage(`<pre class="rdr-text">${escHtml(text.slice(0, 400000))}</pre>`);
+      } catch (e) {
+        console.warn('[Reader] text blob route failed (' + e.message + ') — using the preview service.');
+        await _rdrFallbackPreview(f);
+      }
 
     } else if (RDR_OFFICE.test(f.name)) {
       try {
         RDR.blobUrl = URL.createObjectURL(await _rdrBlob(f, true));
         _rdrStage(`<iframe class="rdr-frame" src="${escAttr(RDR.blobUrl)}#view=FitH" title="${escAttr(f.name)}"></iframe>`);
-      } catch (_) {
-        // Spreadsheets in particular don't always convert. Fall back to
-        // the Office viewer with SharePoint's branding switched off.
-        const prev = await graphPost(`/drives/${f._driveId}/items/${f.id}/preview`, {});
-        const url = prev && prev.getUrl;
-        if (!url) throw new Error('no preview');
-        _rdrStage(`<iframe class="rdr-frame" src="${escAttr(url + (url.includes('?') ? '&' : '?') + 'nb=true')}" title="${escAttr(f.name)}"></iframe>`);
+      } catch (e) {
+        console.warn('[Reader] Office→PDF conversion failed (' + e.message + ') — using the preview service.');
+        await _rdrFallbackPreview(f);
       }
 
     } else {
-      throw new Error('UNSUPPORTED');
+      // A type nothing can paint (zip, exe, font…) — go straight to
+      // the honest offer.
+      _rdrStage(`<div class="rdr-wait">This file type can’t be shown in the page.
+        <button class="rdr-alt" onclick="downloadDoc()">Download it instead ↓</button></div>`);
     }
   } catch (e) {
-    const why = e.message === 'TOO_BIG'
-      ? 'This file is too big to open in the page.'
-      : 'This file type can’t be shown in the page.';
-    _rdrStage(`<div class="rdr-wait">${escHtml(why)}
+    console.warn('[Reader] could not open ' + f.name + ':', e.message);
+    await _rdrFallbackPreview(f);
+  }
+}
+
+// The safety net: Microsoft's preview service in an iframe. Renders
+// essentially everything Office knows about, needs no CORS (iframes
+// don't), and nb=true strips most of the branding. Not as clean as the
+// native viewer, but a document ALWAYS beats an apology.
+async function _rdrFallbackPreview(f, why) {
+  try {
+    const prev = await graphPost(`/drives/${f._driveId}/items/${f.id}/preview`, {});
+    const url = prev && prev.getUrl;
+    if (!url) throw new Error('no preview URL');
+    _rdrStage(`<iframe class="rdr-frame" src="${escAttr(url + (url.includes('?') ? '&' : '?') + 'nb=true')}" title="${escAttr(f.name)}"></iframe>`);
+  } catch (e) {
+    console.warn('[Reader] preview service also failed:', e.message);
+    _rdrStage(`<div class="rdr-wait">${escHtml(why ? 'This can’t be shown in the page — ' + why + '.' : 'This document can’t be shown in the page right now.')}
       <button class="rdr-alt" onclick="downloadDoc()">Download it instead ↓</button></div>`);
   }
+}
+
+// An image whose direct URL refused to render — swap in the large
+// thumbnail, which comes from an endpoint built for embedding.
+async function _rdrImgFallback(imgEl) {
+  const f = RDR.file;
+  if (!f) return;
+  try {
+    const url = await driveThumb(f._driveId, f.id, 'large');
+    if (url && imgEl) { imgEl.onerror = null; imgEl.src = url; return; }
+  } catch (_) {}
+  _rdrFallbackPreview(f);
 }
 
 // Download works off the blob when we already have it (instant, no
@@ -2241,7 +2304,10 @@ function _renderDetail(opts) {
   const landing  = safeUrl(linkOf(f.LinkURL), '');
   const dates    = [fmtSpDate(f.StartDate || f.LaunchDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ');
   const codes    = isLaunch ? productCodes(f) : [];
-  const sub      = f.Description || f.Summary || (isLaunch ? '' : f.CampaignType) || '';
+  // Only a REAL description goes under the title. CampaignType is
+  // already the eyebrow — repeating it as body copy ("BRAND / … /
+  // Brand") read as leftover test text.
+  const sub      = f.Description || f.Summary || '';
   const channels = Array.isArray(f.Channels) ? f.Channels : String(f.Channels || '').split(/[,;/]+/);
   const chips    = channels.map(c => String(c).trim()).filter(Boolean);
 
@@ -2413,13 +2479,48 @@ function closeLaunchDetail() {
   window.scrollTo(0, 0);
 }
 
-// Find a child folder by (case-insensitive) name under a parent item.
+// Find a child folder for a name. Exact (case-insensitive) first, then
+// letters-and-digits-only, then the longest COMMON PREFIX — so the
+// "Commander Fire Blankets" campaign finds a folder marketing named
+// "Commander fire blanket assets" (plurals and "-assets" suffixes are
+// exactly where containment matching falls over). Exact matching alone
+// is why detail pages kept falling back to the config tile list.
+//
+// Digit guard: two names that both carry numbers must carry the SAME
+// numbers — "FSE 2026" must never fuzzy-match "FSE 2027".
+function _digitsOf(slug) {
+  return (String(slug).match(/\d+/g) || []).join(',');
+}
+
 async function _findChildFolder(driveId, parentId, name) {
   const target = String(name || '').trim().toLowerCase();
   if (!target) return null;
-  const items = await fetchDriveChildren(driveId, parentId);
-  return items.find(f => f.folder && String(f.name).trim().toLowerCase() === target)
-      || items.find(f => f.folder && String(f.name).trim().toLowerCase().includes(target));
+  const items = (await fetchDriveChildren(driveId, parentId)).filter(x => x.folder);
+
+  let hit = items.find(x => String(x.name).trim().toLowerCase() === target);
+  if (hit) return hit;
+
+  const key = _slugKey(target);
+  if (!key) return null;
+  hit = items.find(x => _slugKey(x.name) === key);
+  if (hit) return hit;
+
+  const keyDigits = _digitsOf(key);
+  let best = null, bestLen = 0;
+  for (const x of items) {
+    const k = _slugKey(x.name);
+    if (!k) continue;
+    const kDigits = _digitsOf(k);
+    if (keyDigits && kDigits && keyDigits !== kDigits) continue;
+
+    let p = 0;
+    const n = Math.min(k.length, key.length);
+    while (p < n && k[p] === key[p]) p++;
+    if (p > bestLen) { best = x; bestLen = p; }
+  }
+  // A real match shares most of the shorter name, not just a word.
+  const minLen = best ? Math.min(_slugKey(best.name).length, key.length) : 0;
+  return (bestLen >= 5 && bestLen >= minLen * 0.6) ? best : null;
 }
 
 // Resolve  Documents/<folderRoot>/<campaignFolder>/<block.folder>  and open
@@ -2616,14 +2717,17 @@ function filterEvents(tone, btn) {
 
 const TRAIN = { sessions: [], signups: [], busy: null, loaded: false };
 
+// auth.js stores the signed-in user as { displayName, mail } — NOT the
+// raw MSAL account. Reading .username here is why "Book me on" told a
+// signed-in David to sign in first. Same shape the poll reads.
 function _trainMyEmail() {
   const a = (window.AUTH && window.AUTH.account) || {};
-  return a.username || a.email || '';
+  return String(a.mail || a.username || a.email || '').toLowerCase();
 }
 
 function _trainMyName() {
   const a = (window.AUTH && window.AUTH.account) || {};
-  return a.name || a.username || '';
+  return a.displayName || a.name || a.mail || '';
 }
 
 function _trainSignupList() {
@@ -2685,10 +2789,13 @@ function renderTrainingList() {
         <h2 class="tr-title">Training &amp; sessions</h2>
         <p class="tr-sub">Internal sessions and external courses. Book yourself on and it lands in your calendar.</p>
       </div>
-      <button class="tr-sub-btn" onclick="subscribeCalendar()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-        Subscribe to all dates
-      </button>
+      <div class="tr-sub-wrap">
+        <button class="tr-sub-btn" onclick="subscribeTrainingDates(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+          Add all dates to my calendar
+        </button>
+        <span class="tr-sub-note" id="tr-sub-note"></span>
+      </div>
     </div>`;
 
   if (!TRAIN.sessions.length) {
@@ -2750,6 +2857,41 @@ function _trainCard(s, i) {
 
 function _trainSession(id) {
   return TRAIN.sessions.find(s => String(s.id) === String(id));
+}
+
+// Every session on this page as one .ics. Downloading a calendar file
+// is only half a feature if nobody says what to do with it — the
+// button explains itself inline after the click, and stays explained.
+function subscribeTrainingDates(btn) {
+  if (!TRAIN.sessions.length) { showToast('Nothing scheduled to add yet'); return; }
+
+  const events = TRAIN.sessions.map(s => [
+    'BEGIN:VEVENT',
+    `UID:cf-training-${_icsDate(s.TrainingDate)}-${String(s.id)}@checkfire-hub`,
+    `DTSTAMP:${_icsDate(new Date().toISOString())}T090000Z`,
+    `DTSTART;VALUE=DATE:${_icsDate(s.TrainingDate)}`,
+    `DTEND;VALUE=DATE:${_icsNextDay(s.EndDate || s.TrainingDate)}`,
+    `SUMMARY:${_icsEscape(s.Title || 'CheckFire training')}`,
+    s.Location ? `LOCATION:${_icsEscape(s.Location)}` : '',
+    s.Trainer ? `DESCRIPTION:${_icsEscape('Trainer: ' + s.Trainer)}` : '',
+    'END:VEVENT',
+  ].filter(Boolean).join('\r\n'));
+
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CheckFire//Marketing Hub//EN',
+    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', ...events, 'END:VCALENDAR'].join('\r\n');
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'checkfire-training-dates.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+  const note = document.getElementById('tr-sub-note');
+  if (note) note.innerHTML =
+    `<strong>checkfire-training-dates.ics</strong> is in your downloads — open it and Outlook adds all ${TRAIN.sessions.length} date${TRAIN.sessions.length === 1 ? '' : 's'}.`;
+  if (btn) btn.blur();
 }
 
 // One .ics for one session — this is what actually puts it in Outlook.

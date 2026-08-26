@@ -398,6 +398,31 @@ function folderIcon() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
 }
 
+// ─── Header search ───────────────────────────────────────────
+// The search box in the header has been decorative since the first
+// build — it accepted typing and did nothing, which is worse than not
+// being there ("you also can't search anything", 26 Aug). It now hands
+// the query to Ember, who searches all three SharePoint sites and
+// answers in the corner panel. Enter or the icon runs it.
+function initHeaderSearch() {
+  const input = document.getElementById('hub-search-input');
+  if (!input) return;
+  input.placeholder = 'Search the hub — press Enter…';
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = '';
+    input.blur();
+    if (typeof toggleEmber === 'function') {
+      toggleEmber(true);
+      // Ember focuses her own input on open; hand the query over after
+      // the panel has finished appearing.
+      setTimeout(() => { if (typeof emberAsk === 'function') emberAsk(q); }, 120);
+    }
+  });
+}
+
 // ─── Sticky-header height ────────────────────────────────────
 // The filter rail on Launches and Campaigns sticks BELOW the hub's
 // own sticky header. That header's height depends on the viewport, so
@@ -414,6 +439,7 @@ window.addEventListener('load', syncHeaderHeight);
 
 document.addEventListener('DOMContentLoaded', async () => {
   syncHeaderHeight();
+  initHeaderSearch();
   const launchDays = document.getElementById('launchDays');
   if (launchDays) launchDays.textContent = '—';
 
