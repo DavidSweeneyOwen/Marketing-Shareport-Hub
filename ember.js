@@ -149,6 +149,35 @@ function emberSubmit(ev) {
   return false;
 }
 
+// Turn a thrown error into something a person can act on. Dev tools are
+// disabled by policy on the CheckFire build, so "Failed to fetch" in the
+// panel was the end of the road — there was nowhere to look for more.
+// This says what the hub actually tried and what it means.
+function _emberError(e) {
+  const msg = String((e && e.message) || e || 'Unknown error');
+  const url = _emberAiUrl();
+
+  // fetch() throws a TypeError for anything that stopped the request
+  // reaching the server OR stopped the browser accepting the reply:
+  // no network, DNS, a web filter, or a failed CORS check.
+  const network = (e instanceof TypeError) ||
+                  /failed to fetch|networkerror|load failed/i.test(msg);
+
+  if (network) {
+    return `<p>I couldn’t reach the assistant service, so there’s nothing to answer with yet.</p>
+      <p>The hub asked for <code>${escHtml(url + '/chat')}</code> and the browser refused
+      the request before any reply came back. That is almost always one of three things:
+      the service is asleep or down, the network is blocking that address, or the service
+      answered without the permission header this site needs.</p>
+      <p>Nothing is wrong with what you typed — try again in a moment, and if it keeps
+      happening send this whole message on.</p>`;
+  }
+
+  return `<p>Something went wrong there — ${escHtml(msg)}.</p>
+    <p>Try again in a moment. If it keeps happening, send this message on —
+    it names the actual fault.</p>`;
+}
+
 async function emberAsk(q) {
   if (EMBER.busy) return;
   EMBER.view.push({ role: 'user', html: escHtml(q) });
@@ -160,7 +189,7 @@ async function emberAsk(q) {
   try {
     html = _emberMode() === 'claude' ? await _emberClaude(q) : await _emberSearchOnly(q);
   } catch (e) {
-    html = `<p>Something went wrong there — ${escHtml(e.message)}. Try again in a moment.</p>`;
+    html = _emberError(e);
   }
 
   EMBER.busy = false;
@@ -295,9 +324,28 @@ async function _emberClaude(question) {
 
   _emberStatus('thinking…');
 
+  // Content-Type is 'text/plain', NOT 'application/json', and that is
+  // deliberate — do not "tidy" it back.
+  //
+  // 27 Aug 2026. An application/json POST is not a CORS-"simple" request,
+  // so Chrome sends an OPTIONS preflight first. The Function app answers
+  // that preflight **204 with no CORS headers at all** (only Date and
+  // Server survive — Azure Functions drops custom headers on a 204), so
+  // Chrome rejects it and `fetch` throws "Failed to fetch" without ever
+  // sending the real request. The POST itself was always fine: it
+  // returns 200 with the correct Access-Control-Allow-Origin.
+  //
+  // text/plain IS on the CORS-safelist, so no preflight is sent, the
+  // POST goes straight out, and its own header satisfies the browser.
+  // The function reads the body with request.json(), which parses it
+  // regardless of the declared content type — verified against the live
+  // endpoint, which answered 200 with a real Claude reply.
+  //
+  // The proper fix is in the Function (return 200, not 204, from the
+  // OPTIONS branch); this makes the hub work without redeploying it.
   const res = await fetch(_emberAiUrl() + '/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
     body: JSON.stringify({
       messages: EMBER.turns.slice(-12),
       docs,
