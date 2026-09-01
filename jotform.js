@@ -570,18 +570,52 @@ function _icsEscape(s) {
   return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 }
 
-function buildCalendarICS() {
+// 1 Sep 2026 — marketing: "Can they subscribe to individual categories
+// - Visits or Launches, rather than the whole calendar?"
+//
+// The calendar already knows which kind each marked date is (the dots
+// are coloured by it), so filtering the export is the whole job. One
+// button, five choices; the file is named after what's in it, so three
+// of them can sit in Outlook side by side without colliding.
+const CAL_KINDS = {
+  all:      { label: 'CheckFire Marketing',            file: 'checkfire-marketing-calendar' },
+  showroom: { label: 'CheckFire Showroom visits',      file: 'checkfire-visits' },
+  launch:   { label: 'CheckFire Product launches',     file: 'checkfire-launches' },
+  campaign: { label: 'CheckFire Campaigns',            file: 'checkfire-campaigns' },
+  training: { label: 'CheckFire Training',             file: 'checkfire-training' },
+};
+
+// One date can carry more than one kind (a launch on a showroom day).
+// Filtering keeps the date and narrows the wording to the kind asked
+// for, so a "Launches only" file never mentions the visit.
+function _calLabelsFor(mk, kind) {
+  const fallback = { showroom: 'Showroom visit', launch: 'Product launch',
+                     campaign: 'Campaign', training: 'Training' };
+  if (kind === 'all') {
+    return mk.labels.length ? mk.labels.join(' · ')
+      : (mk.types.has('showroom') ? fallback.showroom
+        : mk.types.has('campaign') ? fallback.campaign : fallback.launch);
+  }
+  const want = { showroom: /^(?!launch:|campaign |training:)/i, launch: /^launch:/i,
+                 campaign: /^campaign /i, training: /^training:/i }[kind];
+  const mine = mk.labels.filter(l => want.test(String(l)));
+  return mine.length ? mine.join(' · ') : fallback[kind];
+}
+
+function buildCalendarICS(kind) {
+  kind = kind || 'all';
+  const meta  = CAL_KINDS[kind] || CAL_KINDS.all;
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0',
     'PRODID:-//CheckFire//Marketing Hub//EN',
     'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    'X-WR-CALNAME:CheckFire Marketing',
+    'X-WR-CALNAME:' + meta.label,
   ];
   let n = 0;
   for (const [dateStr, mk] of JF.marks.entries()) {
-    const summary = mk.labels.length ? mk.labels.join(' · ')
-                  : (mk.types.has('showroom') ? 'Showroom visit' : mk.types.has('campaign') ? 'Campaign' : 'Product launch');
+    if (kind !== 'all' && !mk.types.has(kind)) continue;
+    const summary = _calLabelsFor(mk, kind);
     lines.push(
       'BEGIN:VEVENT',
       `UID:cf-${_icsDate(dateStr)}-${n++}@checkfire-hub`,
@@ -596,10 +630,44 @@ function buildCalendarICS() {
   return lines.join('\r\n');
 }
 
-function subscribeCalendar() {
+// The Subscribe button opens the choice; clicking anywhere else, or
+// pressing Escape, puts it away again.
+function toggleSubscribeMenu(ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const menu = document.getElementById('cal-sub-menu');
+  const btn  = document.getElementById('cal-sub-btn');
+  if (!menu) return;
+  const open = menu.hidden;
+  menu.hidden = !open;
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+  if (open) {
+    setTimeout(() => {
+      document.addEventListener('click', _calSubAway, { once: true });
+      document.addEventListener('keydown', _calSubEsc);
+    }, 0);
+  }
+}
+function closeSubscribeMenu() {
+  const menu = document.getElementById('cal-sub-menu');
+  const btn  = document.getElementById('cal-sub-btn');
+  if (menu) menu.hidden = true;
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('keydown', _calSubEsc);
+}
+function _calSubAway() { closeSubscribeMenu(); }
+function _calSubEsc(e) { if (e.key === 'Escape') closeSubscribeMenu(); }
+
+function subscribeCalendar(kind) {
+  kind = kind || 'all';
+  closeSubscribeMenu();
+
+  const meta = CAL_KINDS[kind] || CAL_KINDS.all;
   const feed = HUB_CONFIG.calendar && HUB_CONFIG.calendar.feedUrl;
-  if (feed) {
-    // Live subscription: hand the webcal/https feed to the OS calendar.
+
+  // A published feed is the whole calendar by definition, so it can
+  // only answer "everything". The category choices fall through to the
+  // file, which is the only way to give someone just the visits.
+  if (kind === 'all' && feed) {
     window.open(feed, '_blank', 'noopener');
     if (typeof showToast === 'function') showToast('Opening your calendar app to subscribe…');
     return;
@@ -608,16 +676,25 @@ function subscribeCalendar() {
     if (typeof showToast === 'function') showToast('No calendar dates to export yet');
     return;
   }
-  const blob = new Blob([buildCalendarICS()], { type: 'text/calendar;charset=utf-8' });
+
+  const ics = buildCalendarICS(kind);
+  if (ics.indexOf('BEGIN:VEVENT') < 0) {
+    if (typeof showToast === 'function') {
+      showToast('Nothing in the calendar under ' + meta.label.replace('CheckFire ', '').toLowerCase() + ' yet');
+    }
+    return;
+  }
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
-  a.download = 'checkfire-marketing-calendar.ics';
+  a.download = meta.file + '.ics';
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  if (typeof showToast === 'function') showToast('Calendar downloaded — open it to add to Outlook');
+  if (typeof showToast === 'function') showToast(meta.file + '.ics downloaded — open it to add to Outlook');
 }
 
 // ─── Self-boot ────────────────────────────────────────────────

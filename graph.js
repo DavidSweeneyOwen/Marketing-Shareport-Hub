@@ -360,6 +360,28 @@ async function driveThumb(driveId, itemId, size) {
 async function folderHeroImage(driveId, folderId) {
   try {
     const kids = await fetchDriveChildren(driveId, folderId);
+
+    // 1 Sep 2026 — David, relaying marketing: "images to be used for
+    // each campaign/launch are saved as email campaign banner in the
+    // email campaign folder for each launch/campaign". That folder is
+    // therefore the answer, not a guess: it exists under both
+    // Documents ▸ Campaigns ▸ <name> and Documents ▸ Launches ▸ <name>,
+    // and the file is named "... Email Campaign Banner.png" (or .gif).
+    // Checked first, so a stray photo loose in the campaign folder can
+    // no longer win. Anything without one falls through to the old
+    // behaviour untouched.
+    const emailFolder = kids.find(k => k.folder && /e-?mail\s*camp/i.test(k.name || ''));
+    if (emailFolder) {
+      const inner = await fetchDriveChildren(driveId, emailFolder.id);
+      const pics  = inner.filter(k => !k.folder && IMAGE_EXT.test(k.name || ''));
+      if (pics.length) {
+        const pick = pics.find(k => /banner|header/i.test(k.name)) || pics[0];
+        const url  = await driveThumb(driveId, pick.id);
+        if (url) return url;
+      }
+      console.info('[Imagery] "' + emailFolder.name + '" has no image in it yet.');
+    }
+
     const imgs = kids.filter(k => !k.folder && IMAGE_EXT.test(k.name || ''));
     if (imgs.length) {
       const pick = imgs.find(k => /hero|cover|main|banner|key ?visual/i.test(k.name)) || imgs[0];
@@ -488,7 +510,10 @@ async function fetchLandingImages() {
         push(trail[trail.length - 1]);
         push(trail[trail.length - 1] + ' ' + bare);
       }
-      return { keys, url: await driveThumb(drive.id, item.id), name: item.name, folder: trail.join('/') };
+      // Words for the forgiving matcher — the filename and every folder
+      // it sits inside both describe the page.
+      const words = [_landingWords(bare)].concat(trail.map(_landingWords));
+      return { keys, words, url: await driveThumb(drive.id, item.id), name: item.name, folder: trail.join('/') };
     }));
 
     _landingImgs = rows.filter(r => r.keys.length && r.url);
@@ -504,6 +529,32 @@ async function fetchLandingImages() {
 // containing the other — so "01 fire-extinguishers hero.jpg" still
 // finds /fire-extinguishers. The longest match wins, which stops
 // "water" hijacking "water-mist".
+//
+// 1 Sep 2026 — "Image is still not pulling through" (Fire Equipment
+// Suppliers). The picture was in SharePoint all along, in a folder
+// called "Fire Equipment Supplier Landing Page". Squashed to a slug
+// that is "fireequipmentsupplierlandingpage"; the page is
+// "fireequipmentsuppliers". Neither string contains the other — one
+// says "landingpage", the other has a plural "s" in the middle — so
+// the old rule found nothing and the card stayed blank. Sister page
+// "Fire Extinguisher Supplier" matched only because its folder name
+// happened to line up.
+//
+// Comparing WORDS fixes the whole class of problem: drop the words that
+// say nothing about which page this is ("landing", "page", "banner"…),
+// ignore a trailing "s", and score on how many real words the two share.
+function _landingWords(s) {
+  const noise = (HUB_CONFIG.landingImages && HUB_CONFIG.landingImages.noiseWords) || [];
+  const stop  = noise.map(w => String(w).toLowerCase());
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(w => w.replace(/s$/, ''))            // supplier / suppliers
+    .filter(w => w.length > 1 && stop.indexOf(w) < 0 && stop.indexOf(w + 's') < 0);
+}
+
 function matchLandingImage(images, page) {
   if (!images || !images.length) return '';
   let slug = '';
@@ -512,13 +563,32 @@ function matchLandingImage(images, page) {
     slug = p.split('/').filter(Boolean).pop() || '';
   } catch (_) { /* fall through to the title */ }
   const wanted = [_slugKey(slug), _slugKey(page.title)].filter(Boolean);
-  if (!wanted.length) return '';
 
+  // 1. The old exact-slug hit still wins outright when there is one.
   for (const w of wanted) {
     const exact = images.find(im => im.keys.indexOf(w) >= 0);
     if (exact) return exact.url;
   }
 
+  // 2. Otherwise score on shared words.
+  const pageWords = [...new Set(_landingWords(slug).concat(_landingWords(page.title)))];
+  if (pageWords.length) {
+    const need = (HUB_CONFIG.landingImages && HUB_CONFIG.landingImages.minWordMatch) || 1;
+    let best = null, bestScore = 0;
+    for (const im of images) {
+      const imWords = [...new Set([].concat(...(im.words || [])))];
+      if (!imWords.length) continue;
+      const shared = pageWords.filter(w => imWords.indexOf(w) >= 0).length;
+      if (!shared) continue;
+      // Ratio breaks ties: two words out of two beats two out of nine.
+      const score = shared + shared / Math.max(imWords.length, pageWords.length);
+      if (shared >= need && score > bestScore) { best = im; bestScore = score; }
+    }
+    if (best) return best.url;
+  }
+
+  // 3. Last resort — the original containment rule, so nothing that
+  //    used to match stops matching.
   let best = null, bestLen = 0;
   for (const w of wanted) {
     for (const im of images) {
@@ -1356,7 +1426,13 @@ function renderHeroVideos(vids) {
   // the box, so don't rely on an upstream sort.
   const sorted = [...only].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   const lead = sorted[0];
-  const rest = sorted.slice(1, 3);
+  // 1 Sep 2026 — with both thumbnails now the same size (marketing:
+  // "can those thumbnails be the same size please") two videos is what
+  // honestly fits. The hero box is height-capped by the grid, and a
+  // third row was being clipped in half — which is what made the old
+  // 52x34 chip look like a different kind of thing in the first place.
+  // Everything else is one click away on the channel link below.
+  const rest = sorted.slice(1, 2);
 
   // The thumbnail is an <img>, not a background image, so it can remove
   // ITSELF if it fails to load. The web filter is why the embedded
@@ -1367,25 +1443,29 @@ function renderHeroVideos(vids) {
     ? `<img class="vthumb-img" src="${escAttr(safeUrl(url, ''))}" alt="" loading="lazy" onerror="this.remove()">`
     : '';
 
-  el.innerHTML = `
-    <a class="vlead" href="${escAttr(safeUrl(lead.href, channel || '#'))}" target="_blank" rel="noopener">
-      <span class="vlead-thumb">
-        ${thumbImg(lead.thumb)}
-        <span class="vlead-play">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M8 5v14l11-7z"/></svg>
-        </span>
-      </span>
-      <span class="vlead-copy">
-        <span class="vlead-badge">Latest</span>
-        <span class="vlead-title">${escHtml(lead.title)}</span>
-        <span class="vlead-meta">${escHtml(lead.date ? fmtSpDate(lead.date) : 'YouTube')}</span>
-      </span>
-    </a>
-    ${rest.length ? `<div class="vrest">${rest.map(v => `
+  // 1 Sep 2026 — marketing: "can those thumbnails be the same size
+  // please".
+  //
+  // The box used to be a big 104px lead card with a 52x34 chip under
+  // it, which read as two different kinds of thing stacked on top of
+  // each other. It is one list now, every row identical, the newest
+  // one flagged "Latest". That also fixes a quieter bug: the box is
+  // height-capped by the hero grid, and the old pair of sizes
+  // overflowed it, so the second video was always cut in half. Two
+  // rows fit honestly; the rest are one click away on the channel.
+  const row = (v, isLead) => `
       <a class="hbox-vid" href="${escAttr(safeUrl(v.href, channel || '#'))}" target="_blank" rel="noopener">
-        <span class="hbox-vid-thumb">${thumbImg(v.thumb) || '\u25B6'}</span>
-        <span class="hbox-vid-title">${escHtml(v.title)}</span>
-      </a>`).join('')}</div>` : ''}
+        <span class="hbox-vid-thumb">
+          ${thumbImg(v.thumb)}
+          <span class="vlead-play">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="11" height="11"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </span>
+        <span class="hbox-vid-title">${isLead ? '<b class="vrow-latest">Latest</b> ' : ''}${escHtml(v.title)}</span>
+      </a>`;
+
+  el.innerHTML = `
+    <div class="vrest">${[lead].concat(rest).map((v, i) => row(v, i === 0)).join('')}</div>
     ${channelLink}`;
 }
 
@@ -1699,10 +1779,29 @@ let _updIndex = 0;
 let _updTimer = null;
 let _updOpen  = false;
 
+//
+// 1 Sep 2026 — marketing: "How can we manage this? Ideally, I would
+// like it to include only the most urgent updates."
+//
+// It was every launch and every campaign, newest eight — a feed, not
+// something anyone decided. It now shows only the rows with the Yes/No
+// column `Pinned` ticked (see HUB_CONFIG.updates). Tick two things and
+// two things show; untick them and the dock is gone. Nothing ticked and
+// the corner is empty, which is the true answer to "is anything
+// urgent?" rather than eight things pretending to be.
+function _updPinned(f) {
+  const col = (HUB_CONFIG.updates && HUB_CONFIG.updates.column) || 'Pinned';
+  const v = f[col];
+  if (v === true) return true;
+  if (typeof v === 'string') return /^(1|true|yes|y)$/i.test(v.trim());
+  return v === 1;
+}
+
 function renderNewsTicker(launches, campaigns) {
   const dock = document.getElementById('updates-dock');
   if (!dock) return;
 
+  const cfg = HUB_CONFIG.updates || {};
   const items = [];
 
   (launches || []).forEach(f => {
@@ -1711,9 +1810,11 @@ function renderNewsTicker(launches, campaigns) {
     items.push({
       kind: 'launch',
       label: 'Launch',
+      title: f.Title,
       text: `${f.Title}${f.Status ? ' — ' + f.Status : ''}`,
       when: when || 'Date to be confirmed',
       sort: String(f.LaunchDate || ''),
+      pinned: _updPinned(f),
     });
   });
 
@@ -1723,17 +1824,35 @@ function renderNewsTicker(launches, campaigns) {
     items.push({
       kind: 'campaign',
       label: 'Campaign',
+      title: f.Title,
       text: `${f.Title}${f.Status ? ' — ' + f.Status : ''}`,
       when: span,
       sort: String(f.StartDate || ''),
+      pinned: _updPinned(f),
     });
   });
 
-  if (!items.length) { dock.style.display = 'none'; return; }
+  const pinned = items.filter(i => i.pinned);
+  let shortlist = pinned;
+  if (!pinned.length) {
+    // Nothing ticked. Either the column hasn't been added yet, or there
+    // genuinely is nothing urgent — requirePinned decides which the hub
+    // assumes. Default: say nothing.
+    if (cfg.requirePinned === false) {
+      shortlist = items;
+      console.info('[Updates] nothing pinned — falling back to the newest few.');
+    } else {
+      console.info(`[Updates] nothing has "${cfg.column || 'Pinned'}" ticked, so the dock stays hidden.`);
+      dock.style.display = 'none';
+      return;
+    }
+  }
 
-  // Newest first. Eight is plenty for a corner panel.
-  items.sort((a, b) => b.sort.localeCompare(a.sort));
-  _updates = items.slice(0, 8);
+  if (!shortlist.length) { dock.style.display = 'none'; return; }
+
+  // Newest first.
+  shortlist.sort((a, b) => b.sort.localeCompare(a.sort));
+  _updates = shortlist.slice(0, cfg.max || 5);
   _updIndex = 0;
   dock.style.display = '';
 
@@ -1792,14 +1911,32 @@ function _updRender() {
     </div>`;
 }
 
+// 1 Sep 2026 — marketing: "when we're announcing a new launch, to
+// include a link to the folder containing all of the assets on the
+// Product Launches or Campaigns page". That page already lists the real
+// SharePoint folders for the item, so the update opens it rather than
+// duplicating a link that could go stale.
 function _updItemHtml(n) {
   if (!n) return '';
-  return `
-    <div class="upd-item">
+  const canOpen = (HUB_CONFIG.updates || {}).linkToAssets !== false && !!n.title;
+  const inner = `
       <span class="upd-kind ${escAttr(n.kind)}">${escHtml(n.label)}</span>
       <div class="upd-text">${escHtml(n.text)}</div>
       ${n.when ? `<div class="upd-when">${escHtml(n.when)}</div>` : ''}
-    </div>`;
+      ${canOpen ? `<div class="upd-go">Open the assets →</div>` : ''}`;
+  if (!canOpen) return `<div class="upd-item">${inner}</div>`;
+  const args = `'${escAttr(String(n.kind).replace(/'/g, ''))}','${escAttr(String(n.title).replace(/'/g, '&#39;'))}'`;
+  return `<div class="upd-item is-link" role="button" tabindex="0"
+       onclick="updOpenItem(${args})"
+       onkeydown="if(event.key==='Enter')updOpenItem(${args})">${inner}</div>`;
+}
+
+// Opening an update takes you to the launch or campaign itself, where
+// its asset folders are listed. The dock closes on the way so it isn't
+// sat over the page you just asked for.
+function updOpenItem(kind, title) {
+  dismissUpdates();
+  if (typeof srchOpenItem === 'function') srchOpenItem(kind, title);
 }
 
 function _updSetOpen(open) {
@@ -1992,6 +2129,31 @@ function renderLibrary(key) {
     return;
   }
 
+  // 1 Sep 2026 — marketing on the Resources page: "This feels very
+  // chaotic at the moment. Can we just have a list as before with
+  // documents added to the SharePoint."
+  //
+  // Fair. Three files were being presented through a tile row, a chip
+  // row and a "recently updated" rail — three navigation devices over
+  // a list you could read in one glance. In simple mode there is a
+  // search box and the documents, grouped by the folder they live in,
+  // and that is all. Set `simple:false` in config.js to get the
+  // faceted view back; the Product Portal, which has 33 files across
+  // ten products, still uses it.
+  if (_libCfg(key).simple) {
+    host.innerHTML = `
+      <div class="lib-search-wrap">
+        <svg class="lib-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="lib-search" id="lib-q-${escAttr(key)}" type="search" autocomplete="off"
+               placeholder="${escAttr(cfg.searchPlaceholder || 'Search everything here…')}"
+               oninput="libSearch('${escAttr(key)}',this.value)">
+        <span class="lib-search-count">${files.length} file${files.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="lib-results" id="lib-results-${escAttr(key)}"></div>`;
+    renderLibraryResults(key);
+    return;
+  }
+
   const tiles = (cfg.tags || []).map(t => ({
     key: t.key, label: t.label,
     n: files.filter(f => f._tag === t.key).length,
@@ -2159,7 +2321,162 @@ function libReset(key) {
 
 // ── The two pages that use it ─────────────────────────────────
 
-async function loadProductPortal() { return loadLibrary('product'); }
+// ── Product Portal front door ─────────────────────────────────
+//
+// 1 Sep 2026. The product team asked for the whole Product Portal to
+// live in the hub, "ideally keeping the organisation the same", and
+// listed what the hub's page was missing: product change
+// notifications, links to PIF, the sample request sheet, the new
+// product request sheet, a launch countdown and upcoming dates, a
+// feedback form and datasheets/MSDS.
+//
+// The certificate index below is untouched — same products, same
+// document types, same search box. These are three bands around it,
+// and every one of them is driven by something that either exists or
+// doesn't: a folder, a list, a URL in config.js. Nothing renders a
+// placeholder. If Aneta and Jess haven't made the folder yet, the band
+// isn't there, and the page still reads as finished.
+async function loadProductPortal() {
+  const done = loadLibrary('product');
+  renderPortalUpcoming();      // the launches list, not the library
+  await done;
+  renderPortalSections();
+  renderPortalFeedback();
+}
+
+// "Launch countdown and upcoming dates to look out for."
+async function renderPortalUpcoming() {
+  const host = document.getElementById('pp-upcoming');
+  if (!host) return;
+  host.innerHTML = '';
+  if (typeof getAccessToken !== 'function' || window.HUB_DEMO_MODE) return;
+
+  let items = [];
+  try { items = await fetchListItems(HUB_CONFIG.lists.launches); }
+  catch (e) { console.info('[Portal] launches not read:', e.message); return; }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const rows = (items || [])
+    .map(f => ({ title: f.Title, status: f.Status, raw: f.LaunchDate,
+                 // _toIsoDate lives in jotform.js, which loads after this
+                 // file — guard the reference rather than assume the order.
+                 when: (typeof _toIsoDate === 'function' ? _toIsoDate(f.LaunchDate) : '') || '' }))
+    .filter(r => r.title && r.when && new Date(r.when + 'T00:00:00') >= today)
+    .sort((a, b) => a.when.localeCompare(b.when));
+
+  if (!rows.length) return;
+
+  const cfg  = HUB_CONFIG.productPortal || {};
+  const next = rows[0];
+  const days = Math.round((new Date(next.when + 'T00:00:00') - today) / 86400000);
+  const rest = rows.slice(1, (cfg.upcomingCount || 4));
+
+  host.innerHTML = `
+    <div class="pp-band">
+      <div class="pp-band-head">
+        <h2 class="pp-band-title">Coming up</h2>
+        <span class="pp-band-note">From the Product Launches list</span>
+      </div>
+      <div class="pp-next">
+        <div class="pp-count">
+          <b>${days === 0 ? 'Today' : days}</b>
+          <span>${days === 0 ? 'launching' : days === 1 ? 'day to go' : 'days to go'}</span>
+        </div>
+        <div>
+          <p class="pp-next-title">${escHtml(next.title)}</p>
+          <div class="pp-next-meta">${escHtml(fmtSpDate(next.raw))}${next.status ? ' · ' + escHtml(next.status) : ''}</div>
+        </div>
+      </div>
+      ${rest.length ? `<div class="pp-dates">${rest.map(r => `
+        <span class="pp-date"><span class="pp-dot"></span><b>${escHtml(r.title)}</b> ${escHtml(fmtSpDate(r.raw))}</span>`).join('')}</div>` : ''}
+    </div>`;
+}
+
+// The extra document groups. A band exists only if its folder does —
+// and the folders are already in the crawl the library just did, so
+// this costs no extra Graph calls.
+function _ppMatchFolder(sec, folderName) {
+  const key = _slugKey(folderName);
+  return [sec.folder].concat(sec.aliases || []).some(x => _slugKey(x) === key);
+}
+
+function renderPortalSections() {
+  const host = document.getElementById('pp-sections');
+  if (!host) return;
+  host.innerHTML = '';
+
+  const state = LIB.product;
+  const secs  = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.sections) || [];
+  if (!state || !state.loaded || !secs.length) return;
+
+  const folders = [...new Set(state.files.map(f => f._catFolder).filter(Boolean))];
+
+  const live = [];
+  secs.forEach(sec => {
+    const folder = folders.find(fn => _ppMatchFolder(sec, fn));
+    if (!folder) return;
+    const count = state.files.filter(f => f._catFolder === folder).length;
+    if (!count) return;
+    live.push({ sec, folder, count, label: _libCatLabel('product', folder) });
+  });
+
+  if (!live.length) {
+    console.info('[Portal] none of the extra section folders exist yet — bands hidden.');
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="pp-band">
+      <div class="pp-band-head">
+        <h2 class="pp-band-title">Product paperwork</h2>
+        <span class="pp-band-note">Everything that isn't a certificate</span>
+      </div>
+      <div class="pp-secs">
+        ${live.map(l => `
+          <button class="pp-sec" onclick="ppOpenSection('${escAttr(String(l.label).replace(/'/g, '&#39;'))}')">
+            <span class="pp-sec-n">${l.count}</span>
+            <span class="pp-sec-l">${escHtml(l.sec.label)}</span>
+            <span class="pp-sec-d">${escHtml(l.sec.desc || '')}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+// Opening a band is a filter over the index that is already on the
+// page, not a second place for the same files to live.
+function ppOpenSection(label) {
+  const s = LIB.product;
+  if (!s) return;
+  s.tag = 'all'; s.q = ''; s.cat = label;
+  const q = document.getElementById('lib-q-product');
+  if (q) q.value = '';
+  document.querySelectorAll('#lib-tiles-product .lib-tile').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#lib-cats-product .lib-cat').forEach(b => {
+    b.classList.toggle('active', b.textContent.indexOf(label) === 0);
+  });
+  renderLibraryResults('product');
+  const box = document.getElementById('lib-results-product');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// "Also has a feedback form." One URL in config.js; no URL, no box.
+function renderPortalFeedback() {
+  const host = document.getElementById('pp-feedback');
+  if (!host) return;
+  const cfg = HUB_CONFIG.productPortal || {};
+  if (!cfg.feedbackUrl) { host.innerHTML = ''; return; }
+  host.innerHTML = `
+    <div class="pp-fb">
+      <div class="pp-fb-copy">
+        <p class="pp-fb-title">${escHtml(cfg.feedbackTitle || 'Feedback on a product')}</p>
+        <p class="pp-fb-sub">${escHtml(cfg.feedbackSub || '')}</p>
+      </div>
+      <a class="px-cta" href="${escAttr(safeUrl(cfg.feedbackUrl, '#'))}" target="_blank" rel="noopener">
+        Send feedback
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </div>`;
+}
 async function loadResourcesLibrary() { return loadLibrary('resources'); }
 
 // "Browse folders" — the original folder tree, unchanged, for anyone
@@ -2760,6 +3077,32 @@ function _eventYear(name) {
 // Training comes from the Training Events list, and staff can now book
 // themselves onto a session in one click.
 
+// 1 SEP 2026 — marketing: "Can this page please go as it was. Divided
+// into: Exhibitions / Customer events / Training. Don't want that to
+// feel it's only for FSE."
+//
+// It felt like an FSE page because it WAS one: Documents ▸ Events held
+// FSE 2025, FSE 2026 and FSE 2027 and nothing else, and the biggest
+// thing on the screen was a full-width spread for whichever of them
+// came next. Both are fixed here. The spread is gone — no single event
+// gets to be the page any more — and the events are grouped into the
+// three sections marketing asked for.
+//
+// The grouping lives in SharePoint (see HUB_CONFIG.tradeEvents): a
+// folder per category under Events, with the event folders inside it.
+// Anything still loose at the top level keeps showing under the
+// fallback category, so the page never empties out while the folders
+// are being moved.
+function _evCatOf(name) {
+  const cats = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.categories) || [];
+  const key = _slugKey(name);
+  for (const c of cats) {
+    const names = [c.folder].concat(c.aliases || []);
+    if (names.some(x => _slugKey(x) === key)) return c;
+  }
+  return null;
+}
+
 async function loadTradeEvents() {
   const host = document.getElementById('ev-index');
   if (!host) return;
@@ -2770,37 +3113,51 @@ async function loadTradeEvents() {
     const root   = await _findChildFolder(drive.id, null, rootNm);
     if (!root) throw new Error(`No "${rootNm}" folder in the document library yet.`);
 
-    const kids = (await fetchDriveChildren(drive.id, root.id)).filter(x => x.folder);
+    const cats     = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.categories) || [];
+    const fallback = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.fallback)
+                     || (cats[0] && cats[0].key) || 'exhibitions';
     const thisYear = new Date().getFullYear();
 
-    _eventFolders = kids.map(k => ({
-      id:    k.id,
-      name:  k.name,
-      year:  _eventYear(k.name),
-      count: (k.folder && k.folder.childCount) || 0,
-      modified: k.lastModifiedDateTime,
-      driveId: drive.id,
-    })).map(e => Object.assign(e, {
-      // No year in the name? Treat it as current/ongoing.
-      upcoming: e.year === null || e.year >= thisYear,
+    const top = (await fetchDriveChildren(drive.id, root.id)).filter(x => x.folder);
+
+    // A top-level folder is either a category container or a loose event.
+    const found = [];
+    const loose = [];
+    for (const t of top) {
+      const c = _evCatOf(t.name);
+      if (c) found.push({ cat: c.key, folder: t });
+      else   loose.push(t);
+    }
+    loose.forEach(t => found.push({ cat: fallback, folder: t, direct: true }));
+
+    // Read the category containers one level down, in parallel.
+    const groups = [];
+    await Promise.all(found.map(async row => {
+      if (row.direct) { groups.push({ cat: row.cat, item: row.folder }); return; }
+      let kids = [];
+      try { kids = (await fetchDriveChildren(drive.id, row.folder.id)).filter(x => x.folder); }
+      catch (e) { console.info('[Events] could not read "' + row.folder.name + '":', e.message); }
+      kids.forEach(k => groups.push({ cat: row.cat, item: k }));
     }));
 
-    const upcoming = _eventFolders.filter(e => e.upcoming)
-      .sort((a, b) => (a.year || thisYear) - (b.year || thisYear) || String(a.name).localeCompare(String(b.name)));
-    const past = _eventFolders.filter(e => !e.upcoming)
-      .sort((a, b) => b.year - a.year || String(a.name).localeCompare(String(b.name)));
+    _eventFolders = groups.map(g => {
+      const k = g.item;
+      const year = _eventYear(k.name);
+      return {
+        id: k.id, name: k.name, year: year,
+        count: (k.folder && k.folder.childCount) || 0,
+        modified: k.lastModifiedDateTime,
+        driveId: drive.id, cat: g.cat,
+        // No year in the name? Treat it as current/ongoing.
+        upcoming: year === null || year >= thisYear,
+      };
+    });
 
-    if (!_eventFolders.length) {
-      host.innerHTML = `<div class="px-empty">
-        <h3>No events yet</h3>
-        <p>Add a folder for each event under <strong>Documents ▸ Events</strong> on the MarketingHub SharePoint site. Everything inside it — stand plans, artwork, forms — opens here.</p>
-      </div>`;
-      renderTrainingBand();
-      return;
-    }
-
-    const lead = upcoming[0] || past[0];
-    const leadIdx = _eventFolders.indexOf(lead);
+    const order = (a, b) =>
+      (a.upcoming === b.upcoming ? 0 : a.upcoming ? -1 : 1) ||
+      (a.upcoming ? (a.year || thisYear) - (b.year || thisYear)
+                  : (b.year || 0) - (a.year || 0)) ||
+      String(a.name).localeCompare(String(b.name));
 
     const evCard = (e) => {
       const i = _eventFolders.indexOf(e);
@@ -2821,38 +3178,32 @@ async function loadTradeEvents() {
       </article>`;
     };
 
-    host.innerHTML = `
-      <section class="px-lead">
-        <div class="px-lead-copy">
-          <div class="px-eyebrow">${lead.upcoming ? 'Next up' : 'Most recent'}</div>
-          <h2 class="px-lead-title">${escHtml(lead.name)}</h2>
-          <p class="px-lead-sub">Stand plans, artwork, forms and everything else for this one — opened right here, not in SharePoint.</p>
-          <div class="px-lead-meta">
-            <span class="px-badge"><span class="px-badge-dot ${lead.upcoming ? 'green' : 'grey'}"></span>${lead.upcoming ? 'Upcoming' : 'Previous'}</span>
-            <span class="px-lead-when">${lead.count} item${lead.count === 1 ? '' : 's'} in the pack</span>
+    const section = (c) => {
+      const mine = _eventFolders.filter(e => e.cat === c.key).sort(order);
+      const next = mine.find(e => e.upcoming);
+      return `
+      <section class="ev-sec">
+        <div class="ev-sec-head">
+          <div>
+            <h2 class="ev-sec-title">${escHtml(c.label)}</h2>
+            ${c.sub ? `<p class="ev-sec-sub">${escHtml(c.sub)}</p>` : ''}
           </div>
-          <button class="px-cta" onclick="openEventFolder(${leadIdx})">
-            Open the event pack
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-          </button>
+          <span class="ev-sec-n">${mine.length
+            ? `${mine.length} ${mine.length === 1 ? 'event' : 'events'}${next ? ' · next: ' + escHtml(next.name) : ''}`
+            : 'Nothing yet'}</span>
         </div>
-        <div class="px-lead-media" id="px-lead-event">
-          <span class="px-lead-initials">${escHtml(_pxInitials(lead.name))}</span>
-        </div>
-      </section>
+        ${mine.length
+          ? `<div class="px-grid" data-filter="all">${mine.map(evCard).join('')}</div>`
+          : `<p class="ev-sec-empty">Nothing filed here yet. Add a folder for each one under
+             <strong>Documents ▸ ${escHtml(rootNm)} ▸ ${escHtml(c.folder)}</strong> on the MarketingHub
+             SharePoint site and it appears here, with everything inside it.</p>`}
+      </section>`;
+    };
 
-      <div class="px-rail">
-        <div class="px-chips">
-          <button class="px-chip active" onclick="filterEvents('all',this)">All<b>${_eventFolders.length}</b></button>
-          <button class="px-chip${upcoming.length ? '' : ' empty'}" ${upcoming.length ? '' : 'disabled'} onclick="filterEvents('green',this)"><span class="px-chip-dot green"></span>Upcoming<b>${upcoming.length}</b></button>
-          <button class="px-chip${past.length ? '' : ' empty'}" ${past.length ? '' : 'disabled'} onclick="filterEvents('grey',this)"><span class="px-chip-dot grey"></span>Previous<b>${past.length}</b></button>
-        </div>
+    host.innerHTML = `
+      <div class="ev-wrap">
+        ${cats.map(section).join('')}
       </div>
-
-      <div class="px-grid" id="px-event-grid" data-filter="all">
-        ${upcoming.concat(past).map(evCard).join('')}
-      </div>
-
       <section id="ev-training"></section>`;
 
     // Event artwork, painted in once SharePoint answers.
@@ -2861,10 +3212,6 @@ async function loadTradeEvents() {
       if (!url) return;
       const el = document.getElementById('px-img-event-' + _eventFolders.indexOf(e));
       if (el) { el.style.backgroundImage = `url('${safeCssUrl(url)}')`; el.classList.add('has-img'); }
-      if (e === lead) {
-        const l = document.getElementById('px-lead-event');
-        if (l) { l.style.backgroundImage = `url('${safeCssUrl(url)}')`; l.classList.add('has-img'); }
-      }
     })).catch(() => {});
 
     renderTrainingBand();
@@ -3672,10 +4019,21 @@ async function _srchEventFolders() {
   const rootNm = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.folder) || 'Events';
   const root   = await _findChildFolder(drive.id, null, rootNm);
   if (!root) return [];
-  return (await fetchDriveChildren(drive.id, root.id))
-    .filter(x => x.folder)
-    .map(k => ({ id: k.id, name: k.name, driveId: drive.id,
-                 count: (k.folder && k.folder.childCount) || 0 }));
+  // 1 Sep 2026 — events now sit one level down, inside a category
+  // folder (Exhibitions / Customer Events). Search walks into those so
+  // "FSE 2026" is still findable from the header search box; a folder
+  // that isn't a category is still an event in its own right.
+  const top = (await fetchDriveChildren(drive.id, root.id)).filter(x => x.folder);
+  const out = [];
+  const row = k => ({ id: k.id, name: k.name, driveId: drive.id,
+                      count: (k.folder && k.folder.childCount) || 0 });
+  await Promise.all(top.map(async t => {
+    if (!_evCatOf(t.name)) { out.push(row(t)); return; }
+    try {
+      (await fetchDriveChildren(drive.id, t.id)).filter(x => x.folder).forEach(k => out.push(row(k)));
+    } catch (_) { /* a category we can't read simply contributes nothing */ }
+  }));
+  return out;
 }
 
 // Graph's drive search, across both libraries. `id` and `_driveId` are

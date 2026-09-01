@@ -76,6 +76,35 @@ HUB_CONFIG.notices = {
   max:  3,          // most recent N active notices
 };
 
+// ── Latest updates — the corner dock ──────────────────────────
+// 1 Sep 2026 — marketing: "How can we manage this? Ideally, I would
+// like it to include only the most urgent updates."
+//
+// It used to show every launch and every campaign, newest eight, which
+// is a feed rather than something anyone controls. It now shows only
+// what marketing have TICKED.
+//
+// WHAT TO ADD IN SHAREPOINT (2 minutes, once):
+//   Product Launches ▸ + Add column ▸ Yes/No ▸ name it exactly  Pinned
+//   Campaigns        ▸ + Add column ▸ Yes/No ▸ name it exactly  Pinned
+// Tick Pinned on the one or two things people need to know about. Untick
+// it and the update disappears — nothing to delete.
+//
+// With nothing ticked the dock hides completely rather than falling back
+// to the old firehose: an empty corner is the honest answer to "there's
+// nothing urgent". Set `requirePinned:false` if you'd rather it drop back
+// to the newest few while the column is being added.
+//
+// Each update also carries a link straight to that launch's or
+// campaign's asset folder — marketing: "when we're announcing a new
+// launch, to include a link to the folder containing all of the assets".
+HUB_CONFIG.updates = {
+  column: 'Pinned',        // Yes/No column on Product Launches + Campaigns
+  requirePinned: true,     // false = show the newest `max` when none ticked
+  max: 5,
+  linkToAssets: true,
+};
+
 // ── Showroom Bookings ─────────────────────────────────────────
 // The hub reads "who's coming in" from this SharePoint list on the
 // MarketingHub site, and (when the proxy below is live) direct from
@@ -111,8 +140,36 @@ HUB_CONFIG.training = {
 // sub-folder is one event (e.g. "FSE 2027"), and everything the sales
 // team needs in the run-up lives inside it. A four-digit year anywhere
 // in the folder name splits upcoming from previous.
+//
+// 1 Sep 2026 — marketing: "Can this page please go as it was. Divided
+// into: Exhibitions / Customer events / Training. Don't want that to
+// feel it's only for FSE." Documents ▸ Events held nothing but FSE
+// 2025/2026/2027, so the page had no way to look like anything else.
+//
+// The split comes from SharePoint, not from code: create a folder for
+// each category under Documents ▸ Events and put the event folders
+// inside it —
+//
+//   Documents ▸ Events ▸ Exhibitions ▸ FSE 2026
+//   Documents ▸ Events ▸ Customer Events ▸ Open Day 2026
+//
+// Any event folder still sitting loose at the top level is shown under
+// `fallback` below, so nothing disappears while the folders are being
+// moved. `aliases` means the category folder can be named the way it
+// reads best — "Exhibitions & Shows" still matches.
 HUB_CONFIG.tradeEvents = {
   folder: 'Events',
+  categories: [
+    { key:'exhibitions', folder:'Exhibitions',
+      aliases:['Exhibitions & Shows','Trade Shows','Shows','Exhibition'],
+      label:'Exhibitions',
+      sub:'The shows we exhibit at — stand plans, artwork, forms and the packs that go with them.' },
+    { key:'customer', folder:'Customer Events',
+      aliases:['Customer Event','Customer','Open Days','Open Day'],
+      label:'Customer events',
+      sub:'Open days, demonstrations and everything we run for customers.' },
+  ],
+  fallback: 'exhibitions',
 };
 
 // ── Videos — pulled onto the hub home page ────────────────────
@@ -305,11 +362,26 @@ HUB_CONFIG.social = {
 // "01 fire-extinguishers hero.jpg" all land on the same page.
 // Anything with no match keeps the current no-image card, so a missing
 // picture never leaves an empty grey box.
+//
+// 1 Sep 2026 — "Image is still not pulling through" on the Fire
+// Equipment Suppliers card. The artwork WAS there; the matching was too
+// literal. The folder is "Fire Equipment Supplier Landing Page" and the
+// page is /fire-equipment-suppliers, so neither name contained the
+// other and the old substring rule found nothing. Matching is now done
+// on WORDS: the words below are stripped as noise first, a trailing "s"
+// is ignored, and the picture sharing the most words with the page
+// wins. "Fire Equipment Supplier Landing Page" and "Fire Equipment
+// Suppliers" now share three words and match.
 HUB_CONFIG.landingImages = {
   folder: 'Images for Landing Pages',
   // Where to look for that folder. 'marketing' = the MarketingHub
   // Documents library (where Jess is putting them).
   site: 'marketing',
+  // Words that say nothing about WHICH page this is.
+  noiseWords: ['landing','page','pages','image','images','hero','banner',
+               'main','cover','final','new','copy','v1','v2','checkfire','cf'],
+  // How many real words must line up before it counts as a match.
+  minWordMatch: 1,
 };
 
 // ── Library front doors (Resources + Product Portal) ──────────
@@ -382,6 +454,15 @@ HUB_CONFIG.libraries = {
     searchPlaceholder: 'Search presentations, artwork, guidelines…',
     tagsLabel: 'By kind',
     catsLabel: 'By folder',
+
+    // 1 Sep 2026 — marketing: "This feels very chaotic at the moment.
+    // Can we just have a list as before with documents added to the
+    // SharePoint." With three files in the library, a tile row, a chip
+    // row and a "recently updated" rail were three ways of saying the
+    // same three things. `simple` drops all of that: a search box and
+    // the documents, grouped by the folder they sit in. Set it to
+    // false to get the faceted view back.
+    simple: true,
     crawlDepth: 3,
     maxFiles: 400,
     recentCount: 6,
@@ -483,4 +564,66 @@ HUB_CONFIG.ember = {
 HUB_CONFIG.trainingSignup = {
   list: 'Training Signups',
   enabled: true,
+};
+
+// ── Product Portal front door ─────────────────────────────────
+// 1 Sep 2026. The product team asked for the whole Product Portal to
+// move into the Marketing Hub, "ideally keeping the organisation the
+// same". Their list of what the portal has that the hub's page didn't:
+//
+//   Product Change Notifications · Links to PIF · Sample Request Sheet
+//   New Product Request Sheet · launch countdown and upcoming dates
+//   · a feedback form · datasheets/MSDS
+//
+// The certificate index underneath is untouched — same products, same
+// document types, same search. These are bands added above it.
+//
+// EACH BAND IS A FOLDER. The hub reads the top-level folders of the
+// Product Portal library it already crawls, so a band appears the
+// moment its folder exists and is simply absent until then — no empty
+// shells, no "coming soon". Aneta/Jess create these on
+// sites/CheckFireProductPortal ▸ Documents:
+//
+//   Product Change Notifications
+//   PIF
+//   Sample Requests
+//   New Product Requests
+//   Data Sheets and MSDS
+//
+// `aliases` keeps it forgiving — "PIFs", "Product Information Files"
+// and "Links to PIF" all match the PIF band.
+HUB_CONFIG.productPortal = {
+  sections: [
+    { key:'pcn',     folder:'Product Change Notifications',
+      aliases:['Product Change Notification','PCN','Change Notifications'],
+      label:'Product change notifications',
+      desc:'Every notified change to a product, newest first.' },
+    { key:'pif',     folder:'PIF',
+      aliases:['PIFs','Links to PIF','Product Information Files','Product Information File'],
+      label:'Links to PIF',
+      desc:'The product information file for each product.' },
+    { key:'samples', folder:'Sample Requests',
+      aliases:['Sample Request Sheet','Sample Request','Samples'],
+      label:'Sample request sheet',
+      desc:'Request a sample for a customer.' },
+    { key:'npr',     folder:'New Product Requests',
+      aliases:['New Product Request Sheet','New Product Request','NPD Requests'],
+      label:'New product request sheet',
+      desc:'Put a product forward for the range.' },
+    { key:'data',    folder:'Data Sheets and MSDS',
+      aliases:['Datasheets','Data Sheets','MSDS','Datasheets & MSDS','Data Sheets & MSDS','SDS'],
+      label:'Datasheets & MSDS',
+      desc:'Technical data sheets and safety data sheets.' },
+  ],
+
+  // Launch countdown and "dates to look out for", from the same
+  // Product Launches list the rest of the hub reads.
+  upcomingCount: 4,
+
+  // Fast feedback on a product. Paste a Microsoft Form or Jotform URL
+  // here and the box appears at the foot of the page; leave it empty
+  // and there is no box.
+  feedbackUrl: '',
+  feedbackTitle: 'Feedback on a product',
+  feedbackSub: 'Something wrong with a datasheet, a certificate out of date, or a product you keep being asked for? Tell the product team.',
 };

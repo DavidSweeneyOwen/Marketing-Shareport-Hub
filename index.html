@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CheckFire — Marketing Hub</title>
+  <title>Marketing Hub — CheckFire</title>
   <meta name="robots" content="noindex, nofollow">
 
   <!-- Google Fonts -->
@@ -217,6 +217,29 @@
     .cal-actions .inh-book-btn{background:#D1242B;color:#fff}
     .cal-actions .inh-sub-btn{background:#fff;color:#111;border:1px solid #DADADA}
     .cal-actions .inh-sub-btn:hover{border-color:#111}
+    /* Subscribe-by-category menu (1 Sep 2026). */
+    .cal-actions .cal-sub{flex:1;position:relative}
+    .cal-actions .cal-sub .inh-sub-btn{width:100%}
+    .cal-sub-menu{
+      position:absolute;right:0;bottom:calc(100% + 6px);z-index:40;min-width:186px;
+      background:#fff;border:1px solid #E2DFDA;border-radius:11px;padding:6px;
+      box-shadow:0 14px 34px rgba(0,0,0,.14);
+    }
+    .cal-sub-head{
+      font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+      color:#9A938A;padding:5px 9px 6px;
+    }
+    .cal-sub-menu button{
+      display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;
+      font-size:12.5px;font-weight:600;color:#1A1713;background:none;border:none;
+      border-radius:7px;padding:7px 9px;cursor:pointer;
+    }
+    .cal-sub-menu button:hover{background:#F5F3F0;color:#D1242B}
+    .cal-sub-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+    .cal-sub-dot.visit{background:#D1242B}
+    .cal-sub-dot.launch{background:#0078D4}
+    .cal-sub-dot.campaign{background:#E0A800}
+    .cal-sub-dot.training{background:#1E7B45}
 
     /* ── Carousels (blogs / landing pages) ────────────────── */
     .inh-carousel-section{max-width:1280px;margin:0 auto;padding:8px 24px 12px}
@@ -513,6 +536,21 @@
       color:rgba(255,255,255,.13);letter-spacing:.02em;user-select:none;
     }
     .px-lead-media.has-img .px-lead-initials{display:none}
+
+    /* 1 Sep 2026 — marketing, on the Campaigns banner: "Love this size
+       of the banner can the size be changed on Product page … I like I
+       can see what below and hopefully it will make people scroll".
+       The two pages share this CSS; Launches simply runs taller because
+       its lead carries a row of product codes the campaign lead doesn't.
+       So the launches lead gets its padding and type scaled back until
+       it lands at the same height, rather than either page getting its
+       own layout. */
+    #page-launches .px-lead-copy{padding-top:44px;padding-bottom:44px}
+    #page-launches .px-lead-title{font-size:clamp(30px,3.5vw,48px);margin-bottom:12px}
+    #page-launches .px-lead-sub{font-size:15.5px;margin-bottom:14px}
+    #page-launches .px-lead-codes{margin-bottom:14px}
+    #page-launches .px-lead-meta{margin-bottom:18px}
+    #page-launches .px-lead-media{min-height:400px}
 
     @media(max-width:960px){
       .px-lead{grid-template-columns:1fr}
@@ -1009,7 +1047,7 @@
       padding-bottom:10px;border-bottom:1px solid #F0EEEA;margin-bottom:8px;
     }
     .vlead-thumb{
-      flex:0 0 auto;position:relative;width:104px;aspect-ratio:16/9;border-radius:8px;
+      flex:0 0 auto;position:relative;width:88px;aspect-ratio:16/9;border-radius:8px;
       background:linear-gradient(135deg,#241012,#0A0A0A);overflow:hidden;
     }
     /* The gradient shows through if a thumbnail is blocked or missing. */
@@ -1033,8 +1071,22 @@
     .vlead:hover .vlead-title{color:#D1242B}
     .vlead-meta{font-size:10.5px;color:#9A938A}
     .vrest{min-height:0;overflow:hidden}
-    .vrest .hbox-vid{padding:5px 0}
-    .hbox-vid-thumb{position:relative;overflow:hidden;padding:0}
+    /* 1 Sep 2026 — marketing: "can those thumbnails be the same size
+       please". The lead used a 104px 16:9 frame and the ones under it a
+       52x34 chip, so the box read as two different lists. One size now,
+       set once, used by both. */
+    .vrest .hbox-vid{padding:6px 0;align-items:center;gap:11px}
+    .vrow-latest{
+      display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.09em;color:#fff;background:#D1242B;padding:1px 6px;border-radius:99px;
+      vertical-align:1px;margin-right:2px;
+    }
+    .vrest .hbox-vid-thumb{
+      position:relative;overflow:hidden;padding:0;
+      width:72px;height:auto;aspect-ratio:16/9;border-radius:7px;
+      background:linear-gradient(135deg,#241012,#0A0A0A);
+    }
+    .vrest .hbox-vid-title{font-size:12.5px;align-self:center}
     .vempty{font-size:12.5px;line-height:1.55;color:#8B8378;margin:0 0 10px}
 
     /* ══ TRAINING & SESSIONS (Trade & events) ══════════════════
@@ -1253,6 +1305,110 @@
     .cara-card.no-img{flex:0 0 232px;max-width:232px;border-top:3px solid #D1242B}
     .cara-card.no-img .cara-body{padding:16px 16px 18px;gap:8px;justify-content:center;min-height:96px}
     .cara-card.no-img .cara-title{font-size:15px}
+
+    /* ══ 1 SEPTEMBER 2026 — deck 5 ═════════════════════════════
+       Product Portal bands, the Trade & Events category sections and
+       the simplified Resources list. All three came out of marketing's
+       fifth annotated deck. */
+
+    /* ── Product Portal: launch countdown + dates to look out for ── */
+    .pp-band{margin:0 0 26px}
+    .pp-band-head{
+      display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+      flex-wrap:wrap;margin:0 0 12px;
+    }
+    .pp-band-title{
+      font-family:'Fraunces',Georgia,serif;font-size:21px;font-weight:600;
+      letter-spacing:-.01em;color:#1A1713;margin:0;
+    }
+    .pp-band-note{font-size:12.5px;color:#8B8378}
+    .pp-next{
+      display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:center;
+      background:#1A1713;color:#fff;border-radius:14px;padding:20px 24px;margin-bottom:12px;
+    }
+    .pp-count{text-align:center;line-height:1;flex:0 0 auto}
+    .pp-count b{display:block;font-family:'Fraunces',Georgia,serif;font-size:44px;font-weight:600}
+    .pp-count span{
+      display:block;font-size:10px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.14em;color:rgba(255,255,255,.62);margin-top:6px;
+    }
+    .pp-next-title{font-size:17px;font-weight:700;line-height:1.3;margin:0 0 5px}
+    .pp-next-meta{font-size:12.5px;color:rgba(255,255,255,.7)}
+    .pp-dates{display:flex;flex-wrap:wrap;gap:8px}
+    .pp-date{
+      display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E7E4DF;
+      border-radius:10px;padding:9px 13px;font-size:12.5px;color:#3D3831;
+    }
+    .pp-date b{font-weight:700;color:#1A1713}
+    .pp-date .pp-dot{width:7px;height:7px;border-radius:50%;background:#D1242B;flex:0 0 auto}
+    @media(max-width:640px){
+      .pp-next{grid-template-columns:1fr;text-align:left}
+      .pp-count{text-align:left}
+    }
+
+    /* ── Product Portal: the folder-driven sections ─────────── */
+    .pp-secs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:26px}
+    .pp-sec{
+      display:flex;flex-direction:column;gap:6px;text-align:left;font:inherit;cursor:pointer;
+      background:#fff;border:1px solid #E7E4DF;border-radius:13px;padding:16px 18px;
+      transition:border-color .15s,box-shadow .15s,transform .15s;
+    }
+    .pp-sec:hover{border-color:#1A1713;box-shadow:0 10px 26px rgba(0,0,0,.07);transform:translateY(-1px)}
+    .pp-sec-n{
+      font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;color:#D1242B;line-height:1;
+    }
+    .pp-sec-l{font-size:14px;font-weight:700;color:#1A1713;line-height:1.3}
+    .pp-sec-d{font-size:12px;line-height:1.5;color:#8B8378}
+
+    /* ── Product Portal: fast feedback ─────────────────────── */
+    .pp-fb{
+      display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;
+      background:#F7F5F2;border:1px solid #E7E4DF;border-radius:14px;
+      padding:20px 24px;margin-top:28px;
+    }
+    .pp-fb-copy{min-width:0}
+    .pp-fb-title{font-size:15px;font-weight:700;color:#1A1713;margin:0 0 4px}
+    .pp-fb-sub{font-size:13px;line-height:1.55;color:#6B645A;margin:0;max-width:56ch}
+
+    /* ── Trade & events: three sections, not one show ───────── */
+    .ev-sec{padding:0 0 8px}
+    .ev-sec + .ev-sec{margin-top:34px}
+    .ev-sec-head{
+      display:flex;align-items:baseline;justify-content:space-between;gap:18px;
+      flex-wrap:wrap;border-bottom:1px solid var(--px-rule);padding-bottom:12px;margin-bottom:22px;
+    }
+    .ev-sec-title{
+      font-family:'Fraunces',Georgia,serif;font-size:clamp(23px,2.6vw,30px);font-weight:600;
+      letter-spacing:-.015em;color:var(--px-ink);margin:0;
+    }
+    .ev-sec-sub{font-size:13.5px;line-height:1.55;color:#6B645A;margin:4px 0 0;max-width:60ch}
+    .ev-sec-n{
+      font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#9A938A;
+    }
+    .ev-sec-empty{
+      font-size:13.5px;line-height:1.6;color:#8B8378;background:#F7F5F2;
+      border:1px dashed var(--px-rule);border-radius:12px;padding:18px 20px;margin:0;
+    }
+    .ev-wrap{max-width:1280px;margin:0 auto;padding:40px 32px 8px}
+
+    /* ── Latest updates: each one opens its assets ─────────── */
+    .upd-item.is-link{cursor:pointer;transition:background .15s}
+    .upd-item.is-link:hover{background:#F7F5F2}
+    .upd-go{
+      margin-top:8px;font-size:11.5px;font-weight:700;letter-spacing:.01em;color:#D1242B;
+    }
+    .upd-item.is-link:hover .upd-go{text-decoration:underline}
+
+    /* ── Resources: back to a plain list ───────────────────── */
+    .lib-simple-head{
+      display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+      flex-wrap:wrap;margin:22px 0 10px;
+    }
+    .lib-simple-title{
+      font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;color:#1A1713;margin:0;
+    }
+    .lib-simple-n{font-size:11.5px;font-weight:700;color:#9A938A}
+
   </style>
 
   <!-- MSAL.js — Microsoft Authentication Library (must load before auth.js) -->
@@ -1297,11 +1453,15 @@
     <div class="inh-top-inner">
       <!-- Logo -->
       <a class="inh-logo" onclick="showPage('home',0)">
-        <svg viewBox="0 0 28 28" fill="none" width="28" height="28">
+        <!-- 1 Sep 2026 — marketing: "change to Marketing Hub with flame
+             (not house)". The house read as a generic intranet mark; the
+             flame is CheckFire's own. -->
+        <svg viewBox="0 0 28 28" fill="none" width="28" height="28" aria-hidden="true">
           <rect width="28" height="28" rx="6" fill="#D1242B"/>
-          <path d="M14 4L5 10v14h6v-6h6v6h6V10L14 4z" fill="white"/>
+          <path d="M14.6 4.1c.5 3.1-.9 4.6-2.6 6.2-1.9 1.8-3.6 3.5-3.6 6.4a5.6 5.6 0 0 0 11.2 0c0-2-.8-3.6-1.9-5 0 1.3-.5 2.2-1.4 2.7.6-3.5-.8-7.2-1.7-10.3z" fill="#fff"/>
+          <path d="M14 22.6a2.7 2.7 0 0 1-2.7-2.7c0-1.5 1-2.2 1.8-3.2.4 1.2 1.3 1.9 2.1 2.5.8.6 1.5 1.3 1.5 2.4a2.7 2.7 0 0 1-2.7 1z" fill="#D1242B"/>
         </svg>
-        <span class="inh-logo-text">CheckFire <strong>Hub</strong></span>
+        <span class="inh-logo-text">Marketing <strong>Hub</strong></span>
       </a>
 
       <!-- Search -->
@@ -1419,10 +1579,25 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="13" height="13"><path d="M12 5v14M5 12h14"/></svg>
           Book a slot
         </button>
-        <button class="inh-sub-btn" onclick="subscribeCalendar()" title="Add these dates to your own calendar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-          Subscribe
-        </button>
+        <!-- 1 Sep 2026 — marketing: "can they subscribe to individual
+             categories - Visits or Launches, rather than the whole
+             calendar?" One button, five choices. -->
+        <div class="cal-sub">
+          <button class="inh-sub-btn" id="cal-sub-btn" onclick="toggleSubscribeMenu(event)"
+                  aria-haspopup="true" aria-expanded="false"
+                  title="Add these dates to your own calendar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+            Subscribe
+          </button>
+          <div class="cal-sub-menu" id="cal-sub-menu" role="menu" hidden>
+            <div class="cal-sub-head">Add to your calendar</div>
+            <button role="menuitem" onclick="subscribeCalendar('all')">Everything</button>
+            <button role="menuitem" onclick="subscribeCalendar('showroom')"><span class="cal-sub-dot visit"></span>Visits only</button>
+            <button role="menuitem" onclick="subscribeCalendar('launch')"><span class="cal-sub-dot launch"></span>Launches only</button>
+            <button role="menuitem" onclick="subscribeCalendar('campaign')"><span class="cal-sub-dot campaign"></span>Campaigns only</button>
+            <button role="menuitem" onclick="subscribeCalendar('training')"><span class="cal-sub-dot training"></span>Training only</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1709,7 +1884,22 @@
     </div>
   </section>
 
+  <!-- 1 Sep 2026 — the product team asked for the whole Product Portal
+       to live in the hub, "ideally keeping the organisation the same".
+       So nothing about the certificate index below changes; three bands
+       are added around it, and each one only appears when the folder
+       behind it exists on the Product Portal site. Until Aneta/Jess add
+       a folder, its band simply isn't there — no empty shells. -->
   <section class="container py-lg">
+
+    <!-- Launch countdown and the dates to look out for. Reads the same
+         Product Launches list the rest of the hub does. -->
+    <div id="pp-upcoming"></div>
+
+    <!-- Product change notifications, PIF links, sample request sheet,
+         new product request sheet, datasheets/MSDS. Folder-driven. -->
+    <div id="pp-sections"></div>
+
     <!-- The front door: everything in the Product Portal, indexed by
          product and by document type, with a search box over the lot.
          Built by loadLibrary('product') in graph.js. -->
@@ -1729,6 +1919,10 @@
         <div class="skeleton sk-line short"></div>
       </div>
     </div>
+
+    <!-- Fast feedback on a product. Hidden until a form URL is set in
+         config.js (HUB_CONFIG.productPortal.feedbackUrl). -->
+    <div id="pp-feedback"></div>
   </section>
 </main>
 
@@ -1865,14 +2059,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=14"></script>
+<script src="config.js?v=15"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=15"></script>
+<script src="graph.js?v=16"></script>
 <script src="app.js?v=18"></script>
-<script src="jotform.js?v=12"></script>
+<script src="jotform.js?v=13"></script>
 <script src="ember.js?v=4"></script>
 
 
