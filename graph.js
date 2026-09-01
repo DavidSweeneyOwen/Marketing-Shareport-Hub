@@ -175,6 +175,18 @@ function getSiteId() {
 // Resolve a document library ("drive") on a given site by name, falling
 // back to the site's first drive. Used by the in-hub file browser for
 // both the Marketing library and the Product Portal.
+// Every document library on a site, not just the one called
+// "Documents". 1 Sep 2026: the Product Portal's six Product Change
+// Notifications live in FormServerTemplates — a system library — because
+// they were dropped onto a page instead of into the library. A crawl of
+// "Documents" alone could never find them, which is exactly why the
+// portal page looked like it had none.
+async function resolveAllDrives(siteUrl) {
+  const siteId = await resolveSiteId(siteUrl);
+  const drives = await graphFetch(`/sites/${siteId}/drives?$select=id,name,webUrl`);
+  return (drives.value || []);
+}
+
 async function resolveDrive(siteUrl, libraryName) {
   const siteId = await resolveSiteId(siteUrl);
   const drives = await graphFetch(`/sites/${siteId}/drives?$select=id,name`);
@@ -1233,6 +1245,9 @@ function docActions(k) {
     <button class="doc-act" title="Copy link" aria-label="Copy link" onclick="shareRegDoc('${k}',event)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
     </button>
+    <button class="doc-act" title="Open full screen" aria-label="Open full screen" onclick="event.stopPropagation();openRegDoc('${k}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+    </button>
   </span>`;
 }
 
@@ -2030,6 +2045,20 @@ function _libCfg(key) {
   return ((HUB_CONFIG.libraries || {})[key]) || {};
 }
 
+// Resolve "01. Marketing/08. PDF PIF, Data Sheets…" to a folder id,
+// one forgiving step at a time. Returns null (and says why in the
+// console) rather than throwing, so one renamed folder never costs you
+// the other six sources.
+async function _libResolvePath(driveId, path) {
+  let id = null;
+  for (const part of String(path).split('/').map(p => p.trim()).filter(Boolean)) {
+    const hit = await _findChildFolder(driveId, id, part);
+    if (!hit) { console.info(`[Library] no folder "${part}" under ${path} — skipping that root.`); return null; }
+    id = hit.id;
+  }
+  return id;
+}
+
 async function _libCrawl(driveId, itemId, path, depth, out, cap, exclude) {
   if (depth < 0 || out.length >= cap) return;
   let kids;
@@ -2050,10 +2079,36 @@ async function _libCrawl(driveId, itemId, path, depth, out, cap, exclude) {
     _libCrawl(driveId, f.id, path.concat(f.name), depth - 1, out, cap, exclude)));
 }
 
-function _libCatLabel(key, folder) {
+// A category used to be "whichever folder it sits in". With several
+// sites feeding one page that stops working — the same kind of document
+// lives under a different folder name on every site. A rule can now
+// carry `match`, a pattern tried against the file's whole path and
+// name. Folder rules are still tried first, so nothing regresses.
+function _libCatLabel(key, folder, f) {
   const rows = _libCfg(key).categories || [];
-  const hit = rows.find(r => String(r.folder).toLowerCase() === String(folder || '').toLowerCase());
+
+  const hit = rows.find(r => r.folder &&
+    String(r.folder).toLowerCase() === String(folder || '').toLowerCase());
   if (hit) return hit.label;
+
+  if (f) {
+    // The FILE NAME is asked first, and the folder path only if the name
+    // says nothing. Both at once gets it wrong in a way that matters:
+    // sales.marketing files PIFs, datasheets and MSDS together in
+    // "08. PDF PIF, Data Sheets, MSDS Sheets & Toolkits", so a path
+    // match would file "Commander PIF.pdf" under MSDS purely because
+    // the word appears in the folder name three levels up.
+    const name = String(f.name || '').toLowerCase();
+    const path = [].concat(f._path || []).join(' / ').toLowerCase();
+    for (const hay of [name, path]) {
+      if (!hay) continue;
+      for (const r of rows) {
+        if (!r.match) continue;
+        try { if (new RegExp(r.match, 'i').test(hay)) return r.label; }
+        catch (_) { /* a bad pattern in config mustn't break the page */ }
+      }
+    }
+  }
   return folder || 'General';
 }
 
@@ -2090,21 +2145,88 @@ async function loadLibrary(key) {
 
   try {
     const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
-    const drive = await resolveDrive(site, cfg.library || HUB_CONFIG.documentsLibrary);
-    LIB[key].driveId = drive.id;
+
+    // One source, or several. `sources` is what turns the Product
+    // Portal page into the home for everything (1 Sep 2026, round 2);
+    // without it this behaves exactly as it did.
+    const sources = (cfg.sources && cfg.sources.length)
+      ? cfg.sources
+      : [{ key: 'main', label: '', site, library: cfg.library || HUB_CONFIG.documentsLibrary,
+           depth: cfg.crawlDepth || 3, max: cfg.maxFiles || 400 }];
 
     const out = [];
-    await _libCrawl(drive.id, null, [], (cfg.crawlDepth || 3), out,
-                    (cfg.maxFiles || 400), cfg.excludeFolders || []);
+    const tally = [];
 
-    LIB[key].files = out.map(f => {
+    await Promise.all(sources.map(async src => {
+      const before = out.length;
+      try {
+        const drives = src.allLibraries
+          ? await resolveAllDrives(src.site)
+          : [await resolveDrive(src.site, src.library || HUB_CONFIG.documentsLibrary)];
+
+        if (!LIB[key].driveId && drives[0]) LIB[key].driveId = drives[0].id;
+
+        for (const drive of drives) {
+          const mine = [];
+          const cap  = src.max || cfg.maxFiles || 400;
+
+          if (src.roots && src.roots.length) {
+            for (const root of src.roots) {
+              if (mine.length >= cap) break;
+              const id = await _libResolvePath(drive.id, root);
+              if (!id) continue;
+              // The root's own name leads the path, so it still reads
+              // as "where this came from" in the file list.
+              await _libCrawl(drive.id, id, [String(root).split('/').pop()],
+                              (src.depth || 3), mine, cap, src.excludeFolders || []);
+            }
+          } else {
+            await _libCrawl(drive.id, null, [], (src.depth || 3), mine, cap,
+                            src.excludeFolders || cfg.excludeFolders || []);
+          }
+
+          mine.forEach(f => {
+            f._source    = src.label || '';
+            f._sourceKey = src.key || '';
+            // A system library's name is worth keeping — it is how the
+            // Product Change Notifications turn up at all.
+            if (drives.length > 1 && drive.name && !/^documents$/i.test(drive.name)) {
+              f._library = drive.name;
+              if (!(f._path || []).length) f._path = [drive.name];
+            }
+          });
+          out.push(...mine);
+        }
+      } catch (e) {
+        console.info(`[Library] source "${src.label || src.key}" unavailable: ${e.message}`);
+      }
+      tally.push(`${src.label || src.key}: ${out.length - before}`);
+    }));
+
+    console.info('[Library] ' + (cfg.title || key) + ' — ' + tally.join(' · '));
+
+    // The same document is filed on more than one site. Keep the first
+    // and remember there was another, rather than listing it twice.
+    const seen = new Set();
+    const merged = [];
+    out.forEach(f => {
+      const sig = _slugKey(f.name) + '|' + (f.size || 0);
+      if (seen.has(sig)) return;
+      seen.add(sig);
+      merged.push(f);
+    });
+    if (merged.length !== out.length) {
+      console.info(`[Library] ${out.length - merged.length} duplicate file(s) across sites folded together.`);
+    }
+
+    LIB[key].files = merged.map(f => {
       const t = _libTag(key, f);
       return Object.assign({}, f, {
         _tag:      t ? t.key : 'other',
         _tagLbl:   t ? t.label : 'Other',
         _catFolder: (f._path || [])[0] || '',
-        _cat:      _libCatLabel(key, (f._path || [])[0]),
-        _sub:      (f._path || [])[1] || '',
+        _cat:      _libCatLabel(key, (f._path || [])[0], f),
+        _sub:      [(f._path || [])[1] || '', f._source || ''].filter(Boolean).join(' · '),
       });
     });
     LIB[key].loaded = true;
@@ -2224,10 +2346,15 @@ function renderLibraryResults(key) {
   if (!box || !state) return;
 
   const q = state.q.trim().toLowerCase();
+  // state.cat is 'all', one category label, or a list of them — a
+  // Product Portal band can cover several ("Data sheets" + "MSDS").
+  const wantCat = f => state.cat === 'all'
+    || (Array.isArray(state.cat) ? state.cat.indexOf(f._cat) >= 0 : f._cat === state.cat);
+
   const rows = state.files.filter(f =>
     (state.tag === 'all' || f._tag === state.tag) &&
-    (state.cat === 'all' || f._cat === state.cat) &&
-    (!q || (f.name + ' ' + (f._path || []).join(' ')).toLowerCase().includes(q)));
+    wantCat(f) &&
+    (!q || (f.name + ' ' + (f._path || []).join(' ') + ' ' + (f._source || '')).toLowerCase().includes(q)));
 
   const filtered = state.tag !== 'all' || state.cat !== 'all' || !!q;
 
@@ -2263,22 +2390,58 @@ function renderLibraryResults(key) {
       </section>`).join('')}`;
 }
 
-// One file row — click to read it, plus download and copy-link.
+// One file row.
+//
+// 1 Sep 2026 (round 2) — clicking a row used to navigate you away to
+// the reader page. David: "I want it to open everything you click on it
+// and it brings everything open." So a click opens the document HERE,
+// underneath its own row, and clicking again folds it away. The reader
+// is still one button along for anyone who wants the whole screen.
 function libFileRow(f, subLabel) {
   const k = regDoc(f);
   const meta = [subLabel || f._sub, f._tagLbl && f._tagLbl !== 'Other' ? f._tagLbl : '',
                 humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)]
     .filter(Boolean).map(escHtml).join(' · ');
   return `
-    <div class="lib-file" role="button" tabindex="0"
-         onclick="openRegDoc('${k}')" onkeydown="if(event.key==='Enter')openRegDoc('${k}')">
-      <span class="lib-file-ico">${escHtml((String(f.name).split('.').pop() || 'FILE').slice(0, 4).toUpperCase())}</span>
-      <span class="lib-file-main">
-        <span class="lib-file-name">${escHtml(String(f.name).replace(/\.[a-z0-9]+$/i, ''))}</span>
-        <span class="lib-file-meta">${meta}</span>
-      </span>
-      ${docActions(k)}
+    <div class="lib-row" id="lr-${k}">
+      <div class="lib-file" role="button" tabindex="0" aria-expanded="false"
+           onclick="libToggleFile('${k}')" onkeydown="if(event.key==='Enter')libToggleFile('${k}')">
+        <span class="lib-file-ico">${escHtml((String(f.name).split('.').pop() || 'FILE').slice(0, 4).toUpperCase())}</span>
+        <span class="lib-file-main">
+          <span class="lib-file-name">${escHtml(String(f.name).replace(/\.[a-z0-9]+$/i, ''))}</span>
+          <span class="lib-file-meta">${meta}</span>
+        </span>
+        ${docActions(k)}
+      </div>
+      <div class="lib-open" id="lo-${k}"></div>
     </div>`;
+}
+
+// Open the document in the row, or fold it away again. Reuses the same
+// renderer the campaign pages use, so a PDF looks the same wherever you
+// meet it in the hub.
+function libToggleFile(k) {
+  const host = document.getElementById('lo-' + k);
+  const row  = document.getElementById('lr-' + k);
+  const head = row && row.querySelector('.lib-file');
+  if (!host) { openRegDoc(k); return; }
+
+  if (host.firstChild) {
+    host.innerHTML = '';
+    if (row)  row.classList.remove('open');
+    if (head) head.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  const f = DOCREG[k];
+  if (!f) return;
+  if (row)  row.classList.add('open');
+  if (head) head.setAttribute('aria-expanded', 'true');
+
+  host.innerHTML = `<div class="oe-stage" data-doc="${k}" data-kind="${_oeKind(f.name)}">
+      <div class="oe-wait"><span class="rdr-spin"></span></div>
+    </div>`;
+  _oeFill(host.firstElementChild);
 }
 
 function libPick(key, tag, btn) {
@@ -2413,27 +2576,37 @@ function renderPortalSections() {
 
   const live = [];
   secs.forEach(sec => {
+    // By kind first — that is what survives files coming from five
+    // different sites with five different folder conventions.
+    if (sec.cats && sec.cats.length) {
+      const present = sec.cats.filter(c => state.files.some(f => f._cat === c));
+      const count   = state.files.filter(f => present.indexOf(f._cat) >= 0).length;
+      if (count) { live.push({ sec, count, cat: present }); return; }
+    }
+    // Then by folder, for the things that are a folder rather than a
+    // kind of document — the two request sheets.
     const folder = folders.find(fn => _ppMatchFolder(sec, fn));
     if (!folder) return;
     const count = state.files.filter(f => f._catFolder === folder).length;
     if (!count) return;
-    live.push({ sec, folder, count, label: _libCatLabel('product', folder) });
+    live.push({ sec, count, cat: _libCatLabel('product', folder) });
   });
 
   if (!live.length) {
-    console.info('[Portal] none of the extra section folders exist yet — bands hidden.');
+    console.info('[Portal] nothing matched a band yet — bands hidden.');
     return;
   }
 
+  PP_BANDS = live;
   host.innerHTML = `
     <div class="pp-band">
       <div class="pp-band-head">
-        <h2 class="pp-band-title">Product paperwork</h2>
-        <span class="pp-band-note">Everything that isn't a certificate</span>
+        <h2 class="pp-band-title">Everything, by what it is</h2>
+        <span class="pp-band-note">${state.files.length} documents from ${_ppSourceCount(state)} SharePoint sources</span>
       </div>
       <div class="pp-secs">
-        ${live.map(l => `
-          <button class="pp-sec" onclick="ppOpenSection('${escAttr(String(l.label).replace(/'/g, '&#39;'))}')">
+        ${live.map((l, i) => `
+          <button class="pp-sec" onclick="ppOpenSection(${i})">
             <span class="pp-sec-n">${l.count}</span>
             <span class="pp-sec-l">${escHtml(l.sec.label)}</span>
             <span class="pp-sec-d">${escHtml(l.sec.desc || '')}</span>
@@ -2442,18 +2615,29 @@ function renderPortalSections() {
     </div>`;
 }
 
+let PP_BANDS = [];
+
+function _ppSourceCount(state) {
+  return new Set(state.files.map(f => f._source || 'Product Portal')).size;
+}
+
 // Opening a band is a filter over the index that is already on the
 // page, not a second place for the same files to live.
-function ppOpenSection(label) {
+function ppOpenSection(i) {
   const s = LIB.product;
-  if (!s) return;
-  s.tag = 'all'; s.q = ''; s.cat = label;
+  const band = PP_BANDS[i];
+  if (!s || !band) return;
+  s.tag = 'all'; s.q = ''; s.cat = band.cat;
+
   const q = document.getElementById('lib-q-product');
   if (q) q.value = '';
   document.querySelectorAll('#lib-tiles-product .lib-tile').forEach(b => b.classList.remove('active'));
+  const wanted = Array.isArray(band.cat) ? band.cat : [band.cat];
   document.querySelectorAll('#lib-cats-product .lib-cat').forEach(b => {
-    b.classList.toggle('active', b.textContent.indexOf(label) === 0);
+    b.classList.toggle('active', wanted.some(c => b.textContent.indexOf(c) === 0));
   });
+  document.querySelectorAll('#pp-sections .pp-sec').forEach((b, bi) => b.classList.toggle('active', bi === i));
+
   renderLibraryResults('product');
   const box = document.getElementById('lib-results-product');
   if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2720,13 +2904,13 @@ function _renderDetail(opts) {
 
     <div class="dt-main">
       <div class="dt-sec-head">
-        <h2 class="dt-sec-title">Assets &amp; resources</h2>
-        <p class="dt-sec-sub">Everything filed for this ${isLaunch ? 'launch' : 'campaign'}. Open it here, download it, or copy a link to send on.</p>
+        <h2 class="dt-sec-title">Everything for this ${isLaunch ? 'launch' : 'campaign'}</h2>
+        <p class="dt-sec-sub">All of it, open on the page — artwork, data sheets, decks and video. Download or copy a link on anything you need to send on.</p>
       </div>
-      <div class="dt-folders" id="cd-blocks">
-        <div class="skeleton sk-line med"></div>
-        <div class="skeleton sk-line"></div>
-      </div>
+      <!-- 1 Sep 2026 (round 2). This used to be a grid of folder tiles
+           that opened a file list that opened a reader. Three clicks to
+           see one document. It is the documents themselves now. -->
+      <div id="cd-blocks"></div>
       <div id="cd-asset-panel"></div>
     </div>`;
 
@@ -2832,47 +3016,16 @@ async function _loadDetailAssets() {
   _detailFolder = { driveId: drive.id, id: folder.id, name: folder.name };
   _loadDetailHero(ctx, drive.id, folder.id);
 
-  let kids;
-  try {
-    kids = await fetchDriveChildren(drive.id, folder.id);
-  } catch (e) {
-    say(`Couldn’t read “${folder.name}” — ${e.message}`);
-    return;
-  }
+  // Everything under this campaign or launch, open on the page.
+  const panel = document.getElementById('cd-asset-panel');
+  if (panel) panel.innerHTML = '';
+
+  const n = await openEverything('cd-blocks', drive.id, folder.id, {
+    rootLabel: folder.name,
+    emptyText: `“${folder.name}” is empty at the moment. Anything filed into it in SharePoint appears here on its own.`,
+  });
   if (_detailContext !== ctx) return;
-
-  const folders = kids.filter(x => x.folder)
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  const loose = kids.filter(x => !x.folder)
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-  console.info(`[Assets] “${folder.name}” has ${folders.length} folder(s) and ${loose.length} loose file(s).`);
-
-  if (!folders.length && !loose.length) {
-    say(`“${folder.name}” is empty at the moment.`);
-    return;
-  }
-
-  _detailBlocks = folders.map(k => ({
-    label:   k.name,
-    folder:  k.name,
-    id:      k.id,
-    driveId: drive.id,
-    count:   (k.folder && k.folder.childCount) || 0,
-  }));
-
-  box.innerHTML = folders.length ? _blocksHtml(_detailBlocks) : '';
-
-  // Files sitting loose in the campaign folder used to be invisible —
-  // there was no tile for them because there was no sub-folder.
-  if (loose.length) {
-    const panel = document.getElementById('cd-asset-panel');
-    if (panel) {
-      panel.innerHTML = `
-        <h3 class="dt-panel-head">In this folder<span>${loose.length}</span></h3>
-        <div class="lib-files">${loose.map(f => libFileRow(f)).join('')}</div>`;
-    }
-  }
+  console.info(`[Assets] “${folder.name}” — ${n} file(s) opened in the page.`);
 }
 
 // The item's own artwork, from its asset folder — same source the cards
@@ -3552,9 +3705,16 @@ function openEventFolder(idx) {
   if (title)    title.textContent = ev.name;
   window.scrollTo(0, 0);
 
-  _fbLoaded.events = true;
-  fbInit('events', HUB_CONFIG.sharepointSite, HUB_CONFIG.documentsLibrary,
-         'ev-documents-grid', 'ev-crumbs', ev.name, { rootItemId: ev.id });
+  // 1 Sep 2026 (round 2) — "open everything … like a website". An
+  // event pack is the same problem as a campaign: you wanted the stand
+  // plans and the artwork, not a folder tree to walk. The crumbs bar is
+  // now a jump list built by openEverything instead.
+  const crumbs = document.getElementById('ev-crumbs');
+  if (crumbs) crumbs.innerHTML = '';
+  openEverything('ev-documents-grid', ev.driveId, ev.id, {
+    rootLabel: ev.name,
+    emptyText: `Nothing has been filed into “${ev.name}” yet. Add it under Documents ▸ Events in SharePoint and it appears here.`,
+  });
 }
 
 function closeEventFolder() {
@@ -4099,4 +4259,309 @@ async function srchOpenItem(kind, title) {
       if (band) band.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 220);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// OPEN EVERYTHING
+// ══════════════════════════════════════════════════════════════
+//
+// 1 Sep 2026, second round. David, for the third time:
+//
+//   "when you open a campaign or anything like that I want it to open
+//    everything in to that sheet like a website … I want it to open
+//    everything you click on it and it brings everything open. I've
+//    asked for this a couple times now."
+//
+// The two previous attempts both stopped one click short. First it was
+// folder tiles that opened a file list. Then the file list opened a
+// reader page. Every version still made you click your way down to a
+// document — the structure was on screen, the CONTENT never was.
+//
+// This is the content. Open a campaign and the whole thing is already
+// there, in one scroll: the artwork as pictures, the data sheets and
+// PDFs rendered in the page, the videos playing, the decks and Word
+// files laid out. Nothing to click to see it. Download and Copy link
+// sit on every item for the people who need the file itself, which is
+// the half that was always working.
+//
+// It has to stay fast, so nothing is fetched until it is nearly on
+// screen: an IntersectionObserver fills each frame about a screen
+// before you reach it. A campaign with sixty files costs the same to
+// open as one with three.
+
+const OPEN = { blobs: [], io: null, seq: 0 };
+
+const OE_IMG    = /\.(jpe?g|png|gif|webp|bmp|svg|tiff?)$/i;
+const OE_VIDEO  = /\.(mp4|mov|webm|m4v)$/i;
+const OE_AUDIO  = /\.(mp3|m4a|wav|ogg)$/i;
+const OE_PDF    = /\.pdf$/i;
+const OE_OFFICE = /\.(docx?|pptx?|xlsx?|xlsm|potx|dotx)$/i;
+const OE_TEXT   = /\.(txt|md|csv|tsv|json|xml|log)$/i;
+const OE_LINK   = /\.url$/i;
+
+// Anything bigger goes through Microsoft's preview service instead of
+// being pulled into memory as a blob. Twelve of these on one page is
+// the difference between a quick scroll and a stalled tab.
+const OE_BLOB_MAX = 8 * 1024 * 1024;
+
+function _oeReset() {
+  OPEN.blobs.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+  OPEN.blobs = [];
+  if (OPEN.io) { try { OPEN.io.disconnect(); } catch (_) {} OPEN.io = null; }
+}
+
+// Walk the whole tree under a folder, keeping the path, so sub-folders
+// become sections rather than another thing to click.
+async function _oeWalk(driveId, itemId, path, depth, out, cap) {
+  if (depth < 0 || out.length >= cap) return;
+  let kids;
+  try { kids = await fetchDriveChildren(driveId, itemId); }
+  catch (e) { console.info('[Open] could not read a folder:', e.message); return; }
+
+  const folders = [];
+  for (const k of kids) {
+    if (k.folder) folders.push(k);
+    else if (out.length < cap) out.push(Object.assign({}, k, { _path: path, _driveId: driveId }));
+  }
+  // Sequential, not parallel: a campaign folder is a handful of
+  // sub-folders and this keeps Graph calls civil.
+  for (const f of folders) {
+    await _oeWalk(driveId, f.id, path.concat(f.name), depth - 1, out, cap);
+  }
+}
+
+// Sections read best in the order marketing actually work: the pictures
+// first, then the words, then the rest, alphabetically inside each.
+const OE_SECTION_RANK = [
+  /email\s*camp/i, /image|artwork|photo|visual/i, /social/i, /infographic/i,
+  /data\s*sheet|datasheet/i, /blog/i, /website|web\s*page/i, /press|pr\b/i, /video/i,
+];
+function _oeRank(name) {
+  const i = OE_SECTION_RANK.findIndex(rx => rx.test(name));
+  return i < 0 ? OE_SECTION_RANK.length : i;
+}
+
+function _oeKind(name) {
+  if (OE_IMG.test(name))    return 'image';
+  if (OE_VIDEO.test(name))  return 'video';
+  if (OE_AUDIO.test(name))  return 'audio';
+  if (OE_PDF.test(name))    return 'pdf';
+  if (OE_OFFICE.test(name)) return 'office';
+  if (OE_TEXT.test(name))   return 'text';
+  if (OE_LINK.test(name))   return 'link';
+  return 'other';
+}
+
+function _oeCard(f) {
+  const k    = regDoc(f);
+  const kind = _oeKind(f.name);
+  const ext  = (String(f.name).split('.').pop() || '').toUpperCase().slice(0, 4);
+  const meta = [humanSize(f.size), fmtSpDate(f.lastModifiedDateTime)].filter(Boolean).join(' · ');
+  return `
+    <article class="oe-item oe-${kind}">
+      <header class="oe-bar">
+        <span class="oe-ext">${escHtml(ext)}</span>
+        <span class="oe-name">${escHtml(String(f.name).replace(/\.[a-z0-9]+$/i, ''))}</span>
+        <span class="oe-meta">${escHtml(meta)}</span>
+        <span class="oe-acts">
+          <button class="oe-act" onclick="downloadRegDoc('${k}',event)" title="Download">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button class="oe-act" onclick="shareRegDoc('${k}',event)" title="Copy link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </button>
+          <button class="oe-act" onclick="openRegDoc('${k}')" title="Open full screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
+        </span>
+      </header>
+      <div class="oe-stage" data-doc="${k}" data-kind="${kind}">
+        <div class="oe-wait"><span class="rdr-spin"></span></div>
+      </div>
+    </article>`;
+}
+
+// The one public entry point. Renders everything under `folderId` into
+// `hostId` and returns the number of files it found.
+async function openEverything(hostId, driveId, folderId, opts) {
+  const host = document.getElementById(hostId);
+  if (!host) return 0;
+  opts = opts || {};
+  _oeReset();
+
+  host.innerHTML = `<div class="oe-boot">
+    <div class="skeleton sk-line med"></div>
+    <div class="skeleton sk-line"></div>
+    <div class="skeleton sk-line short"></div>
+  </div>`;
+
+  const files = [];
+  await _oeWalk(driveId, folderId, [], (opts.depth === undefined ? 3 : opts.depth),
+                files, opts.max || 160);
+
+  if (!files.length) {
+    host.innerHTML = `<p class="oe-empty">${escHtml(opts.emptyText
+      || 'Nothing is filed in here yet. Anything added in SharePoint shows up here automatically.')}</p>`;
+    return 0;
+  }
+
+  // Group by the sub-folder each file sits in. Loose files come first,
+  // under the item's own name — they used to be invisible entirely.
+  const groups = new Map();
+  files.forEach(f => {
+    const key = (f._path || []).join(' ▸ ');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  });
+
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (!a) return -1;
+    if (!b) return 1;
+    return _oeRank(a) - _oeRank(b) || a.localeCompare(b);
+  });
+
+  const jump = keys.length > 1
+    ? `<nav class="oe-jump">${keys.map((k, i) =>
+        `<a href="#oe-s${i}" onclick="_oeJump(event,'oe-s${i}')">${escHtml(k || (opts.rootLabel || 'In this folder'))}<b>${groups.get(k).length}</b></a>`).join('')}</nav>`
+    : '';
+
+  host.innerHTML = jump + keys.map((k, i) => {
+    const rows = groups.get(k).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return `
+      <section class="oe-sec" id="oe-s${i}">
+        <h3 class="oe-sec-head">${escHtml(k || (opts.rootLabel || 'In this folder'))}<span>${rows.length}</span></h3>
+        <div class="oe-grid">${rows.map(_oeCard).join('')}</div>
+      </section>`;
+  }).join('');
+
+  _oeObserve(host);
+  console.info(`[Open] ${files.length} file(s) across ${keys.length} section(s) — filling as you scroll.`);
+  return files.length;
+}
+
+function _oeJump(ev, id) {
+  if (ev) ev.preventDefault();
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Fill each frame about a screen before it is reached. Without this a
+// campaign with sixty files would fire sixty downloads on open.
+function _oeObserve(host) {
+  const stages = [...host.querySelectorAll('.oe-stage[data-doc]')];
+  if (!stages.length) return;
+
+  if (!('IntersectionObserver' in window)) {
+    stages.forEach(_oeFill);          // old browser: just do them all
+    return;
+  }
+  OPEN.io = new IntersectionObserver((entries, io) => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      io.unobserve(e.target);
+      _oeFill(e.target);
+    });
+  }, { rootMargin: '900px 0px' });
+  stages.forEach(s => OPEN.io.observe(s));
+}
+
+function _oeStage(el, html) { if (el) el.innerHTML = html; }
+
+async function _oeFill(el) {
+  if (!el || el.dataset.filled) return;
+  el.dataset.filled = '1';
+
+  const f = DOCREG[el.dataset.doc];
+  if (!f) { _oeStage(el, ''); return; }
+  const kind = el.dataset.kind;
+
+  const bail = (msg) => _oeStage(el, `<div class="oe-cant">${escHtml(msg)}
+    <button class="oe-alt" onclick="downloadRegDoc('${el.dataset.doc}',event)">Download it ↓</button></div>`);
+
+  try {
+    if (kind === 'image') {
+      const url = await _rdrDownloadUrl(f);
+      if (!url) throw new Error('no download URL');
+      _oeStage(el, `<img class="oe-img" src="${escAttr(url)}" alt="${escAttr(f.name)}" loading="lazy"
+        onerror="_oeImgFallback(this,'${el.dataset.doc}')">`);
+
+    } else if (kind === 'video') {
+      const url = await _rdrDownloadUrl(f);
+      if (!url) throw new Error('no download URL');
+      _oeStage(el, `<video class="oe-video" src="${escAttr(url)}" controls playsinline preload="metadata"></video>`);
+
+    } else if (kind === 'audio') {
+      const url = await _rdrDownloadUrl(f);
+      if (!url) throw new Error('no download URL');
+      _oeStage(el, `<audio class="oe-audio" src="${escAttr(url)}" controls preload="metadata"></audio>`);
+
+    } else if (kind === 'link') {
+      // A .url shortcut is a two-line ini file. Read it and show where
+      // it goes, rather than offering a download nobody wants.
+      const text = await (await _rdrBlob(f, false)).text();
+      const m = text.match(/URL\s*=\s*(\S+)/i);
+      const href = m ? safeUrl(m[1], '') : '';
+      _oeStage(el, href
+        ? `<a class="oe-link" href="${escAttr(href)}" target="_blank" rel="noopener">${escHtml(href)}</a>`
+        : '<div class="oe-cant">This shortcut has no address in it.</div>');
+
+    } else if (kind === 'text') {
+      const text = await (await _rdrBlob(f, false)).text();
+      _oeStage(el, `<pre class="oe-text">${escHtml(text.slice(0, 40000))}</pre>`);
+
+    } else if (kind === 'pdf') {
+      if (Number(f.size) > OE_BLOB_MAX) { await _oePreview(el, f); return; }
+      try {
+        const url = URL.createObjectURL(await _rdrBlob(f, false));
+        OPEN.blobs.push(url);
+        _oeStage(el, `<iframe class="oe-frame" src="${escAttr(url)}#view=FitH" title="${escAttr(f.name)}" loading="lazy"></iframe>`);
+      } catch (e) {
+        console.info('[Open] PDF blob route failed for ' + f.name + ' (' + e.message + ') — using the preview service.');
+        await _oePreview(el, f);
+      }
+
+    } else if (kind === 'office') {
+      // Graph converts Office to PDF, which reads far better inline than
+      // the Office web viewer's own chrome. Big decks fall back.
+      if (Number(f.size) > OE_BLOB_MAX) { await _oePreview(el, f); return; }
+      try {
+        const url = URL.createObjectURL(await _rdrBlob(f, true));
+        OPEN.blobs.push(url);
+        _oeStage(el, `<iframe class="oe-frame" src="${escAttr(url)}#view=FitH" title="${escAttr(f.name)}" loading="lazy"></iframe>`);
+      } catch (e) {
+        console.info('[Open] Office→PDF failed for ' + f.name + ' (' + e.message + ') — using the preview service.');
+        await _oePreview(el, f);
+      }
+
+    } else {
+      bail('This file type can’t be shown in the page.');
+    }
+  } catch (e) {
+    console.info('[Open] could not open ' + f.name + ':', e.message);
+    await _oePreview(el, f);
+  }
+}
+
+async function _oePreview(el, f) {
+  try {
+    const prev = await graphPost(`/drives/${f._driveId}/items/${f.id}/preview`, {});
+    const url = prev && prev.getUrl;
+    if (!url) throw new Error('no preview URL');
+    _oeStage(el, `<iframe class="oe-frame" src="${escAttr(url + (url.includes('?') ? '&' : '?') + 'nb=true')}" title="${escAttr(f.name)}" loading="lazy"></iframe>`);
+  } catch (e) {
+    console.info('[Open] preview service also failed for ' + f.name + ':', e.message);
+    _oeStage(el, `<div class="oe-cant">This one can’t be shown in the page.
+      <button class="oe-alt" onclick="downloadRegDoc('${el.dataset.doc}',event)">Download it ↓</button></div>`);
+  }
+}
+
+async function _oeImgFallback(img, key) {
+  const f = DOCREG[key];
+  if (!f || !img) return;
+  try {
+    const url = await driveThumb(f._driveId, f.id, 'large');
+    if (url) { img.onerror = null; img.src = url; return; }
+  } catch (_) {}
+  const stage = img.closest ? img.closest('.oe-stage') : null;
+  if (stage) await _oePreview(stage, f);
 }

@@ -409,13 +409,76 @@ HUB_CONFIG.libraries = {
     browserGridId: 'pp-documents-grid',
     crumbId: 'pp-crumbs',
     backLabel: 'Back to products',
-    searchPlaceholder: 'Search every certificate and declaration…',
+    searchPlaceholder: 'Search every datasheet, certificate, MSDS and notification…',
     tagsLabel: 'By product',
     catsLabel: 'By document type',
     crawlDepth: 3,
-    maxFiles: 400,
+    maxFiles: 1400,
     recentCount: 6,
     excludeFolders: [],
+
+    // ── THE HOME FOR EVERYTHING ─────────────────────────────
+    //
+    // 1 Sep 2026, second round. David: "I have done the product portal,
+    // you should have more than enough data in the SharePoint to turn
+    // this into the home for everything."
+    //
+    // He was right, and the hub was looking in one place. Two things
+    // were wrong:
+    //
+    // 1. The six Product Change Notifications on the Product Portal
+    //    site are not in its Documents library at all — they are in
+    //    **FormServerTemplates**, a system library, because they were
+    //    dropped onto a page rather than into the library. A normal
+    //    library crawl cannot see them, which is why the portal looked
+    //    like it had none. `allLibraries` fixes that: every library on
+    //    the site gets read, system ones included.
+    //
+    // 2. The current datasheets, the PIF/MSDS toolkits, the launch
+    //    packs and the product training all live on OTHER sites. They
+    //    are now sources here, so the Product Portal page is the one
+    //    place to look.
+    //
+    // Nothing is copied or moved. Each source is read live, under the
+    // signed-in person's own permissions — if they can't open it in
+    // SharePoint they won't see it here either.
+    //
+    // sales.marketing is a big, mixed site with commercial folders on
+    // it (pipeline, budgets, tenders), so it is deliberately read by
+    // NAMED ROOTS only, never from the top. Add a root here to add it
+    // to the portal; there is no wildcard on purpose.
+    sources: [
+      {
+        key: 'portal', label: 'Product Portal',
+        site: 'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal',
+        allLibraries: true, depth: 4, max: 400,
+      },
+      {
+        key: 'media', label: 'Media Portal',
+        site: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
+        library: 'Documents', depth: 5, max: 500,
+        roots: [
+          '01. Fire Extinguishers',
+          '06. Bridgehill Fire Blankets',
+          '07. Alarms',
+          '08. Hose Reels',
+        ],
+      },
+      {
+        key: 'sales', label: 'Sales & Marketing',
+        site: 'https://checkfireltd.sharepoint.com/sites/sales.marketing',
+        library: 'Documents', depth: 3, max: 500,
+        roots: [
+          '04. Product Change Notifications',
+          'Product Documents',
+          'Service Manuals',
+          '01. Marketing/08. PDF PIF, Data Sheets, MSDS Sheets & Toolkits',
+          '01. Marketing/09. Product Launch Packs',
+          '01. Marketing/07. NPD',
+          '01. Marketing/14. Product Training',
+        ],
+      },
+    ],
 
     tags: [
       { key:'co2',     label:'CO₂',           match:'co2|carbon dioxide' },
@@ -429,12 +492,32 @@ HUB_CONFIG.libraries = {
       { key:'hose',    label:'Hose reels',    match:'hose|en ?671|1866' },
     ],
 
+    // With five sources feeding one page, "the top-level folder" is no
+    // longer a useful grouping — the same kind of document sits under a
+    // different folder name on every site. So a category can now be
+    // matched on the FILE PATH AND NAME with `match`, and the first
+    // rule that matches wins. `folder` rules still work and are tried
+    // first, so nothing that used to group correctly stops.
     categories: [
       { folder:'DOCs',                               label:'Declarations of Conformity' },
       { folder:'Kitemark Certificates',              label:'Kitemark certificates' },
       { folder:'Marine Equipment Directive (MED)',   label:'MED' },
       { folder:'Marine Equipment Regulations (MER)', label:'MER' },
       { folder:'NTA 8133',                           label:'NTA 8133' },
+
+      { match:'product change notification|\\bpcn\\b',  label:'Product change notifications' },
+      { match:'declaration of conformity|\\bdoc\\b',    label:'Declarations of Conformity' },
+      { match:'kitemark',                             label:'Kitemark certificates' },
+      { match:'\\bmsds\\b|safety data sheet|\\bsds\\b', label:'MSDS & safety data' },
+      { match:'\\bpif\\b|product information file', label:'PIF' },
+      { match:'data ?sheet',                          label:'Data sheets' },
+      { match:'launch pack',                          label:'Launch packs' },
+      { match:'service manual|instruction|user guide|manual', label:'Manuals & instructions' },
+      { match:'training',                             label:'Product training' },
+      { match:'\\bnpd\\b|new product',              label:'New product development' },
+      { match:'toolkit',                              label:'Toolkits' },
+      { match:'certificat|approval|\\bced\\b|\\ben ?3\\b', label:'Certificates & approvals' },
+      { match:'brochure|flyer|leaflet',               label:'Brochures' },
     ],
   },
 
@@ -510,8 +593,21 @@ HUB_CONFIG.libraries = {
 //    through SharePoint.
 HUB_CONFIG.ember = {
   enabled: true,
-  name: 'Ember',
+  // 1 Sep 2026 — David: "we'd like to change the name to Josh 2.0".
+  // Changing it here changes the launcher, the panel, the placeholder
+  // and the greeting. The Function app also needs redeploying for the
+  // assistant to CALL itself Josh 2.0 in its own answers — the name is
+  // sent with every question as `persona`, and a Function that predates
+  // this simply ignores it.
+  name: 'Josh 2.0',
   tagline: 'CheckFire\u2019s assistant',
+
+  // 1 Sep 2026 — David pointed at the Jotform agent marketing had
+  // already built ("Josh 2.0 · Product Specialist", 35 conversations
+  // going back to June 2025) and asked for the hub's chat to work like
+  // it. The role sits under the name in the panel header, exactly as it
+  // does there: it tells you what to ask before you've typed anything.
+  role: 'Product Specialist',
 
   // The checkfire-ai Function app. Set this and Ember becomes a real
   // conversation. Deploy guide: checkfire-ai-function/DEPLOY.md.
@@ -536,12 +632,41 @@ HUB_CONFIG.ember = {
   ],
 
   // Shown as tap-to-run examples on the empty panel.
+  // The opening taps. The Jotform agent offers two ("Explore products",
+  // "Learn more") — short enough to read at a glance, broad enough to
+  // start anywhere. Follow-ups after that are written by the assistant
+  // for the answer it just gave (see the SUGGEST line in ember.js).
   suggestions: [
-    'Which extinguisher for a commercial kitchen?',
-    'Do we have a Kitemark certificate for fire blankets?',
-    'What changed in the latest powder declaration?',
-    'Where are the brand guidelines?',
+    'Explore our products',
+    'Find a certificate or datasheet',
+    'What\u2019s launching next?',
+    'Draft something for me',
   ],
+
+  // ── Answering like a conversation, not a search box ────────
+  // 1 Sep 2026 — David: "we need to ensure it's working like an
+  // actually AI chat bot. Like talking to you."
+  //
+  // It already had Claude behind it. What made it feel like a search
+  // tool was that EVERY message went through a full SharePoint search
+  // first — five seconds of "looking through SharePoint…" before a
+  // reply to "morning" or "make that shorter". It now only searches
+  // when the question is actually about a document, and streams the
+  // answer a word at a time when the Function app supports it.
+  //
+  // Set skipSearchWhenChatty:false to go back to always searching.
+  skipSearchWhenChatty: true,
+  stream: true,
+
+  // Short. The Jotform agent answers a product question in one line —
+  // "For electrical fires, use a CO2 extinguisher or a dry powder
+  // extinguisher; if you want, I can also help you choose the right one
+  // for home, office, or vehicle use." — and that brevity is most of why
+  // it reads as a conversation. 700 tokens is roughly a long paragraph:
+  // enough for a real answer, not enough to lecture. It lifts by itself
+  // when someone asks for something long (see maxTokensLong).
+  maxTokens: 700,
+  maxTokensLong: 2000,
 };
 
 // ── Training sign-up ──────────────────────────────────────────
@@ -593,27 +718,64 @@ HUB_CONFIG.trainingSignup = {
 // `aliases` keeps it forgiving — "PIFs", "Product Information Files"
 // and "Links to PIF" all match the PIF band.
 HUB_CONFIG.productPortal = {
+  // A band is a VIEW over the one index below it, not a second copy of
+  // the files. It appears when the index actually contains that kind of
+  // document and is absent otherwise — no empty shells.
+  //
+  // `cats` are category labels from HUB_CONFIG.libraries.product
+  // .categories, which are matched on the document's own path and name,
+  // so a band works no matter which site the file came from. `folder`
+  // and `aliases` are the older folder-name route, still honoured for
+  // the two request sheets, which are a folder rather than a kind.
   sections: [
-    { key:'pcn',     folder:'Product Change Notifications',
+    { key:'pcn',     label:'Product change notifications',
+      cats:['Product change notifications'],
+      folder:'Product Change Notifications',
       aliases:['Product Change Notification','PCN','Change Notifications'],
-      label:'Product change notifications',
       desc:'Every notified change to a product, newest first.' },
-    { key:'pif',     folder:'PIF',
-      aliases:['PIFs','Links to PIF','Product Information Files','Product Information File'],
-      label:'Links to PIF',
-      desc:'The product information file for each product.' },
-    { key:'samples', folder:'Sample Requests',
-      aliases:['Sample Request Sheet','Sample Request','Samples'],
-      label:'Sample request sheet',
-      desc:'Request a sample for a customer.' },
-    { key:'npr',     folder:'New Product Requests',
-      aliases:['New Product Request Sheet','New Product Request','NPD Requests'],
-      label:'New product request sheet',
-      desc:'Put a product forward for the range.' },
-    { key:'data',    folder:'Data Sheets and MSDS',
-      aliases:['Datasheets','Data Sheets','MSDS','Datasheets & MSDS','Data Sheets & MSDS','SDS'],
-      label:'Datasheets & MSDS',
+
+    { key:'data',    label:'Datasheets & MSDS',
+      cats:['Data sheets','MSDS & safety data'],
+      folder:'Data Sheets and MSDS',
+      aliases:['Datasheets','Data Sheets','MSDS','SDS'],
       desc:'Technical data sheets and safety data sheets.' },
+
+    { key:'certs',   label:'Certificates & declarations',
+      cats:['Declarations of Conformity','Kitemark certificates','MED','MER',
+            'NTA 8133','Certificates & approvals'],
+      desc:'Conformity, Kitemark, marine and NTA paperwork.' },
+
+    { key:'pif',     label:'Links to PIF',
+      cats:['PIF'],
+      folder:'PIF',
+      aliases:['PIFs','Links to PIF','Product Information Files','Product Information File'],
+      desc:'The product information file for each product.' },
+
+    { key:'manuals', label:'Manuals & instructions',
+      cats:['Manuals & instructions'],
+      desc:'Service manuals, user guides and fitting instructions.' },
+
+    { key:'launch',  label:'Launch packs',
+      cats:['Launch packs'],
+      desc:'Everything that went out with each product launch.' },
+
+    { key:'training',label:'Product training',
+      cats:['Product training'],
+      desc:'Training material for the range.' },
+
+    { key:'npd',     label:'New product development',
+      cats:['New product development'],
+      desc:'What is coming, and what is being worked on.' },
+
+    { key:'samples', label:'Sample request sheet',
+      folder:'Sample Requests',
+      aliases:['Sample Request Sheet','Sample Request','Samples'],
+      desc:'Request a sample for a customer.' },
+
+    { key:'npr',     label:'New product request sheet',
+      folder:'New Product Requests',
+      aliases:['New Product Request Sheet','New Product Request','NPD Requests'],
+      desc:'Put a product forward for the range.' },
   ],
 
   // Launch countdown and "dates to look out for", from the same

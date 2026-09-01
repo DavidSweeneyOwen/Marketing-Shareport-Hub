@@ -924,6 +924,11 @@
       transition:border-color .15s,color .15s;
     }
     .ember-chip:hover{border-color:var(--px-red);color:var(--px-red)}
+    /* Follow-ups under an answer — the tap-to-ask options the Jotform
+       agent offers with every message. Left-aligned under the bubble,
+       not centred like the opening set. */
+    .ember-next{display:flex;flex-wrap:wrap;gap:6px;margin:11px 0 2px}
+    .ember-next .ember-chip{font-size:11.5px;padding:6px 11px}
     .ember-mode{
       font-size:11.5px;line-height:1.55;color:#9A938A;
       border-top:1px solid var(--line-2);padding-top:14px;
@@ -989,6 +994,14 @@
     .ember-ul li{margin-bottom:5px;line-height:1.5}
     .ember-ul li:last-child{margin-bottom:0}
     .ember-status{font-size:11.5px;color:#9A938A;margin-left:9px}
+    /* The cursor that trails a streaming answer. 1 Sep 2026 — an
+       answer that appears a word at a time is most of what makes this
+       read as a conversation rather than a lookup. */
+    .ember-caret{
+      display:inline-block;width:2px;height:1em;margin-left:2px;vertical-align:-2px;
+      background:#D1242B;animation:ember-blink 1s steps(2,start) infinite;
+    }
+    @keyframes ember-blink{to{visibility:hidden}}
     .ember-dots{display:inline-flex;gap:4px;padding:2px 0}
     .ember-dots i{
       width:6px;height:6px;border-radius:50%;background:#C9C2B8;
@@ -1398,6 +1411,107 @@
       margin-top:8px;font-size:11.5px;font-weight:700;letter-spacing:.01em;color:#D1242B;
     }
     .upd-item.is-link:hover .upd-go{text-decoration:underline}
+
+    /* ══ OPEN EVERYTHING (1 Sep 2026, round 2) ═════════════════
+       Campaigns, launches and event packs put the documents themselves
+       on the page instead of folders to click. Documents get the full
+       width; pictures sit side by side. */
+    .oe-boot{padding:8px 0 24px}
+    .oe-empty{
+      font-size:14px;line-height:1.6;color:#8B8378;background:#F7F5F2;
+      border:1px dashed #E2DFDA;border-radius:12px;padding:20px 22px;margin:0;
+    }
+    .oe-jump{
+      display:flex;flex-wrap:wrap;gap:7px;padding:0 0 22px;margin:0 0 6px;
+      border-bottom:1px solid #EDEAE5;
+    }
+    .oe-jump a{
+      display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+      color:#3D3831;background:#fff;border:1px solid #E2DFDA;border-radius:99px;
+      padding:7px 13px;text-decoration:none;transition:border-color .15s,color .15s;
+    }
+    .oe-jump a:hover{border-color:#1A1713;color:#D1242B}
+    .oe-jump a b{font-size:11px;font-weight:800;color:#9A938A}
+
+    .oe-sec{padding:26px 0 4px}
+    .oe-sec-head{
+      display:flex;align-items:baseline;gap:10px;margin:0 0 14px;
+      font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;color:#1A1713;
+    }
+    .oe-sec-head span{
+      font-family:inherit;font-size:11px;font-weight:800;letter-spacing:.1em;
+      color:#9A938A;font-variant-numeric:tabular-nums;
+    }
+    /* align-items:start matters more than it looks: grid rows stretch
+       by default, so one tall card in a row left every picture beside
+       it sitting in a column of white. */
+    .oe-grid{
+      display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+      gap:16px;align-items:start;
+    }
+    /* Anything you READ gets the whole width. Anything you LOOK at can
+       share a row — artwork gets two columns of it, because a banner
+       shown 280px wide is a thumbnail, not the artwork. */
+    .oe-item.oe-pdf,.oe-item.oe-office,.oe-item.oe-text,.oe-item.oe-video{grid-column:1 / -1}
+    .oe-item.oe-image{grid-column:span 2}
+    @media(max-width:900px){.oe-item.oe-image{grid-column:1 / -1}}
+
+    .oe-item{
+      background:#fff;border:1px solid #E7E4DF;border-radius:13px;overflow:hidden;
+      display:flex;flex-direction:column;min-width:0;
+    }
+    .oe-bar{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;
+      border-bottom:1px solid #F0EEEA;background:#FCFBFA;
+    }
+    .oe-ext{
+      flex:0 0 auto;font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#8B8378;
+      background:#F2EFEA;border-radius:5px;padding:3px 6px;
+    }
+    .oe-name{
+      flex:1 1 auto;min-width:0;font-size:13px;font-weight:700;color:#1A1713;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .oe-meta{flex:0 0 auto;font-size:11px;color:#9A938A;white-space:nowrap}
+    @media(max-width:560px){.oe-meta{display:none}}
+    .oe-acts{flex:0 0 auto;display:flex;gap:2px}
+    .oe-act{
+      background:none;border:none;color:#9A938A;cursor:pointer;padding:5px;
+      line-height:0;border-radius:7px;transition:color .15s,background .15s;
+    }
+    .oe-act:hover{color:#D1242B;background:#F5F3F0}
+
+    .oe-stage{position:relative;background:#FBFAF9;min-height:56px}
+    .oe-wait{display:flex;align-items:center;justify-content:center;padding:26px 0}
+    .oe-img{display:block;width:100%;height:auto;background:#F2EFEA}
+    .oe-video{display:block;width:100%;max-height:70vh;background:#0A0A0A}
+    .oe-audio{display:block;width:100%;padding:14px}
+    .oe-frame{display:block;width:100%;height:640px;border:0;background:#fff}
+    @media(max-width:700px){.oe-frame{height:460px}}
+    .oe-text{
+      margin:0;padding:16px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;
+      word-break:break-word;max-height:520px;overflow:auto;color:#3D3831;
+    }
+    .oe-link{display:block;padding:16px;font-size:13px;color:#0078D4;word-break:break-all}
+    .oe-cant{
+      display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+      padding:16px;font-size:13px;color:#8B8378;
+    }
+    .oe-alt{
+      font:inherit;font-size:12.5px;font-weight:700;color:#1A1713;background:#fff;
+      border:1px solid #E2DFDA;border-radius:99px;padding:7px 14px;cursor:pointer;
+    }
+    .oe-alt:hover{border-color:#1A1713;color:#D1242B}
+
+    /* ── A file row that opens where it is ──────────────────── */
+    .lib-row{border-radius:11px}
+    .lib-row.open{background:#FBFAF9;box-shadow:0 0 0 1px #E7E4DF}
+    .lib-row.open .lib-file{border-bottom:1px solid #EDEAE5}
+    .lib-open:empty{display:none}
+    .lib-open .oe-stage{border-radius:0 0 11px 11px;overflow:hidden}
+
+    /* The band you are looking at stays lit. */
+    .pp-sec.active{border-color:#1A1713;box-shadow:0 0 0 1px #1A1713}
 
     /* ── Resources: back to a plain list ───────────────────── */
     .lib-simple-head{
@@ -1875,10 +1989,10 @@
       <div class="ph-head">
         <div>
           <h1 class="ph-title">Product portal</h1>
-          <p class="ph-sub">Find data sheets, certifications, and regulations for our products here.</p>
+          <p class="ph-sub">Every datasheet, certificate, change notification, MSDS, PIF, launch pack and training file we have — read straight from the Product Portal, the Media Portal and Sales &amp; Marketing, in one place.</p>
         </div>
         <div class="ph-actions">
-          <button class="btn primary" id="pp-browse-btn" onclick="togglePortalBrowse(this)">Browse folders</button>
+          <button class="btn primary" id="pp-browse-btn" onclick="togglePortalBrowse(this)">Browse the folders</button>
         </div>
       </div>
     </div>
@@ -2004,32 +2118,38 @@
      Built by renderNewsTicker() in graph.js. ══ -->
 <div class="upd-dock" id="updates-dock" style="display:none"></div>
 
-<!-- ══ EMBER — the assistant panel. See ember.js. ══ -->
+<!-- ══ JOSH 2.0 — the assistant panel. See ember.js. ══
+     Renamed from Ember on 1 Sep 2026 at marketing's request. The class
+     names are still ember-* on purpose: renaming a hundred selectors
+     across two files buys nothing and breaks the CSS if one is missed.
+     Everything a person can read says Josh 2.0, and the name itself
+     comes from HUB_CONFIG.ember.name so it can change again in one
+     place. -->
 <div class="ember-dock" id="ember-dock">
-  <button class="ember-launch" onclick="toggleEmber()" aria-label="Ask Ember">
+  <button class="ember-launch" onclick="toggleEmber()" aria-label="Ask Josh 2.0">
     <span class="ember-flame">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
         <path d="M12 2s5 4.5 5 9a5 5 0 0 1-10 0c0-1.6.6-3.1 1.4-4.3"/>
         <path d="M12 22a4 4 0 0 0 4-4c0-2-2-3.5-4-6-2 2.5-4 4-4 6a4 4 0 0 0 4 4z"/>
       </svg>
     </span>
-    <span class="ember-launch-label">Ask Ember</span>
+    <span class="ember-launch-label" id="ember-launch-label">Ask Josh</span>
   </button>
 
-  <section class="ember-panel" role="dialog" aria-label="Ember">
+  <section class="ember-panel" role="dialog" aria-label="Josh 2.0">
     <header class="ember-head">
       <div class="ember-id">
-        <span class="ember-av lg">E</span>
+        <span class="ember-av lg" id="ember-av">J</span>
         <div>
-          <div class="ember-name">Ember</div>
-          <div class="ember-tag">CheckFire’s assistant</div>
+          <div class="ember-name" id="ember-name">Josh 2.0</div>
+          <div class="ember-tag" id="ember-tagline">CheckFire’s assistant</div>
         </div>
       </div>
       <div class="ember-head-acts">
         <button class="ember-x" onclick="emberClear()" title="Start again" aria-label="Start again">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
         </button>
-        <button class="ember-x" onclick="toggleEmber(false)" title="Close" aria-label="Close Ember">
+        <button class="ember-x" onclick="toggleEmber(false)" title="Close" aria-label="Close the assistant">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -2039,7 +2159,7 @@
 
     <form class="ember-form" id="ember-form" onsubmit="return emberSubmit(event)">
       <input class="ember-input" id="ember-input" type="text" autocomplete="off"
-             placeholder="Ask Ember to find something…">
+             placeholder="Ask Josh anything…">
       <button class="ember-send" type="submit" aria-label="Ask">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
@@ -2059,15 +2179,15 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=15"></script>
+<script src="config.js?v=16"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=16"></script>
+<script src="graph.js?v=17"></script>
 <script src="app.js?v=18"></script>
 <script src="jotform.js?v=13"></script>
-<script src="ember.js?v=4"></script>
+<script src="ember.js?v=5"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
