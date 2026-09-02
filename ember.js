@@ -260,9 +260,12 @@ async function _emberSearch(term, perSite) {
       const data = await graphFetch(
         `/drives/${id}/root/search(q='${encodeURIComponent(clean)}')` +
         `?$select=id,name,size,webUrl,lastModifiedDateTime,file,folder&$top=${perSite || 8}`);
+      // 1 Sep 2026 — FOLDERS come back too now. "What other Contempo is
+      // there in the range?" is answered by the folder names in the
+      // Media Portal ("Contempo Fire Extinguishers ▸ CO2 ▸ Datasheets"),
+      // not by any one document. They are never read, only named.
       return (data.value || [])
-        .filter(f => !f.folder)
-        .map(f => Object.assign({}, f, { _driveId: id, _site: s.label }));
+        .map(f => Object.assign({}, f, { _driveId: id, _site: s.label, _isFolder: !!f.folder }));
     } catch (_) {
       return [];
     }
@@ -341,10 +344,36 @@ async function _emberHubContext() {
 // go straight to Claude with the hub summary and come back at once. The
 // summary of launches, campaigns and training is sent either way — it
 // is already in the cache and costs nothing.
-const EMBER_CHATTY = /^(hi|hey|hello|morning|afternoon|evening|thanks|thank you|cheers|ta|ok|okay|great|perfect|nice|yes|no|please do|go on)\b/i;
+// 1 Sep 2026 — this used to match on the OPENING WORD, and it cost a
+// real answer. David asked "ok what about our contempo range" and got
+// nothing looked up, because the message starts with "ok". A pleasantry
+// is a WHOLE short message, not a word someone happens to begin with —
+// so the whole thing has to be one, end to end.
+const EMBER_CHATTY_WORDS = 'hi|hey|hello|morning|good morning|afternoon|evening|thanks|thank you|cheers|ta|ok|okay|great|perfect|nice|lovely|yes|no|yep|nope|please do|go on|got it|understood|brilliant|spot on';
+const EMBER_CHATTY = new RegExp('^(' + EMBER_CHATTY_WORDS + ')[\\s!.,]*$', 'i');
+// "Thanks, that's great" opens with a pleasantry and asks nothing. It is
+// still small talk. But only when it is SHORT and has no question in it —
+// and only after the product and document check below has had its say,
+// which is what stops "ok what about our contempo range" being thrown
+// away for its first word.
+const EMBER_CHATTY_OPENER = new RegExp('^(' + EMBER_CHATTY_WORDS + ')\\b', 'i');
 const EMBER_FOLLOWUP = /^(make it|make that|shorter|longer|again|do it again|rewrite|reword|try again|expand|more like|less|and |also |what about|explain that|why\b|how so|really\?|carry on|continue)/i;
 const EMBER_WRITING = /\b(write|draft|rewrite|reword|shorten|tighten|summarise|summarize|caption|subject line|headline|strapline|post|tweet|idea|ideas|brainstorm|suggest|tone)\b/i;
 const EMBER_DOCWORD = /\b(datasheet|data sheet|certificate|certification|declaration|conformity|msds|sds|pif|kitemark|med\b|mer\b|nta|manual|instruction|document|spec|specification|pdf|policy|guideline|brochure|price|part number|code)\b/i;
+
+// The other half of the same lesson. "What other Contempo is there in
+// the range?" has no document word in it and is entirely a question
+// about our documents — the answer is in the datasheet filenames. Our
+// own product names and the words people use around a range always
+// search, whatever else the sentence looks like.
+const EMBER_PRODUCTWORD = new RegExp('\\b(' + [
+  'commander', 'commanderedge', 'contempo', 'bridgehill', 'lfx', 'pipo',
+  'extinguisher', 'blanket', 'hose ?reel', 'alarm', 'stand', 'signage',
+  'co2', 'carbon dioxide', 'powder', 'foam', 'water', 'water mist', 'w3e',
+  'wet ?chem\\w*', 'aff?ff', 'f3', 'lithium', 'marine',
+  'range', 'variant', 'model', 'size', 'litre', 'ltr', 'kg\\b',
+  'fx-[a-z0-9-]+', 'cs\\d+',
+].join('|') + ')\\b', 'i');
 
 // Answers are short by default. They stop being short when someone asks
 // for something that is genuinely long — a draft, a list, a full
@@ -363,9 +392,12 @@ function _emberNeedsDocs(q) {
   if (_emberCfg().skipSearchWhenChatty === false) return true;
   const t = String(q || '').trim();
   if (!t) return false;
-  if (EMBER_DOCWORD.test(t)) return true;          // always search for these
-  if (t.length < 14) return false;                 // "hi", "thanks", "go on"
-  if (EMBER_CHATTY.test(t)) return false;
+  if (EMBER_CHATTY.test(t)) return false;          // the whole message is "thanks"
+  // Anything about a document or one of our products is looked up, full
+  // stop — before any of the shortcuts below get a say.
+  if (EMBER_DOCWORD.test(t) || EMBER_PRODUCTWORD.test(t)) return true;
+  if (EMBER_CHATTY_OPENER.test(t) && t.length < 40 && t.indexOf('?') < 0) return false;
+  if (t.length < 14) return false;                 // "go on", "and?"
   if (EMBER.turns.length > 1 && EMBER_FOLLOWUP.test(t)) return false;
   if (EMBER_WRITING.test(t)) return false;         // a writing job, not a lookup
   return true;
@@ -460,8 +492,9 @@ async function _emberClaude(question) {
     _emberStatus('looking through SharePoint…');
     found = await _emberFind(question);
 
-    // Only documents worth reading — no images or videos.
-    const readable = found.filter(f => EMBER_READABLE.test(f.name || '')).slice(0, cfg.maxDocs || 8);
+    // Only documents worth reading — no folders, images or videos.
+    const readable = found.filter(f => !f._isFolder && EMBER_READABLE.test(f.name || ''))
+                          .slice(0, cfg.maxDocs || 8);
     _emberStatus(readable.length ? `reading ${readable.length} document${readable.length === 1 ? '' : 's'}…` : 'thinking…');
 
     // A downloadUrl is short-lived and pre-authenticated: it is a link to
@@ -481,7 +514,8 @@ async function _emberClaude(question) {
   }
 
   const hubContext = await _emberHubContext();
-  EMBER.lastDocs = found.slice(0, 12);
+  // Source cards are for documents you can open, so folders stay out.
+  EMBER.lastDocs = found.filter(f => !f._isFolder).slice(0, 12);
 
   _emberStatus('thinking…');
 
@@ -506,7 +540,10 @@ async function _emberClaude(question) {
       messages: EMBER.turns.slice(-12),
       docs,
       context: hubContext,
-      fileList: found.slice(0, 20).map(f => ({ name: f.name, site: f._site })),
+      // Names only, files and folders both — this is what lets it answer
+      // "what else is in the range" instead of "I only have one listed".
+      fileList: found.slice(0, 24).map(f => ({
+        name: f.name + (f._isFolder ? ' (folder)' : ''), site: f._site })),
       maxCharsPerDoc: cfg.maxCharsPerDoc || 6000,
       // Ignored by a Function app that predates 1 Sep 2026, which is
       // why the hub still works against the old one — it just answers

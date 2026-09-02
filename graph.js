@@ -203,8 +203,13 @@ async function fetchDriveChildren(driveId, itemId) {
   const base = itemId
     ? `/drives/${driveId}/items/${itemId}/children`
     : `/drives/${driveId}/root/children`;
+  // 1 Sep 2026 — @microsoft.graph.downloadUrl is asked for HERE, with the
+  // listing. It used to be fetched one file at a time when a picture came
+  // into view, which is a Graph round trip per image: a campaign folder
+  // with twenty pictures paid twenty of them before anything appeared.
+  // Now the listing already has them and the page paints straight away.
   const data = await graphFetch(
-    `${base}?$select=id,name,size,lastModifiedDateTime,webUrl,file,folder&$top=200`
+    `${base}?$select=id,name,size,lastModifiedDateTime,webUrl,file,folder,@microsoft.graph.downloadUrl&$top=200`
   );
   return (data.value || []).map(f => ({ ...f, _driveId: driveId }));
 }
@@ -917,6 +922,9 @@ function _rdrExt(name) {
 // Graph's downloadUrl is PRE-AUTHENTICATED and short-lived: fetching it
 // needs no Authorization header, which also means no CORS preflight.
 async function _rdrDownloadUrl(f) {
+  // Already have it from the folder listing? Use it. (These expire within
+  // the hour, which is far longer than anyone keeps a page open.)
+  if (f && f['@microsoft.graph.downloadUrl']) return f['@microsoft.graph.downloadUrl'];
   const meta = await graphFetch(
     `/drives/${f._driveId}/items/${f.id}?$select=id,name,size,@microsoft.graph.downloadUrl`);
   return (meta && meta['@microsoft.graph.downloadUrl']) || '';
@@ -1804,12 +1812,33 @@ let _updOpen  = false;
 // two things show; untick them and the dock is gone. Nothing ticked and
 // the corner is empty, which is the true answer to "is anything
 // urgent?" rather than eight things pretending to be.
+function _updCol() {
+  return (HUB_CONFIG.updates && HUB_CONFIG.updates.column) || 'Pinned';
+}
+
 function _updPinned(f) {
-  const col = (HUB_CONFIG.updates && HUB_CONFIG.updates.column) || 'Pinned';
-  const v = f[col];
+  const v = f[_updCol()];
   if (v === true) return true;
   if (typeof v === 'string') return /^(1|true|yes|y)$/i.test(v.trim());
   return v === 1;
+}
+
+// 1 Sep 2026 — David: "our breaking news box has disappeared."
+//
+// It had. Deck 5 changed the dock to show only rows with the Yes/No
+// column ticked, and the column has not been added yet, so nothing was
+// ever ticked and the dock hid itself exactly as designed. Designed
+// wrong: "nobody has set this up" and "nothing is urgent today" look
+// identical to the code and are completely different to the person
+// looking at the page.
+//
+// So the two cases are told apart. If not one row even HAS the column,
+// it doesn't exist — the hub carries on showing the newest few, as it
+// did before. Once the column is there and someone has ticked nothing,
+// that is a decision, and the corner stays empty.
+function _updColumnExists(items) {
+  const col = _updCol();
+  return (items || []).some(f => typeof f[col] !== 'undefined' && f[col] !== null);
 }
 
 function renderNewsTicker(launches, campaigns) {
@@ -1847,17 +1876,17 @@ function renderNewsTicker(launches, campaigns) {
     });
   });
 
+  const haveColumn = _updColumnExists([].concat(launches || [], campaigns || []));
   const pinned = items.filter(i => i.pinned);
   let shortlist = pinned;
+
   if (!pinned.length) {
-    // Nothing ticked. Either the column hasn't been added yet, or there
-    // genuinely is nothing urgent — requirePinned decides which the hub
-    // assumes. Default: say nothing.
-    if (cfg.requirePinned === false) {
+    if (!haveColumn || cfg.requirePinned === false) {
       shortlist = items;
-      console.info('[Updates] nothing pinned — falling back to the newest few.');
+      console.info(`[Updates] no "${_updCol()}" column on the lists yet — showing the newest few. `
+        + `Add a Yes/No column called "${_updCol()}" to Product Launches and Campaigns to choose what appears here.`);
     } else {
-      console.info(`[Updates] nothing has "${cfg.column || 'Pinned'}" ticked, so the dock stays hidden.`);
+      console.info(`[Updates] the "${_updCol()}" column exists and nothing is ticked, so the dock stays hidden.`);
       dock.style.display = 'none';
       return;
     }
@@ -4299,10 +4328,21 @@ const OE_OFFICE = /\.(docx?|pptx?|xlsx?|xlsm|potx|dotx)$/i;
 const OE_TEXT   = /\.(txt|md|csv|tsv|json|xml|log)$/i;
 const OE_LINK   = /\.url$/i;
 
-// Anything bigger goes through Microsoft's preview service instead of
-// being pulled into memory as a blob. Twelve of these on one page is
-// the difference between a quick scroll and a stalled tab.
-const OE_BLOB_MAX = 8 * 1024 * 1024;
+// 1 Sep 2026 — David: "it seems to take a while to render then some
+// things are missing."
+//
+// The blob route downloads the WHOLE file before a single pixel appears.
+// That is right for the full-screen reader, where you asked for one
+// document. It is wrong for a page showing ten of them: ten downloads
+// start at once, the tab stalls, and whatever loses the race looks
+// missing.
+//
+// So inline, only genuinely small PDFs are fetched as blobs (crisper,
+// and quick enough not to notice). Everything else goes through
+// Microsoft's preview service, which is one small call and then an
+// iframe that paints progressively. The reader still uses the blob for
+// everything, unchanged.
+const OE_BLOB_MAX  = 1.5 * 1024 * 1024;
 
 function _oeReset() {
   OPEN.blobs.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
@@ -4461,7 +4501,7 @@ function _oeObserve(host) {
       io.unobserve(e.target);
       _oeFill(e.target);
     });
-  }, { rootMargin: '900px 0px' });
+  }, { rootMargin: '600px 0px' });
   stages.forEach(s => OPEN.io.observe(s));
 }
 
@@ -4496,14 +4536,7 @@ async function _oeFill(el) {
       _oeStage(el, `<audio class="oe-audio" src="${escAttr(url)}" controls preload="metadata"></audio>`);
 
     } else if (kind === 'link') {
-      // A .url shortcut is a two-line ini file. Read it and show where
-      // it goes, rather than offering a download nobody wants.
-      const text = await (await _rdrBlob(f, false)).text();
-      const m = text.match(/URL\s*=\s*(\S+)/i);
-      const href = m ? safeUrl(m[1], '') : '';
-      _oeStage(el, href
-        ? `<a class="oe-link" href="${escAttr(href)}" target="_blank" rel="noopener">${escHtml(href)}</a>`
-        : '<div class="oe-cant">This shortcut has no address in it.</div>');
+      await _oeLink(el, f);
 
     } else if (kind === 'text') {
       const text = await (await _rdrBlob(f, false)).text();
@@ -4521,17 +4554,11 @@ async function _oeFill(el) {
       }
 
     } else if (kind === 'office') {
-      // Graph converts Office to PDF, which reads far better inline than
-      // the Office web viewer's own chrome. Big decks fall back.
-      if (Number(f.size) > OE_BLOB_MAX) { await _oePreview(el, f); return; }
-      try {
-        const url = URL.createObjectURL(await _rdrBlob(f, true));
-        OPEN.blobs.push(url);
-        _oeStage(el, `<iframe class="oe-frame" src="${escAttr(url)}#view=FitH" title="${escAttr(f.name)}" loading="lazy"></iframe>`);
-      } catch (e) {
-        console.info('[Open] Office→PDF failed for ' + f.name + ' (' + e.message + ') — using the preview service.');
-        await _oePreview(el, f);
-      }
+      // Word, PowerPoint and Excel go straight to the preview service
+      // inline. Converting them to PDF through Graph means downloading
+      // the whole file first, and a 40 MB launch deck holds up
+      // everything under it on the page.
+      await _oePreview(el, f);
 
     } else {
       bail('This file type can’t be shown in the page.');
@@ -4540,6 +4567,71 @@ async function _oeFill(el) {
     console.info('[Open] could not open ' + f.name + ':', e.message);
     await _oePreview(el, f);
   }
+}
+
+// A .url shortcut is a two-line ini file — "[InternetShortcut]" and
+// "URL=https://…". Three of the Commander Fire Blankets folders (Data
+// Sheets, Blog post, Website Pages) hold nothing else, which is why
+// they came out as "this file doesn't have a preview we can show you":
+// the shortcut was being handed to Microsoft's document previewer,
+// which has nothing to preview.
+//
+// 1 Sep 2026 — and reading it was failing too. The first attempt used
+// the pre-authenticated downloadUrl, which is a cross-origin fetch whose
+// CORS headers vary by tenant (the same thing that bit the reader in
+// August). The Graph /content endpoint with an Authorization header is
+// CORS-clean by design, so that goes first now, with the old route as a
+// fallback. A shortcut that still can't be read is shown as a link to
+// SharePoint rather than a broken preview.
+async function _oeLinkTarget(f) {
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(`${GRAPH_BASE}/drives/${f._driveId}/items/${f.id}/content`,
+      { headers: { Authorization: 'Bearer ' + token } });
+    if (res.ok) {
+      const m = (await res.text()).match(/^\s*URL\s*=\s*(\S+)/im);
+      if (m) return m[1];
+    }
+  } catch (e) { console.info('[Open] shortcut via Graph failed for ' + f.name + ':', e.message); }
+  try {
+    const m = (await (await _rdrBlob(f, false)).text()).match(/^\s*URL\s*=\s*(\S+)/im);
+    if (m) return m[1];
+  } catch (e) { console.info('[Open] shortcut via downloadUrl failed for ' + f.name + ':', e.message); }
+  return '';
+}
+
+async function _oeLink(el, f) {
+  const raw  = await _oeLinkTarget(f);
+  const href = raw ? safeUrl(raw, '') : '';
+  const name = String(f.name).replace(/\.url$/i, '');
+
+  if (!href) {
+    _oeStage(el, `<div class="oe-cant">This is a shortcut, and its address couldn’t be read.
+      <a class="oe-alt" href="${escAttr(safeUrl(f.webUrl, '#'))}" target="_blank" rel="noopener">Open it in SharePoint →</a></div>`);
+    return;
+  }
+
+  // The file's own name is already in the bar above, so the card shows
+  // where the shortcut GOES — which is the thing you actually want to
+  // know before clicking it.
+  let host = href, path = '';
+  try {
+    const u = new URL(href);
+    host = u.hostname.replace(/^www\./, '');
+    path = decodeURIComponent(u.pathname).replace(/\/$/, '');
+  } catch (_) {}
+
+  _oeStage(el, `
+    <a class="oe-shortcut" href="${escAttr(href)}" target="_blank" rel="noopener" title="${escAttr(name)}">
+      <span class="oe-shortcut-ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      </span>
+      <span class="oe-shortcut-main">
+        <span class="oe-shortcut-name">${escHtml(host)}</span>
+        <span class="oe-shortcut-host">${escHtml(path || href)}</span>
+      </span>
+      <span class="oe-shortcut-go">Open →</span>
+    </a>`);
 }
 
 async function _oePreview(el, f) {
@@ -4564,4 +4656,182 @@ async function _oeImgFallback(img, key) {
   } catch (_) {}
   const stage = img.closest ? img.closest('.oe-stage') : null;
   if (stage) await _oePreview(stage, f);
+}
+
+// ══════════════════════════════════════════════════════════════
+// NAV MENUS
+// ══════════════════════════════════════════════════════════════
+//
+// 1 Sep 2026 — David: "I'd like that when you hover over the tabs at the
+// top for it to show a breakdown so you can click directly in to them."
+//
+// Each panel is filled the FIRST time you hover it and then kept, and
+// everything it needs is already in the five-minute list cache by the
+// time anyone gets there — so hovering costs nothing on the second look
+// and very little on the first. Clicking a row doesn't just open the
+// page: it opens the thing itself.
+
+const NAVM = {};          // key → true once filled
+
+function _navHtml(head, rows, all) {
+  if (!rows.length) {
+    return `<div class="inh-menu-head">${escHtml(head)}</div>
+      <p class="inh-menu-empty">Nothing here yet.</p>
+      ${all || ''}`;
+  }
+  return `<div class="inh-menu-head">${escHtml(head)}</div>${rows.join('')}${all || ''}`;
+}
+
+function _navRow(label, onclick, tone, note) {
+  return `<button class="inh-menu-item" onclick="${onclick}">
+    ${tone ? `<span class="inh-menu-dot ${escAttr(tone)}"></span>` : ''}
+    <span class="inh-menu-item-label">${escHtml(label)}</span>
+    ${note ? `<span class="inh-menu-n">${escHtml(note)}</span>` : ''}
+  </button>`;
+}
+
+function _navAll(label, onclick) {
+  return `<button class="inh-menu-all" onclick="${onclick}">${escHtml(label)} →</button>`;
+}
+
+function _navArg(s) {
+  return `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+}
+
+async function navMenuOpen(key) {
+  const box = document.getElementById('navm-' + key);
+  if (!box || NAVM[key]) return;
+  NAVM[key] = true;
+  box.innerHTML = '<p class="inh-menu-empty">Loading…</p>';
+
+  try {
+    if (key === 'launches' || key === 'campaigns') {
+      const isLaunch = key === 'launches';
+      const items = await fetchListItems(isLaunch ? HUB_CONFIG.lists.launches : HUB_CONFIG.lists.campaigns);
+      const rows = (items || [])
+        .filter(f => f.Title)
+        .sort((a, b) => String(b.LaunchDate || b.StartDate || '').localeCompare(String(a.LaunchDate || a.StartDate || '')))
+        .slice(0, 8)
+        .map(f => _navRow(f.Title,
+          `navGo('${isLaunch ? 'launch' : 'campaign'}',${_navArg(f.Title)})`,
+          ragOf(f.Status),
+          f.Status || ''));
+      box.innerHTML = _navHtml(isLaunch ? 'Product launches' : 'Campaigns', rows,
+        _navAll(isLaunch ? 'See all launches' : 'See all campaigns',
+                `navGo('page','${isLaunch ? 'launches' : 'campaigns'}')`));
+      return;
+    }
+
+    if (key === 'trade') {
+      const cats = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.categories) || [];
+      const rows = cats.map(c => _navRow(c.label, `navGo('evcat',${_navArg(c.label)})`))
+        .concat([_navRow('Training & sessions', "navGo('evcat','__training')")]);
+      box.innerHTML = _navHtml('Trade, events & training', rows,
+        _navAll('Open the page', "navGo('page','trade')"));
+      return;
+    }
+
+    if (key === 'training') {
+      // The folders as they are in SharePoint — the same ones the page
+      // groups by, so what you pick here is what you land on.
+      let names = [];
+      if (LIB.resources && LIB.resources.loaded) {
+        names = [...new Set(LIB.resources.files.map(f => f._cat).filter(Boolean))].sort();
+      } else {
+        const cfg   = _libCfg('resources');
+        const drive = await resolveDrive(HUB_CONFIG.sharepointSite, cfg.library || HUB_CONFIG.documentsLibrary);
+        const skip  = (cfg.excludeFolders || []).map(x => String(x).toLowerCase());
+        names = (await fetchDriveChildren(drive.id, null))
+          .filter(k => k.folder && skip.indexOf(String(k.name).toLowerCase()) < 0)
+          .map(k => k.name).sort();
+      }
+      const rows = names.slice(0, 10).map(nm => _navRow(nm, `navGo('lib',${_navArg(nm)})`));
+      box.innerHTML = _navHtml('Resources', rows, _navAll('Open Resources', "navGo('page','training')"));
+      return;
+    }
+
+    if (key === 'portal') {
+      const secs = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.sections) || [];
+      const rows = secs.map(sec => _navRow(sec.label, `navGo('ppband',${_navArg(sec.key)})`));
+      box.innerHTML = _navHtml('Product portal', rows,
+        _navAll('Open the Product portal', "navGo('page','portal')"));
+      return;
+    }
+  } catch (e) {
+    console.info('[Nav] could not build the "' + key + '" menu:', e.message);
+    NAVM[key] = false;      // let the next hover try again
+    box.innerHTML = '<p class="inh-menu-empty">Couldn’t load this just now.</p>';
+  }
+}
+
+// Close the panel the pointer is in, so a click doesn't leave it hanging
+// over the page it just opened.
+function _navClose() {
+  document.querySelectorAll('.inh-nav-item').forEach(el => {
+    el.classList.add('nav-shut');
+    setTimeout(() => el.classList.remove('nav-shut'), 400);
+  });
+}
+
+async function navGo(kind, arg) {
+  _navClose();
+
+  if (kind === 'page') {
+    if (arg === 'portal') { if (typeof openProductPortal === 'function') openProductPortal(); return; }
+    const idx = { home: 0, launches: 1, campaigns: 2, trade: 3, training: 4 }[arg];
+    if (typeof showPage === 'function') showPage(arg, idx);
+    return;
+  }
+
+  if (kind === 'launch' || kind === 'campaign') {
+    if (typeof srchOpenItem === 'function') await srchOpenItem(kind, arg);
+    return;
+  }
+
+  if (kind === 'evcat') {
+    if (typeof showPage === 'function') await showPage('trade', 3);
+    setTimeout(() => {
+      if (arg === '__training') {
+        const band = document.getElementById('ev-training');
+        if (band) band.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      const hit = [...document.querySelectorAll('#ev-index .ev-sec')]
+        .find(sec => {
+          const t = sec.querySelector('.ev-sec-title');
+          return t && t.textContent.trim() === String(arg).trim();
+        });
+      if (hit) hit.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+    return;
+  }
+
+  if (kind === 'lib') {
+    if (typeof showPage === 'function') await showPage('training', 4);
+    setTimeout(() => {
+      const s = LIB.resources;
+      if (!s || !s.loaded) return;
+      s.tag = 'all'; s.q = ''; s.cat = arg;
+      renderLibraryResults('resources');
+      const box = document.getElementById('lib-results-resources');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 500);
+    return;
+  }
+
+  if (kind === 'ppband') {
+    if (typeof openProductPortal === 'function') await openProductPortal();
+    ppOpenSectionByKey(arg);
+    return;
+  }
+}
+
+// Open a Product Portal band by its config key rather than its position,
+// because the positions depend on which bands exist today.
+function ppOpenSectionByKey(key) {
+  const i = (PP_BANDS || []).findIndex(b => b.sec && b.sec.key === key);
+  if (i >= 0) { ppOpenSection(i); return; }
+  console.info('[Nav] no "' + key + '" band on the portal yet — opening the page instead.');
+  const idx = document.getElementById('pp-index');
+  if (idx) idx.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

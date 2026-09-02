@@ -1453,8 +1453,8 @@
        share a row — artwork gets two columns of it, because a banner
        shown 280px wide is a thumbnail, not the artwork. */
     .oe-item.oe-pdf,.oe-item.oe-office,.oe-item.oe-text,.oe-item.oe-video{grid-column:1 / -1}
-    .oe-item.oe-image{grid-column:span 2}
-    @media(max-width:900px){.oe-item.oe-image{grid-column:1 / -1}}
+    .oe-item.oe-image,.oe-item.oe-link{grid-column:span 2}
+    @media(max-width:900px){.oe-item.oe-image,.oe-item.oe-link{grid-column:1 / -1}}
 
     .oe-item{
       background:#fff;border:1px solid #E7E4DF;border-radius:13px;overflow:hidden;
@@ -1472,8 +1472,12 @@
       flex:1 1 auto;min-width:0;font-size:13px;font-weight:700;color:#1A1713;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     }
-    .oe-meta{flex:0 0 auto;font-size:11px;color:#9A938A;white-space:nowrap}
+    .oe-meta{flex:0 1 auto;font-size:11px;color:#9A938A;white-space:nowrap;overflow:hidden}
     @media(max-width:560px){.oe-meta{display:none}}
+    /* In a narrow column the size-and-date is what gives way, not the
+       file's name — without this the name was squeezed to nothing and
+       the card had no title at all. */
+    .oe-item.oe-image .oe-meta,.oe-item.oe-link .oe-meta{display:none}
     .oe-acts{flex:0 0 auto;display:flex;gap:2px}
     .oe-act{
       background:none;border:none;color:#9A938A;cursor:pointer;padding:5px;
@@ -1502,6 +1506,64 @@
       border:1px solid #E2DFDA;border-radius:99px;padding:7px 14px;cursor:pointer;
     }
     .oe-alt:hover{border-color:#1A1713;color:#D1242B}
+
+    /* ── Hover menus on the top tabs (1 Sep 2026) ───────────── */
+    .inh-nav-item{position:relative;display:inline-flex}
+    .inh-menu{
+      position:absolute;top:100%;left:0;z-index:120;min-width:264px;max-width:340px;
+      background:#fff;border:1px solid #E2DFDA;border-radius:12px;padding:7px;
+      box-shadow:0 18px 44px rgba(0,0,0,.15);
+      opacity:0;transform:translateY(-4px);pointer-events:none;
+      transition:opacity .14s ease,transform .16s ease;
+    }
+    .inh-nav-item:hover .inh-menu,
+    .inh-nav-item:focus-within .inh-menu{opacity:1;transform:none;pointer-events:auto}
+    /* Clicking a row shuts the panel, so it isn't left hanging over the
+       page it just opened while the pointer is still on the tab. */
+    .inh-nav-item.nav-shut .inh-menu{opacity:0 !important;pointer-events:none !important}
+    /* A gap between the tab and the panel would close the menu as the
+       cursor crossed it, so the panel starts flush and pads itself. */
+    .inh-menu::before{content:'';position:absolute;bottom:100%;left:0;right:0;height:8px}
+    .inh-menu-head{
+      font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.11em;
+      color:#9A938A;padding:6px 10px 7px;
+    }
+    .inh-menu-item{
+      display:flex;align-items:center;gap:9px;width:100%;text-align:left;font:inherit;
+      font-size:12.5px;font-weight:600;color:#1A1713;background:none;border:none;
+      border-radius:8px;padding:8px 10px;cursor:pointer;line-height:1.35;
+    }
+    .inh-menu-item:hover{background:#F5F3F0;color:#D1242B}
+    .inh-menu-item .inh-menu-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+    .inh-menu-item .inh-menu-n{margin-left:auto;font-size:11px;font-weight:700;color:#9A938A}
+    .inh-menu-item-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .inh-menu-all{
+      display:block;width:100%;text-align:left;font:inherit;font-size:12px;font-weight:700;
+      color:#D1242B;background:none;border:none;border-top:1px solid #F0EEEA;
+      margin-top:5px;padding:9px 10px 5px;cursor:pointer;
+    }
+    .inh-menu-empty{font-size:12.5px;color:#8B8378;padding:8px 10px 10px;line-height:1.5}
+    .inh-menu-dot.green{background:#1E7B45}
+    .inh-menu-dot.amber{background:#E0A800}
+    .inh-menu-dot.red{background:#D1242B}
+    .inh-menu-dot.grey{background:#B9B3AA}
+
+    /* ── A .url shortcut, shown as the link it is ───────────── */
+    .oe-shortcut{
+      display:flex;align-items:center;gap:13px;padding:16px 18px;text-decoration:none;
+      color:inherit;transition:background .15s;
+    }
+    .oe-shortcut:hover{background:#F5F3F0}
+    .oe-shortcut-ico{
+      flex:0 0 auto;width:40px;height:40px;border-radius:10px;background:#FDECEC;color:#D1242B;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .oe-shortcut-main{min-width:0;display:flex;flex-direction:column;gap:3px}
+    .oe-shortcut-name{font-size:13.5px;font-weight:700;color:#1A1713}
+    .oe-shortcut-host{font-size:11.5px;color:#9A938A}
+    .oe-shortcut-go{
+      margin-left:auto;flex:0 0 auto;font-size:12px;font-weight:700;color:#D1242B;
+    }
 
     /* ── A file row that opens where it is ──────────────────── */
     .lib-row{border-radius:11px}
@@ -1604,11 +1666,30 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         Home
       </a>
-      <a class="inh-nav-link" id="navl-launches"   onclick="showPage('launches',1)">Product Launches</a>
-      <a class="inh-nav-link" id="navl-campaigns"  onclick="showPage('campaigns',2)">Campaigns</a>
-      <a class="inh-nav-link" id="navl-trade"      onclick="showPage('trade',3)">Trade &amp; Events</a>
-      <a class="inh-nav-link" id="navl-training"   onclick="showPage('training',4)">Resources</a>
-      <a class="inh-nav-link" id="navl-portal"     onclick="openProductPortal()">Product Portal</a>
+      <!-- 1 Sep 2026 — David: "when you hover over the tabs at the top I'd
+           like it to show a breakdown so you can click directly into them."
+           Each tab keeps its own click; the panel underneath is filled the
+           first time you hover it, from data the hub has already cached. -->
+      <span class="inh-nav-item" onmouseenter="navMenuOpen('launches')">
+        <a class="inh-nav-link" id="navl-launches" onclick="showPage('launches',1)">Product Launches</a>
+        <div class="inh-menu" id="navm-launches"></div>
+      </span>
+      <span class="inh-nav-item" onmouseenter="navMenuOpen('campaigns')">
+        <a class="inh-nav-link" id="navl-campaigns" onclick="showPage('campaigns',2)">Campaigns</a>
+        <div class="inh-menu" id="navm-campaigns"></div>
+      </span>
+      <span class="inh-nav-item" onmouseenter="navMenuOpen('trade')">
+        <a class="inh-nav-link" id="navl-trade" onclick="showPage('trade',3)">Trade &amp; Events</a>
+        <div class="inh-menu" id="navm-trade"></div>
+      </span>
+      <span class="inh-nav-item" onmouseenter="navMenuOpen('training')">
+        <a class="inh-nav-link" id="navl-training" onclick="showPage('training',4)">Resources</a>
+        <div class="inh-menu" id="navm-training"></div>
+      </span>
+      <span class="inh-nav-item" onmouseenter="navMenuOpen('portal')">
+        <a class="inh-nav-link" id="navl-portal" onclick="openProductPortal()">Product Portal</a>
+        <div class="inh-menu" id="navm-portal"></div>
+      </span>
     </div>
   </nav>
 
@@ -2184,10 +2265,10 @@
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=17"></script>
+<script src="graph.js?v=18"></script>
 <script src="app.js?v=18"></script>
 <script src="jotform.js?v=13"></script>
-<script src="ember.js?v=5"></script>
+<script src="ember.js?v=6"></script>
 
 
 <!-- ═══ SHOWROOM BOOKING MODAL ═══════════════════════════════ -->
