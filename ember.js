@@ -304,6 +304,71 @@ async function _emberFind(question) {
 // What the hub already knows, handed over as plain text so Ember can
 // answer "what's launching next" or "when's the next training" without
 // reading a single document.
+// ── The product catalogue ────────────────────────────────────
+//
+// 2 Sep 2026. Josh was answering product questions from the Product
+// Launches and Campaigns lists, which are this quarter's marketing
+// ACTIVITY — so "tell me about our Commander range" came back as a
+// stand launch, and "what other Contempo is there" came back as
+// "nothing". The range itself lives in the Media Portal folder tree,
+// and that tree is now read once and handed to him with every question.
+//
+// Names only, no files opened. One short burst of Graph calls the first
+// time anyone asks a product question, then it is held for the session.
+let _emberCatPromise = null;
+
+function _emberCatalogue() {
+  if (_emberCatPromise) return _emberCatPromise;
+  const cfg = _emberCfg().catalogue;
+  if (!cfg || !cfg.site) return (_emberCatPromise = Promise.resolve(''));
+
+  _emberCatPromise = (async () => {
+    const cap = cfg.max || 400;
+    let seen = 0;
+
+    // Siblings are read in PARALLEL and their lines assembled in order
+    // afterwards. Done one at a time this is fifty-odd sequential Graph
+    // calls — the better part of ten seconds before the first answer.
+    const walk = async (driveId, itemId, depth, indent) => {
+      if (depth < 0 || seen >= cap) return [];
+      let kids;
+      try { kids = await fetchDriveChildren(driveId, itemId); }
+      catch (_) { return []; }
+
+      const folders = kids.filter(k => k.folder)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      // One level down we also name the loose documents, because
+      // "Data Card.pdf" sitting beside the ranges is worth knowing about.
+      const files = (indent >= 2 ? [] : kids.filter(k => !k.folder)).slice(0, 6);
+
+      const out = files.map(f => '  '.repeat(indent) + '· ' + f.name);
+      seen += out.length + folders.length;
+
+      const subs = await Promise.all(
+        folders.map(k => walk(driveId, k.id, depth - 1, indent + 1)));
+      folders.forEach((k, i) => {
+        out.push('  '.repeat(indent) + '- ' + k.name);
+        out.push(...subs[i]);
+      });
+      return out;
+    };
+
+    try {
+      const drive = await resolveDrive(cfg.site, cfg.library || HUB_CONFIG.documentsLibrary);
+      const lines = await walk(drive.id, null, (cfg.depth === undefined ? 3 : cfg.depth), 0);
+      console.info(`[Josh] product catalogue read — ${lines.length} folders/files.`);
+      return lines.join('\n');
+    } catch (e) {
+      console.info('[Josh] product catalogue unavailable:', e.message);
+      return '';
+    }
+  })();
+
+  // A failed read shouldn't be cached forever.
+  _emberCatPromise.then(t => { if (!t) _emberCatPromise = null; });
+  return _emberCatPromise;
+}
+
 async function _emberHubContext() {
   const bits = [];
   const say = (label, rows, fn) => {
@@ -325,6 +390,24 @@ async function _emberHubContext() {
     }
   } catch (_) { /* context is a bonus, never a blocker */ }
   return bits.join('\n\n');
+}
+
+// The lists above are what marketing are DOING. The catalogue is what
+// CheckFire SELLS. Josh needs both, and confusing the two is exactly
+// what made him answer a range question with a stand launch.
+async function _emberFullContext(needsProducts) {
+  const hub = await _emberHubContext();
+  if (!needsProducts) return hub;
+  const cat = await _emberCatalogue();
+  if (!cat) return hub;
+  return [
+    hub,
+    'THE PRODUCT RANGE (folder tree from the Media Portal — this is the '
+      + 'catalogue of what CheckFire sells, and it is the authority on '
+      + 'what exists. Everything filed under a range name belongs to that '
+      + 'range. The lists above are marketing activity, not the range.)\n'
+      + cat,
+  ].filter(Boolean).join('\n\n');
 }
 
 // ── Deciding whether this question needs a document at all ───
@@ -351,12 +434,11 @@ async function _emberHubContext() {
 // so the whole thing has to be one, end to end.
 const EMBER_CHATTY_WORDS = 'hi|hey|hello|morning|good morning|afternoon|evening|thanks|thank you|cheers|ta|ok|okay|great|perfect|nice|lovely|yes|no|yep|nope|please do|go on|got it|understood|brilliant|spot on';
 const EMBER_CHATTY = new RegExp('^(' + EMBER_CHATTY_WORDS + ')[\\s!.,]*$', 'i');
-// "Thanks, that's great" opens with a pleasantry and asks nothing. It is
-// still small talk. But only when it is SHORT and has no question in it —
-// and only after the product and document check below has had its say,
-// which is what stops "ok what about our contempo range" being thrown
-// away for its first word.
-const EMBER_CHATTY_OPENER = new RegExp('^(' + EMBER_CHATTY_WORDS + ')\\b', 'i');
+// REMOVED 2 Sep 2026 — EMBER_CHATTY_OPENER. It matched a pleasantry at
+// the START of a message and skipped the search, which threw away
+// "ok what about our contempo range" and then "Ok what about fire
+// extingughers". Two wrong answers from one shortcut. A message is only
+// small talk if the WHOLE of it is.
 const EMBER_FOLLOWUP = /^(make it|make that|shorter|longer|again|do it again|rewrite|reword|try again|expand|more like|less|and |also |what about|explain that|why\b|how so|really\?|carry on|continue)/i;
 const EMBER_WRITING = /\b(write|draft|rewrite|reword|shorten|tighten|summarise|summarize|caption|subject line|headline|strapline|post|tweet|idea|ideas|brainstorm|suggest|tone)\b/i;
 const EMBER_DOCWORD = /\b(datasheet|data sheet|certificate|certification|declaration|conformity|msds|sds|pif|kitemark|med\b|mer\b|nta|manual|instruction|document|spec|specification|pdf|policy|guideline|brochure|price|part number|code)\b/i;
@@ -388,18 +470,49 @@ function _emberTokens(q) {
     : (cfg.maxTokens || 700);
 }
 
+// Anything that asks something, ANYWHERE in the message — not just at
+// the start. That last part is the whole fix: "ok what about fire
+// extingughers" is a question even though it opens with "ok", and this
+// notices without having to recognise the misspelt product.
+const EMBER_INTERROGATIVE = /\?|\b(what|which|who|whose|when|where|why|how|do we|does it|did we|have we|has it|can we|could we|is there|are there|tell me|show me|find|list|got any|any)\b/i;
+
+// An acknowledgement: opens with a pleasantry and asks nothing. Only
+// ever consulted after the question check above, so it can never
+// swallow one again.
+const EMBER_ACK = new RegExp('^(' + EMBER_CHATTY_WORDS + ')\\b', 'i');
+
+// 2 Sep 2026 — THIS RULE HAS NOW BEEN WRONG TWICE, both times by
+// skipping a search it should have run:
+//
+//   "ok what about our contempo range"   → blocked on its first word
+//   "Ok what about fire extingughers"    → blocked again, and the typo
+//                                          meant no product word saved it
+//
+// Both produced a confident wrong answer, which is far worse than the
+// four seconds a needless search costs. So the default is now to SEARCH,
+// and the exceptions are narrow and have to be certain:
+//
+//   1. the whole message is a pleasantry     ("thanks", "ok")
+//   2. it is very short and asks nothing     ("go on")
+//   3. it is a follow-up to what was just    ("make it shorter")
+//      said, mid-conversation, and names no product
+//   4. it is a writing job with no subject   ("draft me an intro")
+//
+// Everything else looks. Note that NONE of the exceptions can now fire
+// on a message containing a question — a typo can no longer cost an
+// answer, because the rule never has to recognise the product at all.
 function _emberNeedsDocs(q) {
   if (_emberCfg().skipSearchWhenChatty === false) return true;
   const t = String(q || '').trim();
   if (!t) return false;
-  if (EMBER_CHATTY.test(t)) return false;          // the whole message is "thanks"
-  // Anything about a document or one of our products is looked up, full
-  // stop — before any of the shortcuts below get a say.
+
+  if (EMBER_CHATTY.test(t)) return false;          // 1
   if (EMBER_DOCWORD.test(t) || EMBER_PRODUCTWORD.test(t)) return true;
-  if (EMBER_CHATTY_OPENER.test(t) && t.length < 40 && t.indexOf('?') < 0) return false;
-  if (t.length < 14) return false;                 // "go on", "and?"
-  if (EMBER.turns.length > 1 && EMBER_FOLLOWUP.test(t)) return false;
-  if (EMBER_WRITING.test(t)) return false;         // a writing job, not a lookup
+  if (EMBER_INTERROGATIVE.test(t)) return true;    // a question always looks
+  if (EMBER_ACK.test(t) && t.length < 40) return false;   // "thanks, that's great"
+  if (t.length < 14) return false;                 // 2
+  if (EMBER.turns.length > 1 && EMBER_FOLLOWUP.test(t)) return false;   // 3
+  if (EMBER_WRITING.test(t)) return false;         // 4
   return true;
 }
 
@@ -485,10 +598,11 @@ async function _emberClaude(question) {
   }
 
   const cfg = _emberCfg();
+  const needsDocs = _emberNeedsDocs(question);
   let found = [];
   const docs = [];
 
-  if (_emberNeedsDocs(question)) {
+  if (needsDocs) {
     _emberStatus('looking through SharePoint…');
     found = await _emberFind(question);
 
@@ -513,7 +627,7 @@ async function _emberClaude(question) {
     console.info('[Josh] conversational turn — answering without a document search.');
   }
 
-  const hubContext = await _emberHubContext();
+  const hubContext = await _emberFullContext(needsDocs);
   // Source cards are for documents you can open, so folders stay out.
   EMBER.lastDocs = found.filter(f => !f._isFolder).slice(0, 12);
 

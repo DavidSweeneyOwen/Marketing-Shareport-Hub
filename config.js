@@ -643,6 +643,42 @@ HUB_CONFIG.ember = {
     'Draft something for me',
   ],
 
+  // ── The product catalogue ──────────────────────────────────
+  // 2 Sep 2026 — David, after Josh said the only Commander extinguisher
+  // item was a STAND: "I thought having the API key would help with
+  // things like this? Our Commander range is everything that says
+  // Commander, right."
+  //
+  // Right, and the API key was never going to do it. The key buys the
+  // ability to read and reason; it does not buy any knowledge of what
+  // CheckFire sells. Josh only ever knows what the hub hands him for a
+  // question, and what it was handing him was the Product Launches and
+  // Campaigns lists — this quarter's marketing ACTIVITY, not the
+  // product range. So he answered about a launch of a stand, because a
+  // stand launch is what the lists contain.
+  //
+  // The range itself has always been in the Media Portal, filed exactly
+  // the way anyone would want:
+  //
+  //   01. Fire Extinguishers ▸ Commander Fire Extinguishers ▸ CO2 /
+  //     Foam / Powder / Water / WetChemical / Wheeled Units
+  //   02. Commander Cabinets · 03. Stands · 05. Fire Blankets ·
+  //   06. Bridgehill · 07. Alarms · 08. Hose Reels · …
+  //
+  // That folder tree IS the catalogue. It is read once per session, to
+  // the depth below, and handed to Josh with every question — so "tell
+  // me about our Commander range" is answered from the range, and
+  // "what other Contempo is there" has an answer.
+  //
+  // Names only. No file is opened for this, and it costs one short
+  // burst of Graph calls the first time somebody asks.
+  catalogue: {
+    site: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
+    library: 'Documents',
+    depth: 3,        // category ▸ range ▸ type
+    max: 400,
+  },
+
   // ── Answering like a conversation, not a search box ────────
   // 1 Sep 2026 — David: "we need to ensure it's working like an
   // actually AI chat bot. Like talking to you."
