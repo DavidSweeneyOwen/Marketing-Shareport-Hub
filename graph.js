@@ -354,20 +354,65 @@ function productCodes(f) {
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|bmp|tiff?)$/i;
 const _thumbCache = {};
 
+// 2 Sep 2026 — THE reason for two of marketing's six points, and worth
+// writing down because it cost three attempts to find.
+//
+//   "Image is still not pulling through"  (Fire Equipment Suppliers)
+//   "ups… it's empty"                     (Commander Fire Blankets hero)
+//
+// Both files are in SharePoint, correctly named, in the right folders:
+//   Images for landing pages ▸ Fire Equipment Supplier Landing Page ▸
+//     Fire Equipment Supplier Landing Page Image.png     (659 KB)
+//   Campaigns ▸ Commander Fire Blankets ▸ Email Campaign ▸
+//     CF Fire Blanket Email Campaign Banner 2.png        (3.9 MB)
+//
+// The name matching was fine — it was never the matcher, which is why
+// fixing the matcher twice changed nothing. Every picture in the hub
+// reaches the screen through ONE call: /thumbnails. Graph generates
+// those lazily and quietly declines on some files (big ones especially),
+// returning an empty set rather than an error. An empty thumbnail meant
+// an empty string, and an empty string meant the picture was dropped
+// with no warning anywhere.
+//
+// So: ask for all three sizes at once and take whichever exists, and if
+// Graph has no thumbnail at all, fall back to the file itself via its
+// pre-authenticated download URL. A background-image or <img> needs no
+// CORS, so that renders where a fetch() wouldn't. Only if BOTH are
+// missing is there genuinely nothing to show.
+//
+// One caveat worth passing to marketing: a 3.9 MB banner used as a hero
+// is a heavy thing to send down a line. Under about 1 MB and Graph
+// makes a thumbnail anyway, which is faster for everyone.
 async function driveThumb(driveId, itemId, size) {
   const want = size || 'large';
   const key  = driveId + '|' + itemId + '|' + want;
   if (_thumbCache[key] !== undefined) return _thumbCache[key];
+
+  let url = '';
   try {
-    const d = await graphFetch(`/drives/${driveId}/items/${itemId}/thumbnails?$select=${want}`);
+    const d = await graphFetch(
+      `/drives/${driveId}/items/${itemId}/thumbnails?$select=large,medium,small`);
     const set = (d.value || [])[0] || {};
-    const url = (set[want] && set[want].url) || '';
-    _thumbCache[key] = url;
-    return url;
-  } catch (_) {
-    _thumbCache[key] = '';
-    return '';
+    // Preferred size first, then anything Graph did manage to make.
+    for (const s of [want, 'large', 'medium', 'small']) {
+      if (set[s] && set[s].url) { url = set[s].url; break; }
+    }
+  } catch (_) { /* fall through to the file itself */ }
+
+  if (!url) {
+    try {
+      const meta = await graphFetch(
+        `/drives/${driveId}/items/${itemId}?$select=id,name,@microsoft.graph.downloadUrl`);
+      url = (meta && meta['@microsoft.graph.downloadUrl']) || '';
+      if (url) console.info(`[Imagery] no thumbnail for “${meta.name}” — showing the file itself.`);
+      else     console.info('[Imagery] nothing to show for item ' + itemId + '.');
+    } catch (e) {
+      console.info('[Imagery] could not resolve an image for item ' + itemId + ':', e.message);
+    }
   }
+
+  _thumbCache[key] = url;
+  return url;
 }
 
 // Best image inside a folder. Prefers something obviously meant as the
@@ -1046,7 +1091,30 @@ async function openDocFile(f) {
       return;
     }
 
-    if (RDR_IMG.test(f.name)) {
+    // A .url is a two-line text file pointing at a web page, not a
+    // document. Handing one to the previewer is what produced the grey
+    // "this file doesn't have a preview" box on Commander Fire Blankets.
+    // openEverything learned this in round 3; now the reader knows it
+    // too, which matters again because folders are opened as file rows.
+    // The rule, both places: never hand a non-document to /preview.
+    if (OE_LINK.test(f.name || '')) {
+      const target = await _oeLinkTarget(f);
+      if (target) {
+        let host = target, path = '';
+        try { const u = new URL(target); host = u.hostname.replace(/^www\./, ''); path = u.pathname + u.search; }
+        catch (_) { /* show it raw */ }
+        _rdrStage(`<div class="rdr-centre"><a class="rdr-shortcut" href="${escAttr(safeUrl(target, '#'))}"
+            target="_blank" rel="noopener">
+            <span class="rdr-shortcut-host">${escHtml(host)}</span>
+            <span class="rdr-shortcut-path">${escHtml(path)}</span>
+            <span class="rdr-shortcut-go">Open &rarr;</span>
+          </a></div>`);
+      } else {
+        _rdrStage(`<div class="rdr-wait">This shortcut couldn’t be read.
+          <a class="rdr-alt" href="${escAttr(safeUrl(f.webUrl, '#'))}" target="_blank" rel="noopener">Open it in SharePoint →</a></div>`);
+      }
+
+    } else if (RDR_IMG.test(f.name)) {
       const url = await _rdrDownloadUrl(f);
       if (!url) throw new Error('no download URL');
       // If even the direct URL won't render (rare), fall back to the
@@ -2622,26 +2690,71 @@ function renderPortalSections() {
   });
 
   if (!live.length) {
-    console.info('[Portal] nothing matched a band yet — bands hidden.');
+    // No sections to show — fall back to the flat index rather than an
+    // empty page. The front is only better when there is a front.
+    console.info('[Portal] nothing matched a section — showing the full index instead.');
+    const idx = document.getElementById('pp-index');
+    if (idx) idx.style.display = '';
     return;
   }
 
   PP_BANDS = live;
+
+  // 2 Sep 2026 — marketing: "This feels very chaotic at the moment. Can
+  // this be organised in the same way as product portal please?"
+  //
+  // They were right, and the cause was stacking. The page opened with
+  // six counters, then a search box, then ten more counters by product,
+  // then a row of document-type chips, then all 950 rows — three
+  // filtering systems and about twenty numbers before you saw a single
+  // document. Any one of them is reasonable; all four at once is a
+  // control panel.
+  //
+  // It reads like a site now: this is the FRONT, and it shows the
+  // sections the Product Portal is actually organised into and nothing
+  // else. Search, the by-product filter and the documents live INSIDE a
+  // section, where they mean something. Front → section → document.
+  // Nothing has been removed; it is just no longer all at once.
   host.innerHTML = `
     <div class="pp-band">
       <div class="pp-band-head">
-        <h2 class="pp-band-title">Everything, by what it is</h2>
+        <h2 class="pp-band-title">What are you looking for?</h2>
         <span class="pp-band-note">${state.files.length} documents from ${_ppSourceCount(state)} SharePoint sources</span>
       </div>
       <div class="pp-secs">
         ${live.map((l, i) => `
           <button class="pp-sec" onclick="ppOpenSection(${i})">
-            <span class="pp-sec-n">${l.count}</span>
             <span class="pp-sec-l">${escHtml(l.sec.label)}</span>
             <span class="pp-sec-d">${escHtml(l.sec.desc || '')}</span>
+            <span class="pp-sec-n">${l.count} document${l.count === 1 ? '' : 's'}</span>
           </button>`).join('')}
       </div>
+      <div class="pp-secs-foot">
+        <button class="pp-all" onclick="ppOpenSection(-1)">Search everything instead &rarr;</button>
+      </div>
     </div>`;
+
+  ppShowFront();
+}
+
+// The portal has two states: the front (sections only) and one section
+// open (its own heading, its own search, its own documents).
+function ppShowFront() {
+  const idx = document.getElementById('pp-index');
+  const sec = document.getElementById('pp-sections');
+  const up  = document.getElementById('pp-upcoming');
+  if (idx) idx.style.display = 'none';
+  if (sec) sec.style.display = '';
+  if (up)  up.style.display  = '';
+  document.querySelectorAll('#pp-sections .pp-sec').forEach(b => b.classList.remove('active'));
+}
+
+// Back to the front from inside a section.
+function ppCloseSection() {
+  ppShowFront();
+  const s = LIB.product;
+  if (s) { s.tag = 'all'; s.q = ''; s.cat = null; }
+  window.scrollTo(0, 0);
 }
 
 let PP_BANDS = [];
@@ -2654,22 +2767,42 @@ function _ppSourceCount(state) {
 // page, not a second place for the same files to live.
 function ppOpenSection(i) {
   const s = LIB.product;
-  const band = PP_BANDS[i];
-  if (!s || !band) return;
-  s.tag = 'all'; s.q = ''; s.cat = band.cat;
+  if (!s) return;
+  // -1 is "search everything" — the whole index, no section filter.
+  const band = i < 0 ? null : PP_BANDS[i];
+  if (i >= 0 && !band) return;
+
+  s.tag = 'all'; s.q = ''; s.cat = band ? band.cat : null;
+
+  const idx = document.getElementById('pp-index');
+  const sec = document.getElementById('pp-sections');
+  const up  = document.getElementById('pp-upcoming');
+  if (sec) sec.style.display = 'none';
+  if (up)  up.style.display  = 'none';
+  if (idx) idx.style.display = '';
+
+  // A heading that says where you are, and the way back.
+  const crumb = document.getElementById('pp-section-head');
+  if (crumb) {
+    crumb.innerHTML = `
+      <button class="pp-back" onclick="ppCloseSection()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
+        Product portal
+      </button>
+      <h2 class="pp-section-title">${escHtml(band ? band.sec.label : 'Everything')}</h2>
+      ${band && band.sec.desc ? `<p class="pp-section-sub">${escHtml(band.sec.desc)}</p>` : ''}`;
+  }
 
   const q = document.getElementById('lib-q-product');
   if (q) q.value = '';
   document.querySelectorAll('#lib-tiles-product .lib-tile').forEach(b => b.classList.remove('active'));
-  const wanted = Array.isArray(band.cat) ? band.cat : [band.cat];
+  const wanted = band ? (Array.isArray(band.cat) ? band.cat : [band.cat]) : [];
   document.querySelectorAll('#lib-cats-product .lib-cat').forEach(b => {
     b.classList.toggle('active', wanted.some(c => b.textContent.indexOf(c) === 0));
   });
-  document.querySelectorAll('#pp-sections .pp-sec').forEach((b, bi) => b.classList.toggle('active', bi === i));
 
   renderLibraryResults('product');
-  const box = document.getElementById('lib-results-product');
-  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.scrollTo(0, 0);
 }
 
 // "Also has a feedback form." One URL in config.js; no URL, no box.
@@ -2883,10 +3016,10 @@ function _renderDetail(opts) {
   const landing  = safeUrl(linkOf(f.LinkURL), '');
   const dates    = [fmtSpDate(f.StartDate || f.LaunchDate), fmtSpDate(f.EndDate)].filter(Boolean).join(' – ');
   const codes    = isLaunch ? productCodes(f) : [];
-  // Only a REAL description goes under the title. CampaignType is
-  // already the eyebrow — repeating it as body copy ("BRAND / … /
-  // Brand") read as leftover test text.
-  const sub      = f.Description || f.Summary || '';
+  // 2 Sep 2026 — marketing, arrow pointing at the paragraph under the
+  // title: "Please delete the copy here". Gone. The Description column
+  // still lives on the SharePoint list and still shows on the cards;
+  // it just isn't repeated across the hero.
   const channels = Array.isArray(f.Channels) ? f.Channels : String(f.Channels || '').split(/[,;/]+/);
   const chips    = channels.map(c => String(c).trim()).filter(Boolean);
 
@@ -2910,7 +3043,6 @@ function _renderDetail(opts) {
       <div class="px-lead-copy">
         <div class="px-eyebrow">${escHtml(isLaunch ? 'Product launch' : (f.CampaignType || 'Campaign'))}</div>
         <h1 class="px-lead-title">${escHtml(f.Title || 'Untitled')}</h1>
-        ${sub ? `<p class="px-lead-sub">${escHtml(sub)}</p>` : ''}
         ${codes.length ? `<div class="px-lead-codes">${codes.map(c => `<span class="px-code">${escHtml(c)}</span>`).join('')}</div>` : ''}
         ${!isLaunch && chips.length ? `<div class="px-lead-codes">${chips.map(c => `<span class="px-chan">${escHtml(c)}</span>`).join('')}</div>` : ''}
         <div class="px-lead-meta">
@@ -2933,13 +3065,20 @@ function _renderDetail(opts) {
 
     <div class="dt-main">
       <div class="dt-sec-head">
-        <h2 class="dt-sec-title">Everything for this ${isLaunch ? 'launch' : 'campaign'}</h2>
-        <p class="dt-sec-sub">All of it, open on the page — artwork, data sheets, decks and video. Download or copy a link on anything you need to send on.</p>
+        <h2 class="dt-sec-title">Assets &amp; resources</h2>
+        <p class="dt-sec-sub">Everything filed for this ${isLaunch ? 'launch' : 'campaign'}. Open it here, download it, or copy a link to send on.</p>
       </div>
-      <!-- 1 Sep 2026 (round 2). This used to be a grid of folder tiles
-           that opened a file list that opened a reader. Three clicks to
-           see one document. It is the documents themselves now. -->
-      <div id="cd-blocks"></div>
+      <!-- 2 Sep 2026 — back to folder tiles, at marketing's request:
+           "Please change this to how it was organised previously".
+           Round 2 replaced these with every document rendered down the
+           page. That is fewer clicks, but it made a launch with sixty
+           files a very long scroll and lost the shape of the folders
+           people file into. The tiles are real SharePoint folders with
+           live counts; clicking one lists what's inside, underneath. -->
+      <div class="dt-folders" id="cd-blocks">
+        <div class="skeleton sk-line med"></div>
+        <div class="skeleton sk-line"></div>
+      </div>
       <div id="cd-asset-panel"></div>
     </div>`;
 
@@ -3045,16 +3184,47 @@ async function _loadDetailAssets() {
   _detailFolder = { driveId: drive.id, id: folder.id, name: folder.name };
   _loadDetailHero(ctx, drive.id, folder.id);
 
-  // Everything under this campaign or launch, open on the page.
-  const panel = document.getElementById('cd-asset-panel');
-  if (panel) panel.innerHTML = '';
-
-  const n = await openEverything('cd-blocks', drive.id, folder.id, {
-    rootLabel: folder.name,
-    emptyText: `“${folder.name}” is empty at the moment. Anything filed into it in SharePoint appears here on its own.`,
-  });
+  // 2 Sep 2026 — back to a tile per real sub-folder, with a live file
+  // count, per marketing. Clicking one lists that folder underneath.
+  let kids;
+  try {
+    kids = await fetchDriveChildren(drive.id, folder.id);
+  } catch (e) {
+    say(`Couldn’t read “${folder.name}” — ${e.message}`);
+    return;
+  }
   if (_detailContext !== ctx) return;
-  console.info(`[Assets] “${folder.name}” — ${n} file(s) opened in the page.`);
+
+  const folders = kids.filter(x => x.folder)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const loose = kids.filter(x => !x.folder)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  console.info(`[Assets] “${folder.name}” has ${folders.length} folder(s) and ${loose.length} loose file(s).`);
+
+  if (!folders.length && !loose.length) {
+    say(`“${folder.name}” is empty at the moment.`);
+    return;
+  }
+
+  _detailBlocks = folders.map(k => ({
+    label:   k.name,
+    folder:  k.name,
+    id:      k.id,
+    driveId: drive.id,
+    count:   (k.folder && k.folder.childCount) || 0,
+  }));
+
+  box.innerHTML = folders.length ? _blocksHtml(_detailBlocks) : '';
+
+  // Files sitting loose in the campaign folder have no tile of their
+  // own, so they open in the panel straight away rather than vanishing.
+  const panel = document.getElementById('cd-asset-panel');
+  if (panel) {
+    panel.innerHTML = loose.length ? `
+      <h3 class="dt-panel-head">In this folder<span>${loose.length}</span></h3>
+      <div class="lib-files">${loose.map(x => libFileRow(x)).join('')}</div>` : '';
+  }
 }
 
 // The item's own artwork, from its asset folder — same source the cards

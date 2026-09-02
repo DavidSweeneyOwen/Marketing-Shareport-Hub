@@ -53,6 +53,7 @@ async function loadPageData(pageId) {
 // ─── Home Page Data ───────────────────────────────────────────
 
 async function loadHomeData() {
+  renderQuickLinks();
   await Promise.all([
     loadNotices(),
     loadHeroNews(),
@@ -66,6 +67,20 @@ async function loadHomeData() {
     loadPolls(),
     loadUpdatesDock(),
   ]);
+}
+
+// ─── Quick Links ──────────────────────────────────────────────
+// Renders HUB_CONFIG.quickLinks. Needs no network, so it runs first
+// and the box is never empty while something else is loading. Marketing
+// edit the list in config.js; nothing here needs changing to add one.
+function renderQuickLinks() {
+  const box = document.getElementById('home-quicklinks');
+  if (!box) return;
+  const links = (HUB_CONFIG && HUB_CONFIG.quickLinks) || [];
+  box.innerHTML = links.map(l => `
+    <a class="inh-ql" href="${escAttr(safeUrl(l.url))}" target="_blank" rel="noopener">
+      <span class="inh-ql-icon" style="background:${escAttr(l.colour || '#111')}">${escHtml(l.initials || '')}</span>${escHtml(l.label || '')}
+    </a>`).join('');
 }
 
 // ─── Horizontal carousels (blogs / landing pages) ─────────────
@@ -163,10 +178,19 @@ async function loadLandingPages() {
         const card = document.getElementById('cara-' + i);
         if (!card) return;
         card.classList.remove('no-img');
-        const media = document.createElement('div');
-        media.className = 'cara-img';
+        // 2 Sep 2026 — marketing, on the Flat-Pack Tubular Stand card:
+        // "something happened here". Two pictures were stacked inside
+        // one card, overflowing it. This used to insert a NEW .cara-img
+        // every time without checking, so any page that had BOTH a
+        // WordPress featured image and a SharePoint match ended up with
+        // two. Reuse the one that's already there.
+        let media = card.querySelector('.cara-img');
+        if (!media) {
+          media = document.createElement('div');
+          media.className = 'cara-img';
+          card.insertBefore(media, card.firstElementChild);
+        }
         media.style.backgroundImage = `url('${safeCssUrl(url)}')`;
-        card.insertBefore(media, card.firstElementChild);
       });
     }
   } catch (e) {

@@ -110,6 +110,17 @@
       cursor:pointer;text-decoration:none;
     }
     .rdr-alt:hover{background:#A81A20}
+    /* A .url shortcut opened from a folder — it's a web address, so it
+       is shown as one rather than sent to the document previewer. */
+    .rdr-shortcut{
+      display:flex;flex-direction:column;gap:4px;text-decoration:none;text-align:left;
+      background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+      border-radius:14px;padding:22px 26px;max-width:520px;
+    }
+    .rdr-shortcut:hover{border-color:#D1242B;background:rgba(209,36,43,.08)}
+    .rdr-shortcut-host{font-size:17px;font-weight:700;color:#fff}
+    .rdr-shortcut-path{font-size:12.5px;color:#9A938A;word-break:break-all}
+    .rdr-shortcut-go{margin-top:10px;font-size:13px;font-weight:700;color:#D1242B}
     .rdr-spin{
       width:22px;height:22px;border-radius:50%;
       border:2px solid rgba(255,255,255,.2);border-top-color:#D1242B;
@@ -359,6 +370,16 @@
     /* ── Home right column: Quick Links + Poll stacked ────── */
     .col-stack{display:flex;flex-direction:column;gap:16px;min-width:0}
     .col-stack > .inh-col-card{margin:0}
+    /* 2 Sep 2026 — marketing: "move the poll up as it's not fully
+       visible and we have some empty space in the above section".
+       Both halves of that were one rule. The row sets height:100% on
+       every .inh-col-card inside it, which is right for the three
+       columns themselves but wrong for the two cards STACKED in this
+       one: flexbox handed each of them a share of the column height,
+       so Quick Links was stretched (the empty space) and the poll was
+       squeezed and then clipped by .inh-col-card's overflow:hidden
+       (the cut-off vote). Sizing them to their content fixes both. */
+    .inh-content-row.three-equal .col-stack > .inh-col-card{height:auto}
 
     /* ── Poll card (home) ─────────────────────────────────── */
     .poll-body{padding:14px 16px 16px}
@@ -1367,11 +1388,32 @@
       transition:border-color .15s,box-shadow .15s,transform .15s;
     }
     .pp-sec:hover{border-color:#1A1713;box-shadow:0 10px 26px rgba(0,0,0,.07);transform:translateY(-1px)}
-    .pp-sec-n{
-      font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;color:#D1242B;line-height:1;
+    /* 2 Sep 2026 — the section card leads with its NAME now, not a
+       number. A wall of red numerals is what made the page feel like a
+       dashboard; the count is useful but it is not the point, so it
+       sits underneath as a quiet line. */
+    .pp-sec-n{font-size:11.5px;font-weight:700;color:#D1242B;letter-spacing:.02em;margin-top:2px}
+    .pp-sec-l{font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;color:#1A1713;line-height:1.25}
+    .pp-sec-d{font-size:12.5px;line-height:1.5;color:#8B8378}
+    .pp-sec{min-height:118px}
+
+    /* "Search everything instead" — the old flat index is still one
+       click away for anyone who would rather just type. */
+    .pp-secs-foot{margin:-14px 0 26px}
+    .pp-all{
+      font:inherit;font-size:13px;font-weight:600;color:#D1242B;background:none;border:none;
+      padding:0;cursor:pointer;
     }
-    .pp-sec-l{font-size:14px;font-weight:700;color:#1A1713;line-height:1.3}
-    .pp-sec-d{font-size:12px;line-height:1.5;color:#8B8378}
+    .pp-all:hover{text-decoration:underline}
+
+    /* Inside a section: where you are, and the way back. */
+    .pp-back{
+      display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;font-weight:600;
+      color:#8B8378;background:none;border:none;padding:0;margin-bottom:10px;cursor:pointer;
+    }
+    .pp-back:hover{color:#1A1713}
+    .pp-section-title{font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:600;color:#1A1713;margin:0 0 4px;line-height:1.15}
+    .pp-section-sub{font-size:13.5px;line-height:1.55;color:#8B8378;margin:0 0 20px;max-width:56ch}
 
     /* ── Product Portal: fast feedback ─────────────────────── */
     .pp-fb{
@@ -1804,20 +1846,9 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         Quick Links
       </div>
-      <div class="inh-quicklinks">
-        <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal" target="_blank" rel="noopener">
-          <span class="inh-ql-icon" style="background:#D1242B">MP</span>Media Portal
-        </a>
-        <a class="inh-ql" href="https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal" target="_blank" rel="noopener">
-          <span class="inh-ql-icon" style="background:#0078D4">PP</span>Product Portal
-        </a>
-        <a class="inh-ql" href="https://www.checkfire.co.uk" target="_blank" rel="noopener">
-          <span class="inh-ql-icon" style="background:#111">CF</span>Website
-        </a>
-        <a class="inh-ql" href="https://www.linkedin.com/company/checkfire/" target="_blank" rel="noopener">
-          <span class="inh-ql-icon" style="background:#0A66C2">in</span>CF LinkedIn
-        </a>
-      </div>
+      <!-- Rendered from HUB_CONFIG.quickLinks so marketing can add a
+           link themselves. See renderQuickLinks() in app.js. -->
+      <div class="inh-quicklinks" id="home-quicklinks"></div>
     </div>
 
     <!-- Poll — question comes from the SharePoint "Polls" list and the
@@ -2070,7 +2101,7 @@
       <div class="ph-head">
         <div>
           <h1 class="ph-title">Product portal</h1>
-          <p class="ph-sub">Every datasheet, certificate, change notification, MSDS, PIF, launch pack and training file we have — read straight from the Product Portal, the Media Portal and Sales &amp; Marketing, in one place.</p>
+          <p class="ph-sub">Every datasheet, certificate, change notification, MSDS, PIF and manual we have, in one place. Pick what you're after.</p>
         </div>
         <div class="ph-actions">
           <button class="btn primary" id="pp-browse-btn" onclick="togglePortalBrowse(this)">Browse the folders</button>
@@ -2095,10 +2126,15 @@
          new product request sheet, datasheets/MSDS. Folder-driven. -->
     <div id="pp-sections"></div>
 
-    <!-- The front door: everything in the Product Portal, indexed by
-         product and by document type, with a search box over the lot.
-         Built by loadLibrary('product') in graph.js. -->
-    <div id="pp-index">
+    <!-- One section, opened from the front. Heading + the way back;
+         filled by ppOpenSection() in graph.js. -->
+    <div id="pp-section-head"></div>
+
+    <!-- The documents themselves, with search and the by-product
+         filter. Hidden on the front page — you get here by choosing a
+         section, which is what stopped the page feeling like a control
+         panel. Built by loadLibrary('product') in graph.js. -->
+    <div id="pp-index" style="display:none">
       <div class="skeleton sk-line med"></div>
       <div class="skeleton sk-line"></div>
       <div class="skeleton sk-line short"></div>
@@ -2260,13 +2296,13 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=17"></script>
+<script src="config.js?v=18"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="graph.js?v=19"></script>
+<script src="app.js?v=19"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>
 

@@ -345,6 +345,44 @@ HUB_CONFIG.social = {
   commsMax:  8,
 };
 
+// ── Quick Links (home page, right column) ─────────────────────
+// The launcher for the systems people open every day that AREN'T
+// reachable from anywhere else in the hub. Marketing can add, remove
+// and reorder these without touching any code — the box renders
+// straight from this list.
+//
+// A link earns a tile if all three are true:
+//   1. somebody opens it most weeks
+//   2. you can't already get to it from somewhere else on the hub
+//   3. it's a destination, not a document (documents go in Resources)
+//
+// Keep it to six or eight. Past that it stops being a launcher and
+// becomes a link farm nobody scans.
+//
+// 2 Sep 2026 — David asked for NetSuite and Geckoboard.
+//   • NetSuite: the URL he sent carried session parameters from his own
+//     login (siaT / siaWhc / siaNv). Those are meaningless to anyone
+//     else, so this is the clean dashboard URL — everyone lands on
+//     their own after SSO.
+//   • Geckoboard: this is a PUBLIC share link. It opens for anyone who
+//     has it, with no sign-in, including outside CheckFire. That is
+//     fine on an internal hub and it is a deliberate choice, not an
+//     oversight — swap it for the app URL if it should need a login.
+HUB_CONFIG.quickLinks = [
+  { label: 'Media Portal',   initials: 'MP', colour: '#D1242B',
+    url: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal' },
+  { label: 'Product Portal', initials: 'PP', colour: '#0078D4',
+    url: 'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal' },
+  { label: 'NetSuite',       initials: 'NS', colour: '#2B6CB0',
+    url: 'https://3810789.app.netsuite.com/app/center/card.nl?sc=-29' },
+  { label: 'Geckoboard',     initials: 'GB', colour: '#0F8A6B',
+    url: 'https://share.geckoboard.com/loop/OXVP5ANCQWMDGIWG' },
+  { label: 'Website',        initials: 'CF', colour: '#111111',
+    url: 'https://www.checkfire.co.uk' },
+  { label: 'CF LinkedIn',    initials: 'in', colour: '#0A66C2',
+    url: 'https://www.linkedin.com/company/checkfire/' },
+];
+
 // ── Landing page images ───────────────────────────────────────
 // "Updated landing pages" on the home page reads WordPress *pages*,
 // and WordPress pages almost never carry a featured image — which is
