@@ -617,47 +617,135 @@ function _landingWords(s) {
     .filter(w => w.length > 1 && stop.indexOf(w) < 0 && stop.indexOf(w + 's') < 0);
 }
 
-function matchLandingImage(images, page) {
-  if (!images || !images.length) return '';
+// The words a page is asking for — slug and title, noise dropped.
+function _landingPageWords(page) {
   let slug = '';
   try {
     const p = new URL(page.link).pathname.replace(/\/+$/, '');
     slug = p.split('/').filter(Boolean).pop() || '';
   } catch (_) { /* fall through to the title */ }
-  const wanted = [_slugKey(slug), _slugKey(page.title)].filter(Boolean);
+  return {
+    slug,
+    keys:  [_slugKey(slug), _slugKey(page.title)].filter(Boolean),
+    words: [...new Set(_landingWords(slug).concat(_landingWords(page.title)))],
+  };
+}
 
-  // 1. The old exact-slug hit still wins outright when there is one.
-  for (const w of wanted) {
-    const exact = images.find(im => im.keys.indexOf(w) >= 0);
-    if (exact) return exact.url;
+// Score one page against one image. Returns 0 for "no".
+//
+// 10 Sep 2026 — marketing: "Wrong image, I changed it in SharePoint and
+// it changed BOTH banners so it's the same again."
+//
+// Proved before touching anything this time. In
+// `Images for landing pages` there is no `Flat-Pack Tubular Stand
+// Landing Page` folder at all — the only Flat-Pack folder is
+// `Flat-Pack Commander Stand Landing Page`, and on 9 Sep it was given
+// `Black-Tubular-HP-Banner-1-1707x2048.png`.
+//
+// The old scorer flattened the FILENAME's words and the FOLDER's words
+// into one bag, so that single image advertised itself as
+// {black, tubular, hp} ∪ {flat, pack, commander, stand} — four-word
+// matches for the Tubular page AND the Commander page. Two pages, one
+// picture, and swapping the file moved both.
+//
+// Two changes, both needed:
+//   1. score each SOURCE separately (filename, or one folder in the
+//      trail) and take the best single source — a tubular file in a
+//      commander folder is no longer a tubular-commander hybrid;
+//   2. assign exclusively (see assignLandingImages) so one image can
+//      only ever be claimed by one page.
+function _landingScore(im, pw) {
+  // An exact key hit still wins outright — that path was never wrong.
+  for (const k of pw.keys) {
+    if ((im.keys || []).indexOf(k) >= 0) return 1000;
+  }
+  if (!pw.words.length) return 0;
+  const need = (HUB_CONFIG.landingImages && HUB_CONFIG.landingImages.minWordMatch) || 1;
+  let best = 0;
+  // im.words is [filenameWords, ...oneArrayPerFolderInTheTrail].
+  for (const src of (im.words || [])) {
+    const w = [...new Set(src || [])];
+    if (!w.length) continue;
+    const shared = pw.words.filter(x => w.indexOf(x) >= 0).length;
+    if (shared < need) continue;
+    // Ratio breaks ties: two words out of two beats two out of nine.
+    const score = shared + shared / Math.max(w.length, pw.words.length);
+    if (score > best) best = score;
+  }
+  return best;
+}
+
+// Give every page at most one image, and every image to at most one
+// page. Best pair first, greedily — so the strongest match is never
+// stolen by a weaker one earlier in the list.
+function assignLandingImages(images, pages) {
+  const out = new Map();
+  if (!images || !images.length || !pages || !pages.length) return out;
+
+  const pairs = [];
+  pages.forEach((p, pi) => {
+    const pw = _landingPageWords(p);
+    images.forEach((im, ii) => {
+      const s = _landingScore(im, pw);
+      if (s > 0) pairs.push({ pi, ii, s });
+    });
+  });
+  pairs.sort((a, b) => b.s - a.s);
+
+  const usedPage = new Set(), usedImg = new Set();
+  for (const c of pairs) {
+    if (usedPage.has(c.pi) || usedImg.has(c.ii)) continue;
+    usedPage.add(c.pi); usedImg.add(c.ii);
+    out.set(c.pi, images[c.ii].url);
   }
 
-  // 2. Otherwise score on shared words.
-  const pageWords = [...new Set(_landingWords(slug).concat(_landingWords(page.title)))];
-  if (pageWords.length) {
-    const need = (HUB_CONFIG.landingImages && HUB_CONFIG.landingImages.minWordMatch) || 1;
-    let best = null, bestScore = 0;
-    for (const im of images) {
-      const imWords = [...new Set([].concat(...(im.words || [])))];
-      if (!imWords.length) continue;
-      const shared = pageWords.filter(w => imWords.indexOf(w) >= 0).length;
-      if (!shared) continue;
-      // Ratio breaks ties: two words out of two beats two out of nine.
-      const score = shared + shared / Math.max(imWords.length, pageWords.length);
-      if (shared >= need && score > bestScore) { best = im; bestScore = score; }
+  // Say out loud which pages found nothing — a missing folder should
+  // look like a missing folder, not like a broken matcher.
+  const root = (HUB_CONFIG.landingImages && HUB_CONFIG.landingImages.folder) || 'Images for Landing Pages';
+  pages.forEach((p, pi) => {
+    if (!out.has(pi)) {
+      console.info(`[Landing images] no image for "${p.title}" — create ` +
+                   `"${root} ▸ ${p.title} Landing Page" and put its artwork in it.`);
     }
-    if (best) return best.url;
-  }
+  });
 
-  // 3. Last resort — the original containment rule, so nothing that
-  //    used to match stops matching.
-  let best = null, bestLen = 0;
-  for (const w of wanted) {
-    for (const im of images) {
-      for (const k of im.keys) {
-        if ((k.includes(w) || w.includes(k)) && k.length > bestLen) { best = im; bestLen = k.length; }
+  // A file whose NAME belongs to one page sitting in a folder named for
+  // another is how the 9 Sep mix-up happened: the only Flat-Pack folder
+  // was Commander's, so the Tubular banner went in there and the
+  // Commander card started showing tubular artwork. The matcher can't
+  // resolve that — only moving the file can — but it can name it.
+  images.forEach((im, ii) => {
+    if (!usedImg.has(ii)) return;
+    const owner = [...out.entries()].find(([, u]) => u === im.url);
+    if (!owner) return;
+    const fileWords = [...new Set((im.words || [])[0] || [])];
+    if (!fileWords.length) return;
+    pages.forEach((p, pi) => {
+      if (pi === owner[0]) return;
+      const pw = _landingPageWords(p);
+      // Does the FILENAME name a different page more specifically than
+      // the page it was given to? Only shout when the other page shares
+      // a word this one doesn't have at all.
+      const mine  = _landingPageWords(pages[owner[0]]).words;
+      const uniq  = pw.words.filter(w => mine.indexOf(w) < 0);
+      if (uniq.some(w => fileWords.indexOf(w) >= 0)) {
+        console.warn(`[Landing images] "${im.name}" is filed under "${im.folder}" but its name ` +
+                     `points at "${p.title}". Move it to "${root} ▸ ${p.title} Landing Page".`);
       }
-    }
+    });
+  });
+  return out;
+}
+
+// Kept for anything still calling it one page at a time. Prefer
+// assignLandingImages, which cannot hand the same picture to two pages.
+function matchLandingImage(images, page) {
+  if (!images || !images.length) return '';
+  const pw = _landingPageWords(page);
+  let best = null, bestScore = 0;
+  for (const im of images) {
+    const s = _landingScore(im, pw);
+    if (s > bestScore) { best = im; bestScore = s; }
   }
   return best ? best.url : '';
 }
@@ -757,7 +845,6 @@ function _pxLead(kind, f, i, opts) {
     <div class="px-lead-copy">
       <div class="px-eyebrow">${escHtml(o.eyebrow || 'Up next')}</div>
       <h2 class="px-lead-title">${escHtml(f.Title || 'Untitled')}</h2>
-      ${o.sub ? `<p class="px-lead-sub">${escHtml(o.sub)}</p>` : ''}
       ${codes.length ? `<div class="px-lead-codes">${codes.map(c => `<span class="px-code">${escHtml(c)}</span>`).join('')}</div>` : ''}
       <div class="px-lead-meta">
         ${_pxDot(f.Status)}
@@ -813,7 +900,10 @@ function renderLaunches(items) {
   el.innerHTML =
     _pxLead('launch', lead, leadIdx, {
       eyebrow: isFuture ? 'Next launch' : 'Most recent launch',
-      sub: lead.Description || lead.Summary || '',
+      // 10 Sep 2026, deck 7: "Delete the text here please" — the
+      // Description blurb under the launch title. The .px-lead-sub
+      // element is gone from _pxLead entirely, so passing sub does
+      // nothing; left unset so it reads as deliberate.
       meta: fmtSpDate(lead.LaunchDate) || 'Date to be confirmed',
       cta: 'View the launch',
     }) +
@@ -889,7 +979,9 @@ function renderCampaigns(items) {
   grid.innerHTML =
     _pxLead('campaign', lead, leadIdx, {
       eyebrow: ragOf(lead.Status) === 'green' ? 'Running now' : 'Latest campaign',
-      sub: lead.Description || lead.Summary || lead.CampaignType || '',
+      // 10 Sep 2026, deck 7: "Delete the text here please" — this was
+      // falling through to CampaignType and printing a bare "Brand"
+      // under the title. Same removal as the launch lead above.
       meta: [fmtSpDate(lead.StartDate), fmtSpDate(lead.EndDate)].filter(Boolean).join(' – ')
             + (lead.Region ? ' · ' + lead.Region : ''),
       cta: 'Open the campaign',
@@ -2386,7 +2478,16 @@ function renderLibrary(key) {
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
   }).map(label => ({ label, n: files.filter(f => f._cat === label).length }));
 
-  const recent = [...files]
+  // 9 Sep 2026, Lowri (Product Portal): "Would we be able to remove this
+  // section on each page please? So the only files that come up are
+  // what's been requesting." The Recently-updated row ignored whatever
+  // filter you had set, so it always showed files you hadn't asked for.
+  // Off for the portal, still on for Resources unless told otherwise.
+  const ppCfg     = HUB_CONFIG.productPortal || {};
+  const wantRecent = key === 'product' ? ppCfg.showRecent !== false : true;
+  const showCounts = key === 'product' ? ppCfg.showTileCounts !== false : true;
+
+  const recent = !wantRecent ? [] : [...files]
     .sort((a, b) => String(b.lastModifiedDateTime || '').localeCompare(String(a.lastModifiedDateTime || '')))
     .slice(0, cfg.recentCount || 6);
 
@@ -2404,8 +2505,8 @@ function renderLibrary(key) {
       <button class="lib-reset" onclick="libReset('${escAttr(key)}')">Reset</button></div>
     <div class="lib-tiles" id="lib-tiles-${escAttr(key)}">
       ${tiles.map((t, i) => `
-        <button class="lib-tile" style="--i:${i}" onclick="libPick('${escAttr(key)}','${escAttr(t.key)}',this)">
-          <span class="lib-tile-n">${t.n}</span>
+        <button class="lib-tile${showCounts ? '' : ' no-n'}" style="--i:${i}" onclick="libPick('${escAttr(key)}','${escAttr(t.key)}',this)">
+          ${showCounts ? `<span class="lib-tile-n">${t.n}</span>` : ''}
           <span class="lib-tile-l">${escHtml(t.label)}</span>
         </button>`).join('')}
     </div>` : ''}
@@ -2596,11 +2697,126 @@ function libReset(key) {
 // doesn't: a folder, a list, a URL in config.js. Nothing renders a
 // placeholder. If Aneta and Jess haven't made the folder yet, the band
 // isn't there, and the page still reads as finished.
+// ═══ Product Portal — maintained by the product team ═════════
+//
+// 10 Sep 2026. Lowri's changes arrived as an email to David, who then
+// had to edit config.js and redeploy. That is the thing being removed:
+// section names, descriptions, order, visibility and every link now
+// come from two SharePoint lists she owns.
+//
+// FAIL-SAFE BY DESIGN. Both lists are optional. Missing list, no access,
+// empty list, or a list with no usable rows → the hub uses the arrays in
+// config.js and behaves exactly as it did before. Nothing on this page
+// can be broken by a list that hasn't been made yet. (The round-3
+// lesson: "not set up yet" and "deliberately empty" must not be the
+// same state — here, only rows that actually exist can override.)
+let _portalOverrides = null;
+
+function _ppTruthy(v) {
+  if (v === undefined || v === null || v === '') return true;   // absent = show
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  return !(s === 'no' || s === 'false' || s === '0' || s === 'hide');
+}
+
+// A SharePoint hyperlink column comes back as {Url, Description};
+// a plain text column comes back as a string. Accept either.
+function _ppUrl(v) {
+  if (!v) return '';
+  if (typeof v === 'string') return v.trim();
+  return String(v.Url || v.url || '').trim();
+}
+
+async function fetchPortalOverrides() {
+  if (_portalOverrides) return _portalOverrides;
+  const out = { sections: null, links: null };
+  const names = (HUB_CONFIG.lists || {});
+
+  if (typeof getAccessToken === 'function' && !window.HUB_DEMO_MODE) {
+    // Sections — Title (label), SectionKey, Description, SortOrder, Show
+    if (names.portalSections) {
+      try {
+        const rows = await fetchListItems(names.portalSections);
+        const usable = (rows || []).filter(r => r && (r.SectionKey || r.Title));
+        if (usable.length) {
+          out.sections = usable
+            .map(r => ({
+              key:   String(r.SectionKey || '').trim(),
+              label: (r.Title || '').trim(),
+              desc:  (r.Description || '').trim(),
+              sort:  Number(r.SortOrder), show: _ppTruthy(r.Show),
+            }))
+            .sort((a, b) => (isNaN(a.sort) ? 999 : a.sort) - (isNaN(b.sort) ? 999 : b.sort));
+          console.info(`[Portal] ${out.sections.length} section row(s) from "${names.portalSections}".`);
+        }
+      } catch (e) { console.info('[Portal] no Portal Sections list —', e.message); }
+    }
+    // Links — Title, URL, Description, Section, SortOrder, Show
+    if (names.portalLinks) {
+      try {
+        const rows = await fetchListItems(names.portalLinks);
+        const usable = (rows || [])
+          .filter(r => r && r.Title && _ppUrl(r.URL || r.Url || r.Link))
+          .filter(r => _ppTruthy(r.Show));
+        if (usable.length) {
+          out.links = usable
+            .map(r => ({
+              title:   String(r.Title).trim(),
+              url:     _ppUrl(r.URL || r.Url || r.Link),
+              desc:    (r.Description || '').trim(),
+              section: String(r.Section || '').trim(),
+              sort:    Number(r.SortOrder),
+            }))
+            .sort((a, b) => (isNaN(a.sort) ? 999 : a.sort) - (isNaN(b.sort) ? 999 : b.sort));
+          console.info(`[Portal] ${out.links.length} link row(s) from "${names.portalLinks}".`);
+        }
+      } catch (e) { console.info('[Portal] no Portal Links list —', e.message); }
+    }
+  }
+  return (_portalOverrides = out);
+}
+
+// The sections to render, after the list has had its say. Rows are
+// matched to a config section on SectionKey, falling back to the label,
+// so the product team can rename a section without breaking the folder
+// and category matching underneath it.
+function ppSections() {
+  const base = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.sections) || [];
+  const ov   = _portalOverrides && _portalOverrides.sections;
+  if (!ov || !ov.length) return base;
+
+  const byKey = new Map(base.map(s => [String(s.key).toLowerCase(), s]));
+  const byLbl = new Map(base.map(s => [_slugKey(s.label), s]));
+  const out = [], claimed = new Set();
+
+  ov.forEach(r => {
+    const hit = byKey.get(r.key.toLowerCase()) || byLbl.get(_slugKey(r.label));
+    if (!hit || claimed.has(hit.key)) return;
+    claimed.add(hit.key);
+    if (!r.show) return;                       // unticked = hidden, not deleted
+    out.push({ ...hit, label: r.label || hit.label, desc: r.desc || hit.desc });
+  });
+
+  // Anything the list doesn't mention keeps working, in config order,
+  // after the ones it does — a half-filled list must never hide
+  // documents that are really there.
+  base.forEach(s => { if (!claimed.has(s.key)) out.push(s); });
+  return out.length ? out : base;
+}
+
+function ppLinks() {
+  const ov = _portalOverrides && _portalOverrides.links;
+  if (ov && ov.length) return ov;
+  return (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.links) || [];
+}
+
 async function loadProductPortal() {
   const done = loadLibrary('product');
   renderPortalUpcoming();      // the launches list, not the library
+  await fetchPortalOverrides();
   await done;
   renderPortalSections();
+  renderPortalLinks();
   renderPortalFeedback();
 }
 
@@ -2666,7 +2882,7 @@ function renderPortalSections() {
   host.innerHTML = '';
 
   const state = LIB.product;
-  const secs  = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.sections) || [];
+  const secs  = ppSections();          // list first, config as the fallback
   if (!state || !state.loaded || !secs.length) return;
 
   const folders = [...new Set(state.files.map(f => f._catFolder).filter(Boolean))];
@@ -2746,7 +2962,10 @@ function ppShowFront() {
   if (idx) idx.style.display = 'none';
   if (sec) sec.style.display = '';
   if (up)  up.style.display  = '';
+  const lnk = document.getElementById('pp-links');
+  if (lnk) lnk.style.display = '';
   document.querySelectorAll('#pp-sections .pp-sec').forEach(b => b.classList.remove('active'));
+  _ppScopeTypeChips(null);          // back on the front, every chip returns
 }
 
 // Back to the front from inside a section.
@@ -2758,6 +2977,23 @@ function ppCloseSection() {
 }
 
 let PP_BANDS = [];
+
+// Show only the type chips that belong to the open section. Hidden with
+// [hidden] rather than removed, so ppCloseSection can put them all back
+// without re-rendering the whole index.
+function _ppScopeTypeChips(band) {
+  const on = !(HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.scopeTypesToSection === false);
+  const chips = document.querySelectorAll('#lib-cats-product .lib-cat');
+  if (!chips.length) return;
+  const want = (band && band.cat) ? (Array.isArray(band.cat) ? band.cat : [band.cat]) : null;
+  chips.forEach((b, i) => {
+    if (!on || !want) { b.hidden = false; return; }
+    // Chip 0 is "All" — it is the way back to the whole section, keep it.
+    if (i === 0) { b.hidden = false; return; }
+    const label = (b.textContent || '').replace(/\d+$/, '').trim();
+    b.hidden = !want.some(c => label === c || label.indexOf(c) === 0);
+  });
+}
 
 function _ppSourceCount(state) {
   return new Set(state.files.map(f => f._source || 'Product Portal')).size;
@@ -2780,6 +3016,8 @@ function ppOpenSection(i) {
   if (sec) sec.style.display = 'none';
   if (up)  up.style.display  = 'none';
   if (idx) idx.style.display = '';
+  const lnk = document.getElementById('pp-links');
+  if (lnk) lnk.style.display = 'none';   // front-page links only
 
   // A heading that says where you are, and the way back.
   const crumb = document.getElementById('pp-section-head');
@@ -2790,8 +3028,15 @@ function ppOpenSection(i) {
         Product portal
       </button>
       <h2 class="pp-section-title">${escHtml(band ? band.sec.label : 'Everything')}</h2>
-      ${band && band.sec.desc ? `<p class="pp-section-sub">${escHtml(band.sec.desc)}</p>` : ''}`;
+      ${band && band.sec.desc ? `<p class="pp-section-sub">${escHtml(band.sec.desc)}</p>` : ''}
+      ${band ? _ppLinksHtml(band.sec.key) : ''}`;
   }
+
+  // 9 Sep 2026, Lowri: inside a section the type chips should offer only
+  // that section's own types — "we don't want to see options for
+  // Datasheets, Product Training etc". "Search everything" (i < 0) still
+  // shows the lot.
+  _ppScopeTypeChips(band);
 
   const q = document.getElementById('lib-q-product');
   if (q) q.value = '';
@@ -2803,6 +3048,50 @@ function ppOpenSection(i) {
 
   renderLibraryResults('product');
   window.scrollTo(0, 0);
+}
+
+// ── Links & request sheets ────────────────────────────────────
+// 7 Sep 2026, Lowri: "Would we be able to add a link section to Product
+// Information File, Sample Request Sheet and New Product Request Sheet
+// here?" These are destinations, not documents in the library, so they
+// get their own band rather than being faked as files.
+//
+// A link with a `section` shows inside that section; one without shows
+// on the portal front. `sectionKey` null = the front.
+function _ppLinkCard(l) {
+  return `
+    <a class="pp-link" href="${escAttr(safeUrl(l.url, '#'))}" target="_blank" rel="noopener">
+      <span class="pp-link-t">${escHtml(l.title)}</span>
+      ${l.desc ? `<span class="pp-link-d">${escHtml(l.desc)}</span>` : ''}
+      <span class="pp-link-go">Open
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </span>
+    </a>`;
+}
+
+function _ppLinksHtml(sectionKey) {
+  const all = ppLinks();
+  if (!all.length) return '';
+  const want = sectionKey ? String(sectionKey).toLowerCase() : '';
+  const mine = all.filter(l => {
+    const s = String(l.section || '').trim().toLowerCase();
+    return want ? s === want : !s;
+  });
+  if (!mine.length) return '';
+  const label = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.linksLabel)
+             || 'Links & request sheets';
+  return `
+    <div class="pp-links-band">
+      ${sectionKey ? '' : `<div class="pp-band-head"><h2 class="pp-band-title">${escHtml(label)}</h2>
+        <span class="pp-band-note">Sheets and files that live outside the document library</span></div>`}
+      <div class="pp-links">${mine.map(_ppLinkCard).join('')}</div>
+    </div>`;
+}
+
+function renderPortalLinks() {
+  const host = document.getElementById('pp-links');
+  if (!host) return;
+  host.innerHTML = _ppLinksHtml(null);
 }
 
 // "Also has a feedback form." One URL in config.js; no URL, no box.
@@ -3552,11 +3841,17 @@ async function loadTradeEvents() {
       </section>`;
     };
 
+    // 10 Sep 2026, deck 7: "Can we please change the organisation —
+    // Training sessions / Exhibitions / Customer events." Training used
+    // to sit last, under both folder-driven sections. It leads now.
+    // The two folder sections keep the order they have in
+    // HUB_CONFIG.events.categories, so marketing re-order those by
+    // moving the blocks in config.js.
     host.innerHTML = `
+      <section id="ev-training"></section>
       <div class="ev-wrap">
         ${cats.map(section).join('')}
-      </div>
-      <section id="ev-training"></section>`;
+      </div>`;
 
     // Event artwork, painted in once SharePoint answers.
     Promise.all(_eventFolders.slice(0, 16).map(async e => {
@@ -3661,7 +3956,7 @@ function renderTrainingList() {
   const head = `
     <div class="tr-head">
       <div>
-        <h2 class="tr-title">Training &amp; sessions</h2>
+        <h2 class="tr-title">Training sessions</h2>
         <p class="tr-sub">Internal sessions and external courses. Book yourself on and it lands in your calendar.</p>
       </div>
       <div class="tr-sub-wrap">
@@ -4894,8 +5189,10 @@ async function navMenuOpen(key) {
 
     if (key === 'trade') {
       const cats = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.categories) || [];
-      const rows = cats.map(c => _navRow(c.label, `navGo('evcat',${_navArg(c.label)})`))
-        .concat([_navRow('Training & sessions', "navGo('evcat','__training')")]);
+      // Training leads on the page now (deck 7), so it leads here too —
+      // a hover menu that disagrees with the page is worse than no menu.
+      const rows = [_navRow('Training sessions', "navGo('evcat','__training')")]
+        .concat(cats.map(c => _navRow(c.label, `navGo('evcat',${_navArg(c.label)})`)));
       box.innerHTML = _navHtml('Trade, events & training', rows,
         _navAll('Open the page', "navGo('page','trade')"));
       return;
@@ -4921,7 +5218,9 @@ async function navMenuOpen(key) {
     }
 
     if (key === 'portal') {
-      const secs = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.sections) || [];
+      // ppSections() so the hover menu shows the product team's own
+      // names and order, not the ones frozen into config.js.
+      const secs = ppSections();
       const rows = secs.map(sec => _navRow(sec.label, `navGo('ppband',${_navArg(sec.key)})`));
       box.innerHTML = _navHtml('Product portal', rows,
         _navAll('Open the Product portal', "navGo('page','portal')"));

@@ -159,12 +159,39 @@ async function loadBlogsCarousel() {
 // text-only cards and takes the pictures when SharePoint answers, so a
 // slow library never holds the home page up. Any page with no matching
 // image keeps the text-only card — never an empty grey box.
+// 10 Sep 2026 — marketing: "Can those four landing pages be first in
+// that section, as I know that's the general one? The general one can
+// go after those when people scroll to the left."
+//
+// WordPress orders these by last-modified, so editing an evergreen page
+// pushes the product ones off the front. HUB_CONFIG.wordpress.pinned
+// names the pages that lead, in the order marketing want them; anything
+// not named keeps the newest-first order behind them. Marketing can
+// re-order the carousel by editing that list — no code change.
+function _orderLandingPages(pages) {
+  const pinned = (HUB_CONFIG.wordpress && HUB_CONFIG.wordpress.pinned) || [];
+  if (!pinned.length || !pages || !pages.length) return pages || [];
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const rank = p => {
+    const t = norm(p.title), l = norm(p.link);
+    for (let i = 0; i < pinned.length; i++) {
+      const k = norm(pinned[i]);
+      if (k && (t === k || t.includes(k) || k.includes(t) || l.includes(k))) return i;
+    }
+    return pinned.length;          // everything else keeps its order, after
+  };
+  return pages
+    .map((p, i) => ({ p, r: rank(p), i }))
+    .sort((a, b) => (a.r - b.r) || (a.i - b.i))
+    .map(x => x.p);
+}
+
 async function loadLandingPages() {
   const section = document.getElementById('home-pages-section');
   const track   = document.getElementById('home-pages-track');
   if (!track) return;
   try {
-    const pages = await fetchWordPressPages();
+    const pages = _orderLandingPages(await fetchWordPressPages());
     if (!pages.length) { if (section) section.style.display = 'none'; return; }
     track.innerHTML = pages.map((p, i) => _caraCard(p, i)).join('');
     if (section) section.style.display = '';
@@ -172,8 +199,13 @@ async function loadLandingPages() {
     if (typeof fetchLandingImages === 'function') {
       const images = await fetchLandingImages();
       if (!images.length) return;
+      // 10 Sep 2026 — assign across ALL pages at once so one picture can
+      // never be handed to two cards. See _landingScore in graph.js.
+      const picked = typeof assignLandingImages === 'function'
+        ? assignLandingImages(images, pages)
+        : new Map(pages.map((p, i) => [i, matchLandingImage(images, p)]));
       pages.forEach((p, i) => {
-        const url = matchLandingImage(images, p);
+        const url = picked.get(i);
         if (!url) return;
         const card = document.getElementById('cara-' + i);
         if (!card) return;

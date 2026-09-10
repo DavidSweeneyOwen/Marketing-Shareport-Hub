@@ -29,6 +29,14 @@ const HUB_CONFIG = {
     launches:  'Product Launches',
     campaigns: 'Campaigns',
     events:    'Events',
+
+    // 10 Sep 2026 — the product team maintain the Product Portal
+    // themselves from here. Both are OPTIONAL: if a list does not
+    // exist, the hub silently uses the config below and behaves
+    // exactly as it did before. Create them when you're ready.
+    // Setup steps are in PORTAL-LISTS-SETUP.md.
+    portalSections: 'Portal Sections',
+    portalLinks:    'Portal Links',
   },
 
   documentsLibrary: 'Documents',
@@ -239,6 +247,23 @@ HUB_CONFIG.wordpress = {
   postsPerPage: 8,
   pagesPerPage: 8,
   landingPageParent: 0,
+
+  // "Updated Landing Pages" on the home page. WordPress hands these
+  // back newest-modified first, which means touching an evergreen page
+  // pushes the product ones out of sight. Anything named here leads the
+  // carousel, in this order; everything else follows, still
+  // newest-first.
+  //
+  // MARKETING: this is yours. Add, remove or re-order the lines and the
+  // carousel changes — matched loosely on the page title or its web
+  // address, so "Bridgehill Fire Blankets" finds
+  // /bridgehill-fire-blankets/.
+  pinned: [
+    'Flat-Pack Tubular Stand',
+    'Bridgehill Fire Blankets',
+    'CheckFire 2026 Brochure',
+    'Flat-Pack Commander Stand',
+  ],
 };
 
 // ── Showroom / marketing calendar ─────────────────────────────
@@ -543,16 +568,16 @@ HUB_CONFIG.libraries = {
       { folder:'Marine Equipment Regulations (MER)', label:'MER' },
       { folder:'NTA 8133',                           label:'NTA 8133' },
 
-      { match:'product change notification|\\bpcn\\b',  label:'Product change notifications' },
+      { match:'product change notification|\\bpcn\\b',  label:'Product Change Notifications' },
       { match:'declaration of conformity|\\bdoc\\b',    label:'Declarations of Conformity' },
       { match:'kitemark',                             label:'Kitemark certificates' },
       { match:'\\bmsds\\b|safety data sheet|\\bsds\\b', label:'MSDS & safety data' },
       { match:'\\bpif\\b|product information file', label:'PIF' },
       { match:'data ?sheet',                          label:'Data sheets' },
-      { match:'launch pack',                          label:'Launch packs' },
-      { match:'service manual|instruction|user guide|manual', label:'Manuals & instructions' },
-      { match:'training',                             label:'Product training' },
-      { match:'\\bnpd\\b|new product',              label:'New product development' },
+      { match:'launch pack',                          label:'Launch Packs' },
+      { match:'service manual|instruction|user guide|manual', label:'Manuals & Instructions' },
+      { match:'training',                             label:'Product Training' },
+      { match:'\\bnpd\\b|new product',              label:'New Product Development' },
       { match:'toolkit',                              label:'Toolkits' },
       { match:'certificat|approval|\\bced\\b|\\ben ?3\\b', label:'Certificates & approvals' },
       { match:'brochure|flyer|leaflet',               label:'Brochures' },
@@ -802,7 +827,7 @@ HUB_CONFIG.productPortal = {
   // and `aliases` are the older folder-name route, still honoured for
   // the two request sheets, which are a folder rather than a kind.
   sections: [
-    { key:'pcn',     label:'Product change notifications',
+    { key:'pcn',     label:'Product Change Notifications',
       cats:['Product change notifications'],
       folder:'Product Change Notifications',
       aliases:['Product Change Notification','PCN','Change Notifications'],
@@ -814,43 +839,101 @@ HUB_CONFIG.productPortal = {
       aliases:['Datasheets','Data Sheets','MSDS','SDS'],
       desc:'Technical data sheets and safety data sheets.' },
 
-    { key:'certs',   label:'Certificates & declarations',
+    { key:'certs',   label:'Certificates & Declarations',
       cats:['Declarations of Conformity','Kitemark certificates','MED','MER',
             'NTA 8133','Certificates & approvals'],
       desc:'Conformity, Kitemark, marine and NTA paperwork.' },
 
-    { key:'pif',     label:'Links to PIF',
+    { key:'pif',     label:'Product Information Files',
       cats:['PIF'],
       folder:'PIF',
       aliases:['PIFs','Links to PIF','Product Information Files','Product Information File'],
       desc:'The product information file for each product.' },
 
-    { key:'manuals', label:'Manuals & instructions',
+    { key:'manuals', label:'Manuals & Instructions',
       cats:['Manuals & instructions'],
       desc:'Service manuals, user guides and fitting instructions.' },
 
-    { key:'launch',  label:'Launch packs',
+    { key:'launch',  label:'Launch Packs',
       cats:['Launch packs'],
       desc:'Everything that went out with each product launch.' },
 
-    { key:'training',label:'Product training',
+    { key:'training',label:'Product Training',
       cats:['Product training'],
       desc:'Training material for the range.' },
 
-    { key:'npd',     label:'New product development',
+    { key:'npd',     label:'New Product Development',
       cats:['New product development'],
       desc:'What is coming, and what is being worked on.' },
 
-    { key:'samples', label:'Sample request sheet',
+    { key:'samples', label:'Sample Request Sheet',
       folder:'Sample Requests',
       aliases:['Sample Request Sheet','Sample Request','Samples'],
       desc:'Request a sample for a customer.' },
 
-    { key:'npr',     label:'New product request sheet',
+    { key:'npr',     label:'New Product Request Sheet',
       folder:'New Product Requests',
       aliases:['New Product Request Sheet','New Product Request','NPD Requests'],
       desc:'Put a product forward for the range.' },
   ],
+
+  // ── Quick links on the Product Portal ──────────────────────
+  // 7 Sep 2026, Lowri: "Would we be able to add a link section to
+  // Product Information File, Sample Request Sheet and New Product
+  // Request Sheet here?" — plus the product files and the feedback form
+  // from her earlier note.
+  //
+  // These are the DEFAULTS. Once the "Portal Links" SharePoint list
+  // exists (see PORTAL-LISTS-SETUP.md) the list wins and this array is
+  // ignored, so the product team add and re-order links themselves
+  // without anyone touching this file. Until then, this is what shows.
+  //
+  // `section` is optional: a section key from `sections` above pins the
+  // link inside that section; leave it out and the link sits in the
+  // links band on the portal front page.
+  links: [
+    { title: 'CheckFire Product Information File',
+      url: 'https://checkfireltd.sharepoint.com/:x:/g/IQDOG_1s2CtJQZBW0Ufsx-ybAYpWwv-jreco_diNIRCWnvs',
+      desc: 'Product information spreadsheet, version 1.1', section: 'pif' },
+
+    { title: 'PJ Fire Product Information File',
+      url: 'https://checkfireltd-my.sharepoint.com/:x:/g/personal/lowri_nelson_checkfire_co_uk/IQC5Mlrl7NREQINLChQkQ3iPAeLC6MXVNpvqjG68owpE0Ws',
+      desc: 'The PJ Fire equivalent', section: 'pif' },
+
+    { title: 'Sample Request Sheet',
+      url: 'https://checkfireltd.sharepoint.com/Lists/Test%20log%20for%20samples/AllItems.aspx',
+      desc: 'Log a sample request for a customer', section: 'samples' },
+
+    { title: 'New Product Request Sheet',
+      url: 'https://checkfireltd.sharepoint.com/Lists/Product%20Request%20Sheet/AllItems.aspx',
+      desc: 'Put a product forward for the range', section: 'npr' },
+
+    { title: 'Product Feedback Form',
+      url: 'https://form.jotform.com/261374017099056',
+      desc: 'Tell the product team about a problem or a gap' },
+  ],
+  linksLabel: 'Links & request sheets',
+
+  // ── What the document index shows ──────────────────────────
+  // 9 Sep 2026, Lowri, on the section pages:
+  //  · "Remove the numbers in these squares on each page as can look
+  //    confusing"  → showTileCounts:false drops the count, keeps the tile.
+  //  · "Remove this section on each page please? So the only files that
+  //    come up are what's been requesting" → showRecent:false drops the
+  //    "Recently updated" row, which ignored the filter you had set and
+  //    showed files you hadn't asked for.
+  // Both are one-word reverts if she wants either back.
+  showTileCounts: false,
+  showRecent: false,
+
+  // 9 Sep 2026, Lowri: "Is there a way when you click onto each
+  // individual tab like Certificates & Declarations, the only options
+  // that show in the 'By Document Type' are what's highlighted? Ideally
+  // when we click into this section, we don't want to see options for
+  // Datasheets, Product Training etc."
+  // true = inside a section, the type chips list only that section's own
+  // types. "Search everything" still shows them all.
+  scopeTypesToSection: true,
 
   // Launch countdown and "dates to look out for", from the same
   // Product Launches list the rest of the hub reads.
@@ -859,7 +942,8 @@ HUB_CONFIG.productPortal = {
   // Fast feedback on a product. Paste a Microsoft Form or Jotform URL
   // here and the box appears at the foot of the page; leave it empty
   // and there is no box.
-  feedbackUrl: '',
+  // 7 Sep 2026 — Lowri's "Product Feedback May 2026" Jotform.
+  feedbackUrl: 'https://form.jotform.com/261374017099056',
   feedbackTitle: 'Feedback on a product',
   feedbackSub: 'Something wrong with a datasheet, a certificate out of date, or a product you keep being asked for? Tell the product team.',
 };
