@@ -237,6 +237,30 @@ async function fetchListItems(listName) {
   }
 }
 
+// Same as fetchListItems, but on a named site rather than always the
+// MarketingHub one.
+//
+// 10 Sep 2026 — the Portal Sections / Portal Links lists were created on
+// the **Product Portal** site, which is the obvious place to put them
+// and not where the setup note said. fetchListItems only ever looks at
+// HUB_CONFIG.sharepointSite, so they were invisible and the portal
+// quietly used its config defaults — fail-safe, but the lists did
+// nothing. Rather than ask anyone to move a list, the portal now looks
+// on both sites (see _fetchPortalList).
+async function fetchListItemsOn(siteUrl, listName) {
+  const cacheKey = 'list_' + siteUrl + '::' + listName;
+  const cached = _cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const siteId = await resolveSiteId(siteUrl);
+  const data = await graphFetch(
+    `/sites/${siteId}/lists/${encodeURIComponent(listName)}/items?expand=fields&$top=100`
+  );
+  const items = (data.value || []).map(i => i.fields || {});
+  _cacheSet(cacheKey, items);
+  return items;
+}
+
 async function fetchLibraryFiles() {
   const cached = _cacheGet('library');
   if (cached) return cached;
@@ -2719,6 +2743,42 @@ function _ppTruthy(v) {
   return !(s === 'no' || s === 'false' || s === '0' || s === 'hide');
 }
 
+// Read a column by any of the names somebody might reasonably have given
+// it. A list that was built slightly differently from the setup note
+// should still work — "the list is there and nothing happened" is the
+// worst possible outcome for a self-serve feature.
+function _ppField(row, names) {
+  for (const n of names) {
+    if (row[n] !== undefined && row[n] !== null && row[n] !== '') return row[n];
+  }
+  // Last resort: case-insensitive, ignoring spaces — "Sort Order",
+  // "sortorder" and "SortOrder" are the same intent.
+  const want = names.map(n => n.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  for (const k of Object.keys(row)) {
+    const kk = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (want.indexOf(kk) >= 0 && row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k];
+  }
+  return undefined;
+}
+
+// Try the Product Portal site first (where the lists actually live), then
+// MarketingHub. Whichever answers with rows wins; neither answering is a
+// normal, silent fall back to config.
+async function _fetchPortalList(listName) {
+  const sites = [HUB_CONFIG.productPortalSite, HUB_CONFIG.sharepointSite].filter(Boolean);
+  for (const site of sites) {
+    try {
+      const rows = await fetchListItemsOn(site, listName);
+      if (rows && rows.length) {
+        console.info(`[Portal] "${listName}" found on ${site} — ${rows.length} row(s).`);
+        return rows;
+      }
+    } catch (e) { /* not on this site, or no access — try the next */ }
+  }
+  console.info(`[Portal] no "${listName}" list on either site — using the defaults in config.js.`);
+  return [];
+}
+
 // A SharePoint hyperlink column comes back as {Url, Description};
 // a plain text column comes back as a string. Accept either.
 function _ppUrl(v) {
@@ -2732,45 +2792,56 @@ async function fetchPortalOverrides() {
   const out = { sections: null, links: null };
   const names = (HUB_CONFIG.lists || {});
 
+  const SORT = ['SortOrder', 'Sort Order', 'Order', 'Sort'];
+  const SHOW = ['Show', 'Active', 'Visible', 'Display'];
+  const DESC = ['Description', 'Desc', 'Subtitle', 'Notes'];
+
   if (typeof getAccessToken === 'function' && !window.HUB_DEMO_MODE) {
     // Sections — Title (label), SectionKey, Description, SortOrder, Show
     if (names.portalSections) {
       try {
-        const rows = await fetchListItems(names.portalSections);
-        const usable = (rows || []).filter(r => r && (r.SectionKey || r.Title));
+        const rows = await _fetchPortalList(names.portalSections);
+        const usable = (rows || []).filter(r => r && (_ppField(r, ['SectionKey', 'Key', 'Section']) || r.Title));
         if (usable.length) {
           out.sections = usable
             .map(r => ({
-              key:   String(r.SectionKey || '').trim(),
-              label: (r.Title || '').trim(),
-              desc:  (r.Description || '').trim(),
-              sort:  Number(r.SortOrder), show: _ppTruthy(r.Show),
+              key:   String(_ppField(r, ['SectionKey', 'Key', 'Section']) || '').trim(),
+              label: String(r.Title || '').trim(),
+              desc:  String(_ppField(r, DESC) || '').trim(),
+              sort:  Number(_ppField(r, SORT)),
+              show:  _ppTruthy(_ppField(r, SHOW)),
             }))
             .sort((a, b) => (isNaN(a.sort) ? 999 : a.sort) - (isNaN(b.sort) ? 999 : b.sort));
-          console.info(`[Portal] ${out.sections.length} section row(s) from "${names.portalSections}".`);
+          console.info(`[Portal] ${out.sections.length} usable section row(s).`);
+        } else if (rows && rows.length) {
+          console.warn(`[Portal] "${names.portalSections}" has ${rows.length} row(s) but none usable — ` +
+                       `each needs a Title and a SectionKey. Columns seen: ${Object.keys(rows[0] || {}).join(', ')}`);
         }
-      } catch (e) { console.info('[Portal] no Portal Sections list —', e.message); }
+      } catch (e) { console.info('[Portal] Portal Sections not read —', e.message); }
     }
     // Links — Title, URL, Description, Section, SortOrder, Show
     if (names.portalLinks) {
       try {
-        const rows = await fetchListItems(names.portalLinks);
-        const usable = (rows || [])
-          .filter(r => r && r.Title && _ppUrl(r.URL || r.Url || r.Link))
-          .filter(r => _ppTruthy(r.Show));
+        const rows = await _fetchPortalList(names.portalLinks);
+        const withUrl = (rows || []).filter(r => r && r.Title && _ppUrl(_ppField(r, ['URL', 'Url', 'Link', 'Address'])));
+        const usable  = withUrl.filter(r => _ppTruthy(_ppField(r, SHOW)));
         if (usable.length) {
           out.links = usable
             .map(r => ({
               title:   String(r.Title).trim(),
-              url:     _ppUrl(r.URL || r.Url || r.Link),
-              desc:    (r.Description || '').trim(),
-              section: String(r.Section || '').trim(),
-              sort:    Number(r.SortOrder),
+              url:     _ppUrl(_ppField(r, ['URL', 'Url', 'Link', 'Address'])),
+              desc:    String(_ppField(r, DESC) || '').trim(),
+              section: String(_ppField(r, ['Section', 'SectionKey', 'Key']) || '').trim(),
+              sort:    Number(_ppField(r, SORT)),
             }))
             .sort((a, b) => (isNaN(a.sort) ? 999 : a.sort) - (isNaN(b.sort) ? 999 : b.sort));
-          console.info(`[Portal] ${out.links.length} link row(s) from "${names.portalLinks}".`);
+          console.info(`[Portal] ${out.links.length} usable link row(s).`);
+        } else if (rows && rows.length) {
+          console.warn(`[Portal] "${names.portalLinks}" has ${rows.length} row(s) but none usable — ` +
+                       `each needs a Title and a URL, and Show must not be No. ` +
+                       `Columns seen: ${Object.keys(rows[0] || {}).join(', ')}`);
         }
-      } catch (e) { console.info('[Portal] no Portal Links list —', e.message); }
+      } catch (e) { console.info('[Portal] Portal Links not read —', e.message); }
     }
   }
   return (_portalOverrides = out);
