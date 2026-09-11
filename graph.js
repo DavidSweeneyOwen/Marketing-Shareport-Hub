@@ -3140,11 +3140,21 @@ function _ppLinkCard(l) {
     </a>`;
 }
 
+// 11 Sep 2026, Lowri: "The links to the request sheets/product
+// information files are not showing for me." They were there, but
+// pinned to the pif / samples / npr sections, and a section band only
+// exists when the document index actually holds that kind of file — so
+// the four links she asked for had nowhere to appear, and the front
+// page showed only the one unpinned link (the feedback form).
+// '*' is the front page: EVERY link, pinned or not. A section key still
+// shows just that section's own, so a pinned link appears in both
+// places rather than only in a band that may never render.
 function _ppLinksHtml(sectionKey) {
   const all = ppLinks();
   if (!all.length) return '';
-  const want = sectionKey ? String(sectionKey).toLowerCase() : '';
-  const mine = all.filter(l => {
+  const front = sectionKey === '*';
+  const want  = (sectionKey && !front) ? String(sectionKey).toLowerCase() : '';
+  const mine  = front ? all.slice() : all.filter(l => {
     const s = String(l.section || '').trim().toLowerCase();
     return want ? s === want : !s;
   });
@@ -3153,8 +3163,8 @@ function _ppLinksHtml(sectionKey) {
              || 'Links & request sheets';
   return `
     <div class="pp-links-band">
-      ${sectionKey ? '' : `<div class="pp-band-head"><h2 class="pp-band-title">${escHtml(label)}</h2>
-        <span class="pp-band-note">Sheets and files that live outside the document library</span></div>`}
+      ${front ? `<div class="pp-band-head"><h2 class="pp-band-title">${escHtml(label)}</h2>
+        <span class="pp-band-note">Sheets and files that live outside the document library</span></div>` : ''}
       <div class="pp-links">${mine.map(_ppLinkCard).join('')}</div>
     </div>`;
 }
@@ -3162,7 +3172,7 @@ function _ppLinksHtml(sectionKey) {
 function renderPortalLinks() {
   const host = document.getElementById('pp-links');
   if (!host) return;
-  host.innerHTML = _ppLinksHtml(null);
+  host.innerHTML = _ppLinksHtml('*');
 }
 
 // "Also has a feedback form." One URL in config.js; no URL, no box.
