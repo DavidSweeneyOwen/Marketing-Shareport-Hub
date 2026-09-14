@@ -115,18 +115,67 @@ function _cacheSet(key, v) {
   catch (_) { /* storage full / private mode — fine, just uncached */ }
 }
 
+// 14 Sep 2026 — the Product Portal was slow, and the crawl is the
+// reason: three sites, eleven named roots, every library on the portal
+// site, one Graph call per folder. Two things were wrong with how those
+// calls were made, and they pull in opposite directions:
+//
+//  · Too serial where it mattered — roots and libraries were walked one
+//    at a time, so the page waited on the sum of eleven subtree crawls.
+//  · Potentially too parallel once that is fixed — `_libCrawl` already
+//    fans out with Promise.all over every folder at a level, and Graph
+//    throttles (429). A 429 was being swallowed by _libCrawl's bare
+//    catch, so throttling showed up as MISSING FILES, not as an error.
+//
+// So the fix is a gate, not a free-for-all: at most GRAPH_MAX_INFLIGHT
+// requests are on the wire at once, everything else queues, and a 429
+// or 503 is retried honouring Retry-After. Parallelism above this line
+// is now safe to increase because this line is what limits it.
+const GRAPH_MAX_INFLIGHT = 8;
+let _gateActive = 0;
+const _gateQueue = [];
+
+function _gateAcquire() {
+  if (_gateActive < GRAPH_MAX_INFLIGHT) { _gateActive++; return Promise.resolve(); }
+  return new Promise(res => _gateQueue.push(res));
+}
+
+function _gateRelease() {
+  const next = _gateQueue.shift();
+  if (next) next(); else _gateActive--;
+}
+
+const _sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function graphFetch(path) {
   const token = await getAccessToken();
   if (!token) throw new Error('Not signed in');
 
-  const res = await fetch(GRAPH_BASE + path, {
-    headers: { Authorization: 'Bearer ' + token },
-  });
+  await _gateAcquire();
+  try {
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetch(GRAPH_BASE + path, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
 
-  if (res.status === 404) throw new Error('NOT_FOUND');
-  if (res.status === 403) throw new Error('Permission denied — has admin consent been granted?');
-  if (!res.ok) throw new Error('Graph returned ' + res.status);
-  return res.json();
+      // Throttled or briefly unavailable. Graph tells us how long to
+      // wait; if it doesn't, back off 1s, 2s, 4s.
+      if ((res.status === 429 || res.status === 503) && attempt < 3) {
+        const ra = parseFloat(res.headers.get('Retry-After'));
+        const wait = (isFinite(ra) && ra > 0) ? ra * 1000 : Math.pow(2, attempt) * 1000;
+        console.info(`[Graph] ${res.status} on ${path.slice(0, 60)} — retrying in ${wait}ms`);
+        await _sleep(wait);
+        continue;
+      }
+
+      if (res.status === 404) throw new Error('NOT_FOUND');
+      if (res.status === 403) throw new Error('Permission denied — has admin consent been granted?');
+      if (!res.ok) throw new Error('Graph returned ' + res.status);
+      return res.json();
+    }
+  } finally {
+    _gateRelease();
+  }
 }
 
 // POST variant — used for the document "preview" action, which returns a
@@ -181,15 +230,61 @@ function getSiteId() {
 // they were dropped onto a page instead of into the library. A crawl of
 // "Documents" alone could never find them, which is exactly why the
 // portal page looked like it had none.
+// 14 Sep 2026 — libraries that cannot hold a product document. Every
+// one of these was being crawled to depth 4 on the Product Portal.
+//
+// FormServerTemplates is deliberately NOT here. That is where the six
+// Product Change Notifications actually live (1 Sep 2026), and skipping
+// it is precisely the bug `allLibraries` was added to fix. If a library
+// is ever added to this list, say why — a skipped library is a silently
+// missing document.
+const SKIP_LIBRARIES = [
+  'style library',
+  'preservation hold library',
+  'site assets', 'siteassets',
+  'site pages', 'sitepages',
+  'teams wiki data',
+  'customized reports',
+  'converted forms',
+];
+
+// The drive list per site, once per session. Small, so sessionStorage
+// is fine and it survives a refresh.
+const _drivesPromises = {};
+
+function _sitesDrives(siteUrl) {
+  const key = siteUrl || HUB_CONFIG.sharepointSite;
+  if (_drivesPromises[key]) return _drivesPromises[key];
+
+  _drivesPromises[key] = (async () => {
+    const ck = 'drives_' + key;
+    const cached = _cacheGet(ck);
+    if (cached) return cached;
+
+    const siteId = await resolveSiteId(key);
+    const data = await graphFetch(`/sites/${siteId}/drives?$select=id,name,webUrl`);
+    const rows = data.value || [];
+    _cacheSet(ck, rows);
+    return rows;
+  })();
+
+  _drivesPromises[key].catch(() => { delete _drivesPromises[key]; });
+  return _drivesPromises[key];
+}
+
 async function resolveAllDrives(siteUrl) {
-  const siteId = await resolveSiteId(siteUrl);
-  const drives = await graphFetch(`/sites/${siteId}/drives?$select=id,name,webUrl`);
-  return (drives.value || []);
+  const all  = await _sitesDrives(siteUrl);
+  const keep = all.filter(d => !SKIP_LIBRARIES.includes(String(d.name || '').trim().toLowerCase()));
+  const cut  = all.length - keep.length;
+  if (cut) {
+    console.info(`[Library] ${siteUrl}: skipped ${cut} system librar${cut === 1 ? 'y' : 'ies'} — `
+      + all.filter(d => !keep.includes(d)).map(d => d.name).join(', '));
+  }
+  return keep;
 }
 
 async function resolveDrive(siteUrl, libraryName) {
-  const siteId = await resolveSiteId(siteUrl);
-  const drives = await graphFetch(`/sites/${siteId}/drives?$select=id,name`);
+  const drives = { value: await _sitesDrives(siteUrl) };
   const wanted = (libraryName || 'Documents').toLowerCase();
   const drive  = (drives.value || []).find(d => (d.name || '').toLowerCase() === wanted)
               || (drives.value || [])[0];
@@ -199,7 +294,43 @@ async function resolveDrive(siteUrl, libraryName) {
 
 // Children of a drive folder (root when itemId is null). Each item is
 // stamped with its drive id so previews can build the /preview path.
+// 14 Sep 2026 — every folder listing in the hub comes through here:
+// the library crawls, _findChildFolder's path walks, the landing
+// images, the trade events, the campaign folders. It was uncached, so
+// the same folder was read from Graph several times in one page load
+// and again on every visit to the page.
+//
+// In MEMORY, not sessionStorage, deliberately: a listing carries
+// @microsoft.graph.downloadUrl for every file, which is both bulky
+// (sessionStorage is ~5MB and would blow) and short-lived. An entry
+// older than GRAPH_CACHE_TTL is re-read.
+//
+// `_childrenInflight` is the other half: two crawls asking for the same
+// folder at the same time now share one request instead of racing.
+const _childrenCache = new Map();
+const _childrenInflight = new Map();
+
 async function fetchDriveChildren(driveId, itemId) {
+  // The drive root and an item whose id happened to be the string
+  // "root" must not share a key, so the two cases are tagged apart
+  // rather than coalesced with `||`.
+  const ck = itemId == null ? driveId + '|@root' : driveId + '|i|' + itemId;
+
+  const hit = _childrenCache.get(ck);
+  if (hit && (Date.now() - hit.t) < GRAPH_CACHE_TTL) return hit.v;
+
+  const flying = _childrenInflight.get(ck);
+  if (flying) return flying;
+
+  const p = _fetchDriveChildrenLive(driveId, itemId)
+    .then(v => { _childrenCache.set(ck, { t: Date.now(), v }); return v; })
+    .finally(() => { _childrenInflight.delete(ck); });
+
+  _childrenInflight.set(ck, p);
+  return p;
+}
+
+async function _fetchDriveChildrenLive(driveId, itemId) {
   const base = itemId
     ? `/drives/${driveId}/items/${itemId}/children`
     : `/drives/${driveId}/root/children`;
@@ -2275,8 +2406,18 @@ async function _libResolvePath(driveId, path) {
 async function _libCrawl(driveId, itemId, path, depth, out, cap, exclude) {
   if (depth < 0 || out.length >= cap) return;
   let kids;
+  // 14 Sep 2026 — this used to swallow the error silently, so a Graph
+  // 429 during the crawl looked like "that folder is empty" rather than
+  // "we were throttled". graphFetch now retries a 429, but if one still
+  // gets through, say so: missing files must never be silent.
   try { kids = await fetchDriveChildren(driveId, itemId); }
-  catch (_) { return; }
+  catch (e) {
+    if (e.message !== 'NOT_FOUND') {
+      console.warn(`[Library] could not read /${path.join('/') || 'root'} — ${e.message}. `
+        + 'Files under it are missing from this list.');
+    }
+    return;
+  }
 
   const folders = [];
   for (const k of kids) {
@@ -2369,6 +2510,7 @@ async function loadLibrary(key) {
 
     const out = [];
     const tally = [];
+    const t0 = Date.now();   // 14 Sep 2026 — so "is it still slow?" has an answer
 
     await Promise.all(sources.map(async src => {
       const before = out.length;
@@ -2379,20 +2521,32 @@ async function loadLibrary(key) {
 
         if (!LIB[key].driveId && drives[0]) LIB[key].driveId = drives[0].id;
 
-        for (const drive of drives) {
+        // 14 Sep 2026 — libraries and named roots used to be walked ONE
+        // AT A TIME, so the page waited on the sum of every subtree:
+        // eleven roots across two sites, plus every library on the
+        // portal site, one after another. They are independent, so they
+        // run together now; graphFetch's gate is what stops that
+        // becoming a stampede.
+        //
+        // The cap is still shared per drive, so a source can't run away
+        // — but it is no longer first-come-first-served. Under the old
+        // loop, one big root could fill the cap and starve the rest;
+        // now the coverage is spread across all of them, which is the
+        // behaviour marketing actually expected.
+        await Promise.all(drives.map(async drive => {
           const mine = [];
           const cap  = src.max || cfg.maxFiles || 400;
 
           if (src.roots && src.roots.length) {
-            for (const root of src.roots) {
-              if (mine.length >= cap) break;
+            await Promise.all(src.roots.map(async root => {
+              if (mine.length >= cap) return;
               const id = await _libResolvePath(drive.id, root);
-              if (!id) continue;
+              if (!id) return;
               // The root's own name leads the path, so it still reads
               // as "where this came from" in the file list.
               await _libCrawl(drive.id, id, [String(root).split('/').pop()],
                               (src.depth || 3), mine, cap, src.excludeFolders || []);
-            }
+            }));
           } else {
             await _libCrawl(drive.id, null, [], (src.depth || 3), mine, cap,
                             src.excludeFolders || cfg.excludeFolders || []);
@@ -2409,14 +2563,15 @@ async function loadLibrary(key) {
             }
           });
           out.push(...mine);
-        }
+        }));
       } catch (e) {
         console.info(`[Library] source "${src.label || src.key}" unavailable: ${e.message}`);
       }
       tally.push(`${src.label || src.key}: ${out.length - before}`);
     }));
 
-    console.info('[Library] ' + (cfg.title || key) + ' — ' + tally.join(' · '));
+    console.info('[Library] ' + (cfg.title || key) + ' — ' + tally.join(' · ')
+      + ` · ${out.length} files in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
     // The same document is filed on more than one site. Keep the first
     // and remember there was another, rather than listing it twice.
