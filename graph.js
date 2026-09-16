@@ -147,10 +147,22 @@ function _gateRelease() {
 
 const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// 16 Sep 2026 — "still seems very slow on just that part of the site".
+// Before changing the shape of the crawl again, count what it actually
+// costs. Every Graph request that leaves the browser is counted here,
+// and loadLibrary prints the total next to the seconds. If the portal
+// is still slow after this batch, THAT NUMBER is what decides the next
+// move: a few dozen calls means the network is the problem, several
+// hundred means the folder-by-folder walk is, and the answer to those
+// two is not the same. Reads are free — this is one integer.
+let GRAPH_CALLS = 0;
+const graphCallsSince = n => GRAPH_CALLS - n;
+
 async function graphFetch(path) {
   const token = await getAccessToken();
   if (!token) throw new Error('Not signed in');
 
+  GRAPH_CALLS++;
   await _gateAcquire();
   try {
     for (let attempt = 0; ; attempt++) {
@@ -2557,6 +2569,83 @@ function _libCfg(key) {
   return ((HUB_CONFIG.libraries || {})[key]) || {};
 }
 
+// ── The saved index ───────────────────────────────────────────
+// 16 Sep 2026. The 14 Sep batch made the crawl as fast as a crawl can
+// be — gated, parallel, deduplicated, system libraries skipped — and
+// the page was still slow, because the fastest way to walk 900
+// documents across three SharePoint sites is still to walk them. The
+// only way to make the page open quickly is to NOT WALK THEM FIRST.
+//
+// So the finished index is saved, and the next visit draws the whole
+// page from it immediately and re-crawls behind the scenes. First ever
+// visit is exactly as it was; every visit after it is instant, and the
+// documents are still read live — just after you can already see them,
+// rather than before.
+//
+// WHAT IS NOT SAVED, on purpose:
+//  · `@microsoft.graph.downloadUrl` — pre-authenticated and short
+//    lived. A saved one would be a broken download an hour later, and
+//    _rdrDownloadUrl already re-fetches a fresh one from _driveId + id
+//    when it is absent. Absent is the correct state here.
+//  · `_tag` / `_cat` / `_sub` — recomputed on read, so an edit to the
+//    categories in config.js takes effect on the next load instead of
+//    waiting for the cache to age out.
+// Bump LIB_CACHE_VERSION if the shape below ever changes.
+const LIB_CACHE_VERSION = 1;
+const LIB_CACHE_TTL = 12 * 60 * 60 * 1000;   // half a day
+const _libCacheKey = key => `cf-lib-${key}-v${LIB_CACHE_VERSION}`;
+
+// Only the fields the page actually reads. A whole driveItem is several
+// times this and localStorage is not big.
+function _libSlim(f) {
+  return {
+    id: f.id, _driveId: f._driveId, name: f.name, size: f.size,
+    lastModifiedDateTime: f.lastModifiedDateTime, webUrl: f.webUrl,
+    file: f.file ? { mimeType: f.file.mimeType } : undefined,
+    _path: f._path || [], _source: f._source || '', _sourceKey: f._sourceKey || '',
+    _library: f._library || undefined,
+  };
+}
+
+function _libCacheRead(key) {
+  try {
+    const raw = localStorage.getItem(_libCacheKey(key));
+    if (!raw) return null;
+    const { t, v } = JSON.parse(raw);
+    if (!Array.isArray(v) || !v.length) return null;
+    if (Date.now() - t > LIB_CACHE_TTL) return null;
+    return { files: v, age: Date.now() - t };
+  } catch (_) { return null; }
+}
+
+function _libCacheWrite(key, files) {
+  try {
+    localStorage.setItem(_libCacheKey(key),
+      JSON.stringify({ t: Date.now(), v: files.map(_libSlim) }));
+  } catch (e) {
+    // Quota, or private browsing. Drop whatever is there rather than
+    // leaving a half-written entry, and carry on uncached — a saved
+    // index is a nicety, never a dependency.
+    try { localStorage.removeItem(_libCacheKey(key)); } catch (_) {}
+    console.info('[Library] index not saved —', e.message);
+  }
+}
+
+// Tag and categorise a set of rows. Shared by the live crawl and the
+// saved index so the two can never drift apart.
+function _libDecorate(key, rows) {
+  return rows.map(f => {
+    const t = _libTag(key, f);
+    return Object.assign({}, f, {
+      _tag:       t ? t.key : 'other',
+      _tagLbl:    t ? t.label : 'Other',
+      _catFolder: (f._path || [])[0] || '',
+      _cat:       _libCatLabel(key, (f._path || [])[0], f),
+      _sub:       [(f._path || [])[1] || '', f._source || ''].filter(Boolean).join(' · '),
+    });
+  });
+}
+
 // Resolve "01. Marketing/08. PDF PIF, Data Sheets…" to a folder id,
 // one forgiving step at a time. Returns null (and says why in the
 // console) rather than throwing, so one renamed folder never costs you
@@ -2658,6 +2747,22 @@ async function loadLibrary(key) {
   if (LIB[key] && LIB[key].loaded) { renderLibrary(key); return; }
   LIB[key] = { files: [], loaded: false, driveId: null, tag: 'all', cat: 'all', q: '' };
 
+  // Saved index first. This is the whole speed fix: the page is drawn
+  // from what was read last time, and the live crawl then runs behind
+  // it and replaces it. Set `saveIndex:false` on a library in config.js
+  // to go back to waiting for the crawl.
+  const saved = cfg.saveIndex === false ? null : _libCacheRead(key);
+  if (saved) {
+    LIB[key].files   = _libDecorate(key, saved.files);
+    LIB[key].driveId = (saved.files[0] || {})._driveId || null;
+    LIB[key].loaded  = true;
+    console.info(`[Library] ${cfg.title || key} — drawn from the saved index: `
+      + `${saved.files.length} files, ${Math.round(saved.age / 60000)} min old. Refreshing behind it.`);
+    renderLibrary(key);
+    _libRefresh(key);                 // deliberately not awaited
+    return;
+  }
+
   host.innerHTML = `<div class="lib-boot">
     <div class="skeleton sk-line med"></div>
     <div class="skeleton sk-line"></div>
@@ -2666,6 +2771,68 @@ async function loadLibrary(key) {
   </div>`;
 
   try {
+    LIB[key].files  = _libDecorate(key, await _libCrawlAll(key));
+    LIB[key].loaded = true;
+    _libCacheWrite(key, LIB[key].files);
+    renderLibrary(key);
+  } catch (e) {
+    const msg = e.message === 'NOT_FOUND'
+      ? 'That SharePoint site or library could not be found — check the URL in config.js and that you have access to it.'
+      : `Couldn't read the library: ${e.message}`;
+    host.innerHTML = `<p class="sp-error">${escHtml(msg)}</p>`;
+  }
+}
+
+// The crawl, running behind a page that is already on screen. If it
+// fails there is nothing to report to the reader — they are looking at
+// last time's index, which is the point — so it says so in the console
+// and leaves the page alone.
+async function _libRefresh(key) {
+  try {
+    const fresh = _libDecorate(key, await _libCrawlAll(key));
+    if (!fresh.length) {
+      console.info('[Library] background refresh came back empty — keeping the saved index.');
+      return;
+    }
+    LIB[key].files = fresh;
+    _libCacheWrite(key, fresh);
+    _libRepaint(key);
+  } catch (e) {
+    console.info(`[Library] background refresh failed — ${e.message}. The saved index is still on screen.`);
+  }
+}
+
+// Swap the refreshed index in WITHOUT moving the reader. Someone who
+// has opened a section, or the folder tree, keeps what they are looking
+// at; only the rows under them are redrawn.
+function _libRepaint(key) {
+  if (key !== 'product') { renderLibrary(key); return; }
+
+  // #pp-browser ships with display:none and is opened by clearing it,
+  // so an empty string here means the folder tree is on screen.
+  const br = document.getElementById('pp-browser');
+  if (br && br.style.display === '') return;
+
+  const sec = document.getElementById('pp-sections');
+  const onFront = sec && sec.style.display !== 'none';
+
+  renderLibrary('product');                        // rebuild the hidden index
+  if (onFront) {
+    renderPortalSections();
+    // renderPortalSections redraws the cards, so the artwork that was
+    // painted onto the old ones has to go back on the new ones.
+    if (_portalImgs && _portalImgs.length) paintPortalImages(_portalImgs);
+  } else {
+    renderLibraryResults('product');               // inside a section: just the rows
+  }
+}
+
+// The live crawl. Everything below here is what loadLibrary used to do
+// inline; it is a function now because it runs in two places — on the
+// first ever visit, and behind the saved index on every visit after.
+async function _libCrawlAll(key) {
+  const cfg = _libCfg(key);
+  {
     const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
 
     // One source, or several. `sources` is what turns the Product
@@ -2679,6 +2846,7 @@ async function loadLibrary(key) {
     const out = [];
     const tally = [];
     const t0 = Date.now();   // 14 Sep 2026 — so "is it still slow?" has an answer
+    const c0 = GRAPH_CALLS;  // 16 Sep 2026 — and so does "why?"
 
     await Promise.all(sources.map(async src => {
       const before = out.length;
@@ -2738,8 +2906,14 @@ async function loadLibrary(key) {
       tally.push(`${src.label || src.key}: ${out.length - before}`);
     }));
 
+    // 16 Sep 2026 — the call count is the number that matters now. If
+    // this line says several hundred, the folder-by-folder walk is the
+    // cost and the next move is to stop walking (Graph's /root/delta
+    // returns a whole library in pages of 200). If it says a few dozen,
+    // the walk is fine and the time is in the network.
     console.info('[Library] ' + (cfg.title || key) + ' — ' + tally.join(' · ')
-      + ` · ${out.length} files in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      + ` · ${out.length} files in ${((Date.now() - t0) / 1000).toFixed(1)}s`
+      + ` · ${graphCallsSince(c0)} Graph calls`);
 
     // The same document is filed on more than one site. Keep the first
     // and remember there was another, rather than listing it twice.
@@ -2755,23 +2929,9 @@ async function loadLibrary(key) {
       console.info(`[Library] ${out.length - merged.length} duplicate file(s) across sites folded together.`);
     }
 
-    LIB[key].files = merged.map(f => {
-      const t = _libTag(key, f);
-      return Object.assign({}, f, {
-        _tag:      t ? t.key : 'other',
-        _tagLbl:   t ? t.label : 'Other',
-        _catFolder: (f._path || [])[0] || '',
-        _cat:      _libCatLabel(key, (f._path || [])[0], f),
-        _sub:      [(f._path || [])[1] || '', f._source || ''].filter(Boolean).join(' · '),
-      });
-    });
-    LIB[key].loaded = true;
-    renderLibrary(key);
-  } catch (e) {
-    const msg = e.message === 'NOT_FOUND'
-      ? 'That SharePoint site or library could not be found — check the URL in config.js and that you have access to it.'
-      : `Couldn't read the library: ${e.message}`;
-    host.innerHTML = `<p class="sp-error">${escHtml(msg)}</p>`;
+    // Tagging and categorising happen in _libDecorate now, so the live
+    // crawl and the saved index can't drift apart.
+    return merged;
   }
 }
 
@@ -3390,16 +3550,13 @@ function renderPortalSections() {
   // a different angle; they are now chips inside the Certificates &
   // Declarations card and open that section already filtered. One way
   // in, and the page is a screen shorter.
+  // 16 Sep 2026, same afternoon — the rail went out with option A and
+  // came straight back off. David: "this I don't think needs to be
+  // there as it's already in the what are you looking for". He is
+  // right: the chips were the card grid again, one line up, with the
+  // same names and the same counts. The lead already carries the
+  // totals and "Search everything", so nothing is lost with it gone.
   host.innerHTML = `
-    <div class="px-rail pp-rail">
-      <div class="px-chips">
-        <button class="px-chip active" onclick="ppOpenSection(-1)">All<b>${state.files.length}</b></button>
-        ${live.map((l, i) => `
-          <button class="px-chip" onclick="ppOpenSection(${i})">${escHtml(l.sec.label)}<b>${l.count}</b></button>`).join('')}
-      </div>
-      <span class="px-rail-note">From <b>${_ppSourceCount(state)}</b> SharePoint sources, read live</span>
-    </div>
-
     <div class="pp-band">
       <div class="pp-band-head">
         <h2 class="pp-band-title">What are you looking for?</h2>
