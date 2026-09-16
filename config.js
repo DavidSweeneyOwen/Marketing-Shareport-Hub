@@ -393,19 +393,31 @@ HUB_CONFIG.social = {
 //     has it, with no sign-in, including outside CheckFire. That is
 //     fine on an internal hub and it is a deliberate choice, not an
 //     oversight — swap it for the app URL if it should need a login.
+// 16 Sep 2026, deck 8 — marketing: "Please those links to stay: Media
+// Portal, Website, LinkedIn", plus the two Smartsheet request forms.
+//   • Product Portal is gone from here on purpose: it is a page of the
+//     hub now (and still in Resources ▸ Tools & systems), so a quick
+//     link that bounces the reader out to SharePoint is worse than the
+//     one they already have in the nav.
+//   • NetSuite and Geckoboard are both still on the Resources page.
+//     Ask and they come back — this is marketing's call about their own
+//     home page, not a deletion.
+//   • FPS Labels Form — marketing are sending the link ("will send link
+//     later today"). Uncomment the row below and paste the URL in; no
+//     other change is needed.
 HUB_CONFIG.quickLinks = [
   { label: 'Media Portal',   initials: 'MP', colour: '#D1242B',
     url: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal' },
-  { label: 'Product Portal', initials: 'PP', colour: '#0078D4',
-    url: 'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal' },
-  { label: 'NetSuite',       initials: 'NS', colour: '#2B6CB0',
-    url: 'https://3810789.app.netsuite.com/app/center/card.nl?sc=-29' },
-  { label: 'Geckoboard',     initials: 'GB', colour: '#0F8A6B',
-    url: 'https://share.geckoboard.com/loop/OXVP5ANCQWMDGIWG' },
   { label: 'Website',        initials: 'CF', colour: '#111111',
     url: 'https://www.checkfire.co.uk' },
   { label: 'CF LinkedIn',    initials: 'in', colour: '#0A66C2',
     url: 'https://www.linkedin.com/company/checkfire/' },
+  { label: 'Screen Print Form',   initials: 'SP', colour: '#7A4FBF',
+    url: 'https://app.smartsheet.com/b/form/c10f6249ce554d42bb8da98391676717' },
+  { label: 'Branded Labels Form', initials: 'BL', colour: '#0F8A6B',
+    url: 'https://app.smartsheet.com/b/form/846007df8d8449178ff2b5950326e8f2' },
+  // { label: 'FPS Labels Form',  initials: 'FP', colour: '#2B6CB0',
+  //   url: 'PASTE THE FPS LABELS FORM URL HERE' },
 ];
 
 // ── Landing page images ───────────────────────────────────────
@@ -444,6 +456,49 @@ HUB_CONFIG.landingImages = {
   noiseWords: ['landing','page','pages','image','images','hero','banner',
                'main','cover','final','new','copy','v1','v2','checkfire','cf'],
   // How many real words must line up before it counts as a match.
+  minWordMatch: 1,
+};
+
+// ── Product Portal artwork ────────────────────────────────────
+// 16 Sep 2026, Aneta: "I have added a new folder 'images for product
+// portal'… a folder for the main image (like on the campaign/launch
+// pages) and a separate image for each of the main folders… can you set
+// it up so that the images pull from the new folder to the product
+// portal page so that each folder has an image please?"
+//
+// Same idea as the landing images above, and deliberately the same
+// mechanics, so there is one thing to learn rather than two:
+//
+//   Documents ▸ Images for Product Portal ▸ Main Product portal image ▸ *.png
+//        → the lead spread at the top of the Product Portal
+//   Documents ▸ Images for Product Portal ▸ Certificates & Declarations ▸ *.png
+//        → the "Certificates & Declarations" card
+//
+// THE SUB-FOLDER NAME IS THE MATCH. Name a sub-folder after a section
+// and its picture appears on that card; the filename inside is
+// irrelevant, so marketing can drop in "final v3 USE THIS.png" and it
+// still works. A loose image sitting straight in "Images for Product
+// Portal" is matched on its own filename instead, which is the fallback
+// rather than the route to recommend.
+//
+// Matching is the forgiving word matcher the landing images use, so
+// "Datasheets & MSDS", "Data Sheets and MSDS" and "datasheet msds image
+// for product portal" all reach the same card. A section with no
+// picture keeps the initials placeholder — never an empty grey box.
+HUB_CONFIG.portalImages = {
+  folder: 'Images for Product Portal',
+  // 'marketing' = the MarketingHub Documents library, which is where
+  // marketing put it. 'product' would read the Product Portal site.
+  site: 'marketing',
+  // How far down to walk. 2 covers folder ▸ image, with room for one
+  // more level if someone nests.
+  depth: 3,
+  // The sub-folder (or filename) that means the big image at the top of
+  // the page rather than one of the cards. First match wins.
+  mainNames: ['main product portal image', 'main', 'hero', 'lead', 'banner'],
+  // Words that say nothing about WHICH section this is.
+  noiseWords: ['image','images','product','portal','main','for','the','hero',
+               'banner','final','new','copy','v1','v2','checkfire','cf','png','jpg'],
   minWordMatch: 1,
 };
 
@@ -612,7 +667,13 @@ HUB_CONFIG.libraries = {
     crawlDepth: 3,
     maxFiles: 400,
     recentCount: 6,
-    excludeFolders: ['Campaigns', 'Launches', 'Events', 'Images for Landing Pages'],
+    // 16 Sep 2026, deck 8: "Please delete from here, this needs to go to
+    // product portal" — the four Images for Product Portal files were
+    // showing as a group on Resources. They are plumbing for the portal
+    // page, exactly like Images for Landing Pages, so they are excluded
+    // rather than moved: the portal reads them where they are.
+    excludeFolders: ['Campaigns', 'Launches', 'Events',
+                     'Images for Landing Pages', 'Images for Product Portal'],
 
     // Grouped by what the file IS, since a marketing library is mixed
     // media rather than one product line.
@@ -826,56 +887,90 @@ HUB_CONFIG.productPortal = {
   // so a band works no matter which site the file came from. `folder`
   // and `aliases` are the older folder-name route, still honoured for
   // the two request sheets, which are a folder rather than a kind.
+  // `eyebrow` is the small red word above the card title, the same
+  // device Launches and Campaigns use. `imageKey` is only needed when
+  // marketing's folder in "Images for Product Portal" is named
+  // something the word matcher would not reach on its own.
   sections: [
-    { key:'pcn',     label:'Product Change Notifications',
+    { key:'pcn',     label:'Product Change Notifications', eyebrow:'Changes',
       cats:['Product change notifications'],
       folder:'Product Change Notifications',
       aliases:['Product Change Notification','PCN','Change Notifications'],
       desc:'Every notified change to a product, newest first.' },
 
-    { key:'data',    label:'Datasheets & MSDS',
+    { key:'data',    label:'Datasheets & MSDS', eyebrow:'Technical',
       cats:['Data sheets','MSDS & safety data'],
       folder:'Data Sheets and MSDS',
       aliases:['Datasheets','Data Sheets','MSDS','SDS'],
       desc:'Technical data sheets and safety data sheets.' },
 
-    { key:'certs',   label:'Certificates & Declarations',
+    { key:'certs',   label:'Certificates & Declarations', eyebrow:'Compliance',
       cats:['Declarations of Conformity','Kitemark certificates','MED','MER',
             'NTA 8133','Certificates & approvals'],
       desc:'Conformity, Kitemark, marine and NTA paperwork.' },
 
-    { key:'pif',     label:'Product Information Files',
+    { key:'pif',     label:'Product Information Files', eyebrow:'Reference',
       cats:['PIF'],
       folder:'PIF',
       aliases:['PIFs','Links to PIF','Product Information Files','Product Information File'],
       desc:'The product information file for each product.' },
 
-    { key:'manuals', label:'Manuals & Instructions',
+    { key:'manuals', label:'Manuals & Instructions', eyebrow:'How-to',
       cats:['Manuals & instructions'],
       desc:'Service manuals, user guides and fitting instructions.' },
 
-    { key:'launch',  label:'Launch Packs',
+    { key:'launch',  label:'Launch Packs', eyebrow:'Launches',
       cats:['Launch packs'],
       desc:'Everything that went out with each product launch.' },
 
-    { key:'training',label:'Product Training',
+    { key:'training',label:'Product Training', eyebrow:'Training',
       cats:['Product training'],
       desc:'Training material for the range.' },
 
-    { key:'npd',     label:'New Product Development',
+    { key:'npd',     label:'New Product Development', eyebrow:'Coming up',
       cats:['New product development'],
       desc:'What is coming, and what is being worked on.' },
 
-    { key:'samples', label:'Sample Request Sheet',
+    { key:'samples', label:'Sample Request Sheet', eyebrow:'Request',
       folder:'Sample Requests',
       aliases:['Sample Request Sheet','Sample Request','Samples'],
       desc:'Request a sample for a customer.' },
 
-    { key:'npr',     label:'New Product Request Sheet',
+    { key:'npr',     label:'New Product Request Sheet', eyebrow:'Request',
       folder:'New Product Requests',
       aliases:['New Product Request Sheet','New Product Request','NPD Requests'],
       desc:'Put a product forward for the range.' },
   ],
+
+  // ── The lead spread at the top of the page ─────────────────
+  // 16 Sep 2026 — "go for option A". The Product Portal had its own
+  // components (.pp-*) while Launches and Campaigns used the hub's
+  // editorial set (.px-*), which is the real reason the page read as
+  // bolted on. It now opens the same way they do: a lead spread with
+  // artwork, a sticky count rail, then a card grid.
+  //
+  // The picture comes from Documents ▸ Images for Product Portal ▸ Main
+  // Product portal image. Until that folder has an image in it the
+  // panel keeps the brand placeholder, so nothing is ever broken —
+  // it is just plainer.
+  lead: {
+    eyebrow: 'Product Portal',
+    title:   'Every certificate, datasheet and manual we hold',
+    sub:     'Read live from SharePoint under your own permissions. Nothing here is a copy.',
+    cta:     'Search everything',
+  },
+
+  // Option A, the one decision that separated it from option B: the
+  // certificate-type folder row is gone and the five types (DOCs,
+  // Kitemark, MED, MER, NTA 8133) are chips inside the Certificates &
+  // Declarations card, which is where the rest of the hub already puts
+  // sub-types. One way in instead of two routes to the same 59
+  // documents. Set this to false and the chips disappear — the card
+  // still opens the whole section.
+  showSubTypes: true,
+  // How many sub-type chips a card will show before it stops. Six keeps
+  // the card the same height as the ones either side of it.
+  maxSubTypes: 6,
 
   // ── Quick links on the Product Portal ──────────────────────
   // 7 Sep 2026, Lowri: "Would we be able to add a link section to

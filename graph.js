@@ -905,6 +905,174 @@ function matchLandingImage(images, page) {
   return best ? best.url : '';
 }
 
+// ── Product Portal artwork ────────────────────────────────────
+// 16 Sep 2026, Aneta: a new "Images for Product Portal" folder with one
+// sub-folder per section, plus "Main Product portal image" for the lead
+// spread. See HUB_CONFIG.portalImages in config.js.
+//
+// Deliberately built on the same parts as the landing images above —
+// _slugKey, _landingWords, driveThumb — rather than a second matcher
+// with its own bugs. The one real difference: a landing page is matched
+// on a WordPress slug, a portal card is matched on a section label, so
+// the sub-folder name carries the meaning here and the filename is
+// only the fallback.
+let _portalImgs = null;
+
+async function fetchPortalImages() {
+  if (_portalImgs) return _portalImgs;
+  const cfg = HUB_CONFIG.portalImages || {};
+  if (!cfg.folder) return (_portalImgs = []);
+
+  try {
+    const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
+    const drive = await resolveDrive(site, HUB_CONFIG.documentsLibrary);
+    const folder = await _findChildFolder(drive.id, null, cfg.folder);
+    if (!folder) {
+      console.info(`[Portal images] no "${cfg.folder}" folder yet — the cards keep their initials.`);
+      return (_portalImgs = []);
+    }
+
+    const found = [];
+    const walk = async (itemId, trail, depth) => {
+      if (depth < 0 || found.length > 120) return;
+      const kids = await fetchDriveChildren(drive.id, itemId);
+      const subs = [];
+      for (const k of kids) {
+        if (k.folder) { subs.push(k); continue; }
+        if (!IMAGE_EXT.test(k.name || '')) continue;
+        found.push({ item: k, trail: trail });
+      }
+      await Promise.all(subs.map(sf => walk(sf.id, trail.concat(sf.name), depth - 1)));
+    };
+    await walk(folder.id, [], (cfg.depth === undefined ? 3 : cfg.depth));
+
+    if (!found.length) {
+      console.info(`[Portal images] "${cfg.folder}" has no images in it yet.`);
+      return (_portalImgs = []);
+    }
+
+    const rows = await Promise.all(found.map(async ({ item, trail }) => {
+      const bare = String(item.name).replace(/\.[a-z0-9]+$/i, '');
+      // The folder it sits in FIRST — that is the name marketing chose
+      // to mean "this is the picture for that card". The filename is a
+      // second opinion, for images dropped loose in the root.
+      const holder = trail.length ? trail[trail.length - 1] : '';
+      return {
+        holder, name: item.name, folder: trail.join('/'),
+        keys:  [_slugKey(holder), _slugKey(bare)].filter(Boolean),
+        words: [_portalWords(holder), _portalWords(bare)],
+        url:   await driveThumb(drive.id, item.id),
+      };
+    }));
+
+    _portalImgs = rows.filter(r => r.url && (r.keys.length || r.words.some(w => w.length)));
+    console.info(`[Portal images] ${_portalImgs.length} image(s) available.`);
+  } catch (e) {
+    console.info('[Portal images] unavailable:', e.message);
+    _portalImgs = [];
+  }
+  return _portalImgs;
+}
+
+// Same shape as _landingWords but with its own noise list, because
+// "product" and "portal" are noise HERE and meaning over there.
+function _portalWords(s) {
+  const noise = (HUB_CONFIG.portalImages && HUB_CONFIG.portalImages.noiseWords) || [];
+  const stop  = noise.map(w => String(w).toLowerCase());
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(w => w.replace(/s$/, ''))
+    .filter(w => w.length > 1 && stop.indexOf(w) < 0 && stop.indexOf(w + 's') < 0);
+}
+
+// Is this the big picture at the top rather than one of the cards?
+function _portalIsMain(im) {
+  const names = (HUB_CONFIG.portalImages && HUB_CONFIG.portalImages.mainNames) || ['main'];
+  const keys  = names.map(_slugKey);
+  const mine  = [_slugKey(im.holder), _slugKey(im.name.replace(/\.[a-z0-9]+$/i, ''))];
+  return mine.some(m => m && keys.some(k => m === k || m.indexOf(k) === 0));
+}
+
+// How well one image answers to one section. Folder name beats
+// filename, an exact slug beats a word overlap, and a longer overlap
+// beats a shorter one — so "Certificates & Declarations" cannot be
+// taken by a file that merely says "certificate" somewhere.
+function _portalScore(im, sec) {
+  const want = [sec.imageKey, sec.label, sec.key].filter(Boolean);
+  const wantKeys  = want.map(_slugKey).filter(Boolean);
+  const wantWords = [...new Set(want.flatMap(_portalWords))];
+  const need = (HUB_CONFIG.portalImages && HUB_CONFIG.portalImages.minWordMatch) || 1;
+
+  let best = 0;
+  im.keys.forEach((k, i) => {
+    if (!k) return;
+    // i === 0 is the folder name; give it the edge over the filename.
+    const weight = i === 0 ? 1 : 0.85;
+    if (wantKeys.indexOf(k) >= 0) best = Math.max(best, 100 * weight);
+    else if (wantKeys.some(w => k.indexOf(w) === 0 || w.indexOf(k) === 0)) best = Math.max(best, 60 * weight);
+  });
+
+  im.words.forEach((ws, i) => {
+    if (!ws || !ws.length) return;
+    const weight = i === 0 ? 1 : 0.85;
+    const shared = ws.filter(w => wantWords.indexOf(w) >= 0).length;
+    if (shared >= need) best = Math.max(best, (shared * 8 + shared / Math.max(ws.length, wantWords.length)) * weight);
+  });
+  return best;
+}
+
+// One picture per card, one card per picture — the same greedy
+// best-pair-first pass the landing pages use, for the same reason: a
+// strong match must never be stolen by a weaker one earlier in the
+// list. Returns a Map of section key → url.
+function assignPortalImages(images, secs) {
+  const out = new Map();
+  if (!images || !images.length || !secs || !secs.length) return out;
+
+  const pool = images.filter(im => !_portalIsMain(im));
+  const pairs = [];
+  secs.forEach((sec, si) => {
+    pool.forEach((im, ii) => {
+      const s = _portalScore(im, sec);
+      if (s > 0) pairs.push({ si, ii, s });
+    });
+  });
+  pairs.sort((a, b) => b.s - a.s);
+
+  const usedSec = new Set(), usedImg = new Set();
+  for (const c of pairs) {
+    if (usedSec.has(c.si) || usedImg.has(c.ii)) continue;
+    usedSec.add(c.si); usedImg.add(c.ii);
+    out.set(secs[c.si].key, pool[c.ii].url);
+  }
+
+  // Name what found nothing, in both directions — a missing folder
+  // should look like a missing folder, and an image nobody claimed
+  // should say so rather than sit there unused.
+  const root = (HUB_CONFIG.portalImages && HUB_CONFIG.portalImages.folder) || 'Images for Product Portal';
+  secs.forEach(sec => {
+    if (!out.has(sec.key)) {
+      console.info(`[Portal images] no image for "${sec.label}" — create ` +
+                   `"${root} ▸ ${sec.label}" and put its artwork in it.`);
+    }
+  });
+  pool.forEach((im, ii) => {
+    if (!usedImg.has(ii)) {
+      console.warn(`[Portal images] "${im.name}" in "${im.folder || root}" didn't match a section. ` +
+                   `Rename its folder to a section name to place it.`);
+    }
+  });
+  return out;
+}
+
+function mainPortalImage(images) {
+  const hit = (images || []).find(_portalIsMain);
+  return hit ? hit.url : '';
+}
+
 // ═══ Renderers ═══════════════════════════════════════════════
 
 // ── Product launches & campaigns: the editorial layout ────────
@@ -3039,11 +3207,69 @@ function ppLinks() {
 async function loadProductPortal() {
   const done = loadLibrary('product');
   renderPortalUpcoming();      // the launches list, not the library
+  // The lead spread is drawn from config before anything lands, so the
+  // page has a top the moment it opens; the picture is painted in when
+  // Graph gets round to it. Same order Launches and Campaigns use.
+  renderPortalLead();
+  const imgs = fetchPortalImages();
   await fetchPortalOverrides();
   await done;
   renderPortalSections();
   renderPortalLinks();
   renderPortalFeedback();
+  // Artwork last and never awaited by anything above it: a slow or
+  // missing image folder must not hold up the documents.
+  imgs.then(paintPortalImages).catch(() => {});
+}
+
+// Paint the lead and the cards once the images resolve. Separate from
+// the render so nothing on the page waits for Graph.
+function paintPortalImages(images) {
+  const main = mainPortalImage(images);
+  const lead = document.getElementById('pp-lead-media');
+  if (main && lead) {
+    lead.style.backgroundImage = `url('${safeCssUrl(main)}')`;
+    lead.classList.add('has-img');
+  }
+  const secs = (PP_BANDS || []).map(b => b.sec);
+  const map  = assignPortalImages(images, secs);
+  secs.forEach(sec => {
+    const url = map.get(sec.key);
+    if (!url) return;
+    const el = document.getElementById('pp-img-' + sec.key);
+    if (!el) return;
+    el.style.backgroundImage = `url('${safeCssUrl(url)}')`;
+    el.classList.add('has-img');
+  });
+}
+
+// ── The lead spread ───────────────────────────────────────────
+// 16 Sep 2026, option A. The page used to open with the generic .ph
+// header every admin page has; it now opens the way Launches and
+// Campaigns do, on the hub's own editorial components.
+function renderPortalLead() {
+  const host = document.getElementById('pp-lead');
+  if (!host) return;
+  const cfg  = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.lead) || {};
+  host.innerHTML = `
+    <section class="px-lead">
+      <div class="px-lead-copy">
+        <div class="px-eyebrow">${escHtml(cfg.eyebrow || 'Product Portal')}</div>
+        <h1 class="px-lead-title">${escHtml(cfg.title || 'Every certificate, datasheet and manual we hold')}</h1>
+        <p class="px-lead-sub">${escHtml(cfg.sub || '')}</p>
+        <div class="px-lead-codes" id="pp-lead-codes"></div>
+        <div class="px-lead-actions">
+          <button class="px-cta" onclick="ppOpenSection(-1)">
+            ${escHtml(cfg.cta || 'Search everything')}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </button>
+          <button class="px-cta ghost dark" id="pp-browse-btn" onclick="togglePortalBrowse(this)">Browse the folders</button>
+        </div>
+      </div>
+      <div class="px-lead-media" id="pp-lead-media">
+        <span class="px-lead-initials">PP</span>
+      </div>
+    </section>`;
 }
 
 // "Launch countdown and upcoming dates to look out for."
@@ -3157,26 +3383,90 @@ function renderPortalSections() {
   // else. Search, the by-product filter and the documents live INSIDE a
   // section, where they mean something. Front → section → document.
   // Nothing has been removed; it is just no longer all at once.
+  // 16 Sep 2026 — OPTION A. Same shell as Launches and Campaigns: a
+  // sticky count rail, then a card grid with artwork. The certificate
+  // TYPES (DOCs, Kitemark, MED, MER, NTA 8133) used to be a second
+  // folder row further down the page showing the same 59 documents from
+  // a different angle; they are now chips inside the Certificates &
+  // Declarations card and open that section already filtered. One way
+  // in, and the page is a screen shorter.
   host.innerHTML = `
+    <div class="px-rail pp-rail">
+      <div class="px-chips">
+        <button class="px-chip active" onclick="ppOpenSection(-1)">All<b>${state.files.length}</b></button>
+        ${live.map((l, i) => `
+          <button class="px-chip" onclick="ppOpenSection(${i})">${escHtml(l.sec.label)}<b>${l.count}</b></button>`).join('')}
+      </div>
+      <span class="px-rail-note">From <b>${_ppSourceCount(state)}</b> SharePoint sources, read live</span>
+    </div>
+
     <div class="pp-band">
       <div class="pp-band-head">
         <h2 class="pp-band-title">What are you looking for?</h2>
-        <span class="pp-band-note">${state.files.length} documents from ${_ppSourceCount(state)} SharePoint sources</span>
       </div>
-      <div class="pp-secs">
-        ${live.map((l, i) => `
-          <button class="pp-sec" onclick="ppOpenSection(${i})">
-            <span class="pp-sec-l">${escHtml(l.sec.label)}</span>
-            <span class="pp-sec-d">${escHtml(l.sec.desc || '')}</span>
-            <span class="pp-sec-n">${l.count} document${l.count === 1 ? '' : 's'}</span>
-          </button>`).join('')}
-      </div>
-      <div class="pp-secs-foot">
-        <button class="pp-all" onclick="ppOpenSection(-1)">Search everything instead &rarr;</button>
+      <div class="px-grid">
+        ${live.map((l, i) => _ppCard(l, i, state)).join('')}
       </div>
     </div>`;
 
+  // The document count belongs in the lead spread now, next to the
+  // "Search everything" button, rather than in a grey note nobody reads.
+  const codes = document.getElementById('pp-lead-codes');
+  if (codes) {
+    codes.innerHTML = `
+      <span class="px-code">${state.files.length} documents</span>
+      <span class="px-code">${_ppSourceCount(state)} SharePoint sources</span>`;
+  }
+
   ppShowFront();
+}
+
+// One section as an editorial card: artwork, eyebrow, serif title, the
+// description, the sub-type chips where they earn their place, and the
+// count. Clicking anywhere but a chip opens the whole section.
+function _ppCard(l, i, state) {
+  const sec  = l.sec;
+  const subs = _ppSubTypes(l, state);
+  return `
+    <article class="px-card pp-card" style="--i:${i}"
+             role="button" tabindex="0"
+             onclick="ppOpenSection(${i})" onkeydown="if(event.key==='Enter')ppOpenSection(${i})">
+      <div class="px-card-media" id="pp-img-${escAttr(sec.key)}">
+        <span class="px-card-initials">${escHtml(_pxInitials(sec.label))}</span>
+      </div>
+      <div class="px-card-body">
+        <div class="px-card-eyebrow">${escHtml(sec.eyebrow || 'Product portal')}</div>
+        <h3 class="px-card-title">${escHtml(sec.label)}</h3>
+        <div class="px-card-meta">${escHtml(sec.desc || '')}</div>
+        ${subs.length ? `<div class="pp-subchips">${subs.map(s => `
+          <button class="pp-subchip" onclick="event.stopPropagation();ppOpenSection(${i},${s.i})">
+            ${escHtml(s.label)}<b>${s.n}</b>
+          </button>`).join('')}</div>` : ''}
+        <div class="pp-card-foot">
+          <span class="pp-card-n">${l.count} document${l.count === 1 ? '' : 's'}</span>
+          <span class="px-card-go">Open <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+        </div>
+      </div>
+    </article>`;
+}
+
+// The sub-types worth showing on a card. Only where a section really
+// has more than one kind underneath it — a card with a single chip
+// saying the same thing as its title is noise, so one chip means none.
+function _ppSubTypes(l, state) {
+  const cfg = HUB_CONFIG.productPortal || {};
+  if (cfg.showSubTypes === false) return [];
+  const cats = Array.isArray(l.cat) ? l.cat : [];
+  if (cats.length < 2) return [];
+  // `i` is the chip's position in the band's own cat list, and that is
+  // what goes in the onclick — never the label. A label is free text
+  // out of SharePoint and an apostrophe in one would break the handler
+  // the moment the browser decoded the attribute.
+  return cats
+    .map((label, i) => ({ label, i, n: state.files.filter(f => f._cat === label).length }))
+    .filter(c => c.n)
+    .sort((a, b) => b.n - a.n)
+    .slice(0, cfg.maxSubTypes || 6);
 }
 
 // The portal has two states: the front (sections only) and one section
@@ -3227,14 +3517,27 @@ function _ppSourceCount(state) {
 
 // Opening a band is a filter over the index that is already on the
 // page, not a second place for the same files to live.
-function ppOpenSection(i) {
+// `subIndex` is option A's other half: the position of one category in
+// the band's own cat list, so "MED" opens Certificates & Declarations
+// already narrowed to MED rather than sending the reader to a second
+// folder row that showed the same documents a different way. An index
+// rather than a label, so nothing about a SharePoint folder name can
+// reach the onclick handler. Leave it out and the whole section opens,
+// exactly as before.
+function ppOpenSection(i, subIndex) {
   const s = LIB.product;
   if (!s) return;
   // -1 is "search everything" — the whole index, no section filter.
   const band = i < 0 ? null : PP_BANDS[i];
   if (i >= 0 && !band) return;
 
-  s.tag = 'all'; s.q = ''; s.cat = band ? band.cat : null;
+  // A chip narrows the section; it must never widen it, so an index
+  // outside the band's own cat list is ignored rather than trusted.
+  const bandCats = band ? (Array.isArray(band.cat) ? band.cat : [band.cat]) : [];
+  const narrowed = (typeof subIndex === 'number' && subIndex >= 0 && subIndex < bandCats.length)
+    ? bandCats[subIndex] : null;
+
+  s.tag = 'all'; s.q = ''; s.cat = band ? (narrowed || band.cat) : null;
 
   const idx = document.getElementById('pp-index');
   const sec = document.getElementById('pp-sections');
@@ -3254,7 +3557,9 @@ function ppOpenSection(i) {
         Product portal
       </button>
       <h2 class="pp-section-title">${escHtml(band ? band.sec.label : 'Everything')}</h2>
-      ${band && band.sec.desc ? `<p class="pp-section-sub">${escHtml(band.sec.desc)}</p>` : ''}
+      ${narrowed ? `<p class="pp-section-sub">Showing <b>${escHtml(narrowed)}</b> only —
+        <button class="lib-reset inline" onclick="ppOpenSection(${i})">show the whole section</button></p>`
+      : (band && band.sec.desc ? `<p class="pp-section-sub">${escHtml(band.sec.desc)}</p>` : '')}
       ${band ? _ppLinksHtml(band.sec.key) : ''}`;
   }
 
@@ -3267,7 +3572,7 @@ function ppOpenSection(i) {
   const q = document.getElementById('lib-q-product');
   if (q) q.value = '';
   document.querySelectorAll('#lib-tiles-product .lib-tile').forEach(b => b.classList.remove('active'));
-  const wanted = band ? (Array.isArray(band.cat) ? band.cat : [band.cat]) : [];
+  const wanted = narrowed ? [narrowed] : bandCats;
   document.querySelectorAll('#lib-cats-product .lib-cat').forEach(b => {
     b.classList.toggle('active', wanted.some(c => b.textContent.indexOf(c) === 0));
   });
@@ -3336,8 +3641,11 @@ function renderPortalFeedback() {
   if (!host) return;
   const cfg = HUB_CONFIG.productPortal || {};
   if (!cfg.feedbackUrl) { host.innerHTML = ''; return; }
+  // 16 Sep 2026, option A: the cream panel with a black pill was the
+  // only black button on the site. Same panel, hub ink and the red CTA
+  // everything else uses.
   host.innerHTML = `
-    <div class="pp-fb">
+    <div class="pp-fb dark">
       <div class="pp-fb-copy">
         <p class="pp-fb-title">${escHtml(cfg.feedbackTitle || 'Feedback on a product')}</p>
         <p class="pp-fb-sub">${escHtml(cfg.feedbackSub || '')}</p>
@@ -3373,7 +3681,25 @@ async function toggleLibraryBrowse(key, btn) {
   }
 }
 
-function togglePortalBrowse(btn)    { return toggleLibraryBrowse('product', btn); }
+// 16 Sep 2026, option A. The raw folder tree is a deliberate escape
+// hatch, not part of the page: when it opens, the cards, the rail, the
+// links and the countdown step aside so there is one thing on screen —
+// which is the whole point of losing the folder row in the first place.
+async function togglePortalBrowse(btn) {
+  const br    = document.getElementById('pp-browser');
+  const going = !br || br.style.display === 'none' || !br.style.display;
+  ['pp-sections', 'pp-links', 'pp-upcoming', 'pp-feedback'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = going ? 'none' : '';
+  });
+  const head = document.getElementById('pp-section-head');
+  if (head && going) head.innerHTML = '';
+  await toggleLibraryBrowse('product', btn);
+  // Coming back lands on the FRONT, not on the flat index — the index
+  // is what you get by choosing a section, and toggleLibraryBrowse
+  // can't know that because Resources has no front page.
+  if (!going) { if (head) head.innerHTML = ''; ppShowFront(); }
+}
 function toggleResourcesBrowse(btn) { return toggleLibraryBrowse('resources', btn); }
 
 // ═══ In-hub file browser ═════════════════════════════════════

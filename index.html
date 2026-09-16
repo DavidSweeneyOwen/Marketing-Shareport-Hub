@@ -1410,6 +1410,52 @@
     .pp-sec-d{font-size:12.5px;line-height:1.5;color:#8B8378}
     .pp-sec{min-height:118px}
 
+    /* ── OPTION A, 16 Sep 2026 ──────────────────────────────────
+       The portal front now runs on the hub's own editorial components
+       (.px-lead, .px-rail, .px-grid, .px-card) — the same ones Launches
+       and Campaigns use. Almost nothing new is needed here; what
+       follows is only the handful of things a section card does that a
+       launch card doesn't. .pp-sec above is kept on purpose: the
+       "Portal Sections" list and anything still calling the old
+       renderer keep working. */
+
+    /* The lead sits flush at the top of the page, like the launches
+       lead, so it must escape the .container the rest of the page uses.
+       It is rendered outside it — this is just the two buttons. */
+    .px-lead-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .px-cta.ghost.dark{
+      background:transparent;color:#1A1713;border:1px solid #CFC7BC;box-shadow:none;
+    }
+    .px-cta.ghost.dark:hover{background:#1A1713;color:#fff;border-color:#1A1713}
+
+    /* The rail is sticky on Launches; here it sits under a lead that is
+       already full-bleed, so it only needs the page gutter. */
+    .pp-rail{margin:0 0 4px}
+
+    /* A section card is a launch card with a foot: the count on the
+       left, "Open" on the right, on one rule. */
+    .pp-card-foot{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      margin-top:auto;padding-top:12px;border-top:1px solid #E7E4DF;
+    }
+    .pp-card-n{font-size:12px;font-weight:700;color:#1A1713;font-variant-numeric:tabular-nums}
+    /* .px-card-go is absolutely positioned on a launch card; inside the
+       foot it is just the right-hand end of the rule. */
+    .pp-card .px-card-go{position:static;padding:0;background:none;box-shadow:none}
+
+    /* The sub-type chips — option A's replacement for the folder row.
+       Small, quiet, and clearly a filter rather than another card. */
+    .pp-subchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+    .pp-subchip{
+      font:inherit;font-size:11px;font-weight:700;color:#4A443D;cursor:pointer;
+      background:#F7F5F2;border:1px solid #E3DDD4;border-radius:999px;padding:4px 10px;
+      display:inline-flex;align-items:center;gap:5px;
+      transition:background .15s,border-color .15s,color .15s;
+    }
+    .pp-subchip b{font-weight:700;color:#9C948A;font-variant-numeric:tabular-nums}
+    .pp-subchip:hover{background:#1A1713;border-color:#1A1713;color:#fff}
+    .pp-subchip:hover b{color:rgba(255,255,255,.7)}
+
     /* ── Links & request sheets (10 Sep 2026) ──────────────────
        Destinations, not documents: the product information files, the
        two request sheets and the feedback form. Deliberately a
@@ -1466,6 +1512,13 @@
     .pp-fb-copy{min-width:0}
     .pp-fb-title{font-size:15px;font-weight:700;color:#1A1713;margin:0 0 4px}
     .pp-fb-sub{font-size:13px;line-height:1.55;color:#6B645A;margin:0;max-width:56ch}
+    /* 16 Sep 2026, option A. The cream panel carried a black pill —
+       the only black button anywhere on the hub, which is why it read
+       as a different product. Ink panel, red CTA, same as everything
+       else. Drop the `dark` class in graph.js to go back. */
+    .pp-fb.dark{background:#12100E;border-color:#241F1A}
+    .pp-fb.dark .pp-fb-title{color:#fff}
+    .pp-fb.dark .pp-fb-sub{color:#B4ADA2}
 
     /* ── Trade & events: three sections, not one show ───────── */
     .ev-sec{padding:0 0 8px}
@@ -2138,19 +2191,13 @@
 
 <!-- ─── PRODUCT PORTAL ───────────────────────────────────────── -->
 <main id="page-portal" class="page" data-screen-label="06 Product Portal">
-  <section class="ph slim">
-    <div class="container">
-      <div class="ph-head">
-        <div>
-          <h1 class="ph-title">Product portal</h1>
-          <p class="ph-sub">Every datasheet, certificate, change notification, MSDS, PIF and manual we have, in one place. Pick what you're after.</p>
-        </div>
-        <div class="ph-actions">
-          <button class="btn primary" id="pp-browse-btn" onclick="togglePortalBrowse(this)">Browse the folders</button>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- 16 Sep 2026, option A — the lead spread, built by
+       renderPortalLead() in graph.js. It replaces the generic .ph
+       header this page shared with the admin pages, and carries the
+       "Main Product portal image" artwork out of
+       Documents ▸ Images for Product Portal. The "Browse the folders"
+       button lives inside it now, so there is exactly one of it. -->
+  <div id="pp-lead"></div>
 
   <!-- 1 Sep 2026 — the product team asked for the whole Product Portal
        to live in the hub, "ideally keeping the organisation the same".
@@ -2346,12 +2393,12 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=19"></script>
+<script src="config.js?v=20"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=22"></script>
+<script src="graph.js?v=23"></script>
 <script src="app.js?v=20"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>
