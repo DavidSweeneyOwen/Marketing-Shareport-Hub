@@ -1281,6 +1281,12 @@
     .lib-cat:hover{border-color:#B9B2A7}
     .lib-cat.active{background:var(--px-ink);border-color:var(--px-ink);color:#fff}
     .lib-cat.active b{color:rgba(255,255,255,.55)}
+    /* 16 Sep 2026 (deck 9) - both of these set `display` in the class
+       rule above, which outranks the browser's own [hidden] rule, so
+       _ppScopeTypeChips setting el.hidden = true had no visible effect
+       at all and an open section still offered the whole library. This
+       is the line that makes the scoping real. */
+    .lib-cat[hidden],.lib-tile[hidden],.lib-sec-head[hidden]{display:none !important}
 
     .lib-recent{
       background:var(--px-paper);border:1px solid var(--px-rule);border-radius:16px;
@@ -1820,13 +1826,13 @@
         <a class="inh-nav-link" id="navl-trade" onclick="showPage('trade',3)">Trade &amp; Events</a>
         <div class="inh-menu" id="navm-trade"></div>
       </span>
-      <span class="inh-nav-item" onmouseenter="navMenuOpen('training')">
-        <a class="inh-nav-link" id="navl-training" onclick="showPage('training',4)">Resources</a>
-        <div class="inh-menu" id="navm-training"></div>
-      </span>
       <span class="inh-nav-item" onmouseenter="navMenuOpen('portal')">
         <a class="inh-nav-link" id="navl-portal" onclick="openProductPortal()">Product Portal</a>
         <div class="inh-menu" id="navm-portal"></div>
+      </span>
+      <span class="inh-nav-item" onmouseenter="navMenuOpen('training')">
+        <a class="inh-nav-link" id="navl-training" onclick="showPage('training',4)">Resources</a>
+        <div class="inh-menu" id="navm-training"></div>
       </span>
     </div>
   </nav>
@@ -2394,12 +2400,12 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=20"></script>
+<script src="config.js?v=21"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=24"></script>
+<script src="graph.js?v=25"></script>
 <script src="app.js?v=20"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>
