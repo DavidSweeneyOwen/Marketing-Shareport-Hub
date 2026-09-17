@@ -632,6 +632,16 @@ function _slugKey(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+// A category label is typed in two places in config.js - a portal
+// section's `cats` and the `categories` rules that put the label on the
+// file - and an exact === between them is one capital letter away from a
+// card that silently never appears. That is exactly why the Product
+// Change Notifications card was missing: the section asked for
+// 'Product change notifications' and the files carried
+// 'Product Change Notifications'. Compare on letters and digits only,
+// the same way every other name in this file is compared.
+function _sameCat(a, b) { return _slugKey(a) === _slugKey(b); }
+
 // Resolve a hero image for every item in a list, by finding its folder
 // under Documents/<root>/. Returns a map keyed by the item Title.
 // Everything is best-effort: one missing folder never stops the rest.
@@ -3008,21 +3018,21 @@ function renderLibrary(key) {
     </div>
 
     ${tiles.length ? `
-    <div class="lib-sec-head"><h2 class="lib-sec-title">${escHtml(cfg.tagsLabel || 'By product')}</h2>
+    <div class="lib-sec-head" id="lib-tiles-head-${escAttr(key)}"><h2 class="lib-sec-title">${escHtml(cfg.tagsLabel || 'By product')}</h2>
       <button class="lib-reset" onclick="libReset('${escAttr(key)}')">Reset</button></div>
     <div class="lib-tiles" id="lib-tiles-${escAttr(key)}">
       ${tiles.map((t, i) => `
-        <button class="lib-tile${showCounts ? '' : ' no-n'}" style="--i:${i}" onclick="libPick('${escAttr(key)}','${escAttr(t.key)}',this)">
+        <button class="lib-tile${showCounts ? '' : ' no-n'}" style="--i:${i}" data-tag="${escAttr(t.key)}" data-n="${t.n}" onclick="libPick('${escAttr(key)}','${escAttr(t.key)}',this)">
           ${showCounts ? `<span class="lib-tile-n">${t.n}</span>` : ''}
           <span class="lib-tile-l">${escHtml(t.label)}</span>
         </button>`).join('')}
     </div>` : ''}
 
-    <div class="lib-sec-head"><h2 class="lib-sec-title">${escHtml(cfg.catsLabel || 'By type')}</h2>
+    <div class="lib-sec-head" id="lib-cats-head-${escAttr(key)}"><h2 class="lib-sec-title">${escHtml(cfg.catsLabel || 'By type')}</h2>
       ${tiles.length ? '' : `<button class="lib-reset" onclick="libReset('${escAttr(key)}')">Reset</button>`}</div>
     <div class="lib-cats" id="lib-cats-${escAttr(key)}">
-      <button class="lib-cat active" onclick="libCat('${escAttr(key)}','all',this)">All<b>${files.length}</b></button>
-      ${cats.map(c => `<button class="lib-cat" onclick="libCat('${escAttr(key)}','${escAttr(c.label)}',this)">${escHtml(c.label)}<b>${c.n}</b></button>`).join('')}
+      <button class="lib-cat active" data-cat="all" onclick="libCat('${escAttr(key)}','all',this)">All<b>${files.length}</b></button>
+      ${cats.map(c => `<button class="lib-cat" data-cat="${escAttr(c.label)}" onclick="libCat('${escAttr(key)}','${escAttr(c.label)}',this)">${escHtml(c.label)}<b>${c.n}</b></button>`).join('')}
     </div>
 
     ${recent.length ? `
@@ -3337,7 +3347,12 @@ async function fetchPortalOverrides() {
 function ppSections() {
   const base = (HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.sections) || [];
   const ov   = _portalOverrides && _portalOverrides.sections;
-  if (!ov || !ov.length) return base;
+  // 16 Sep 2026 (deck 9) - `show:false` on a section in config.js hides
+  // the card without deleting the section: one word puts it back, and
+  // its links, folders and aliases stay where they are. The Portal
+  // Sections list still wins, so the product team can re-enable a
+  // section themselves without anyone editing this file.
+  if (!ov || !ov.length) return base.filter(s => s.show !== false);
 
   const byKey = new Map(base.map(s => [String(s.key).toLowerCase(), s]));
   const byLbl = new Map(base.map(s => [_slugKey(s.label), s]));
@@ -3354,7 +3369,7 @@ function ppSections() {
   // Anything the list doesn't mention keeps working, in config order,
   // after the ones it does — a half-filled list must never hide
   // documents that are really there.
-  base.forEach(s => { if (!claimed.has(s.key)) out.push(s); });
+  base.forEach(s => { if (!claimed.has(s.key) && s.show !== false) out.push(s); });
   return out.length ? out : base;
 }
 
@@ -3504,7 +3519,13 @@ function renderPortalSections() {
     // By kind first — that is what survives files coming from five
     // different sites with five different folder conventions.
     if (sec.cats && sec.cats.length) {
-      const present = sec.cats.filter(c => state.files.some(f => f._cat === c));
+      // Matched on the slug, then mapped to the label the FILES carry -
+      // everything downstream filters on that exact string, so a band
+      // must never pass on config.js's spelling of it.
+      const present = sec.cats
+        .map(c => { const hit = state.files.find(f => _sameCat(f._cat, c)); return hit ? hit._cat : null; })
+        .filter(Boolean)
+        .filter((c, n, a) => a.indexOf(c) === n);
       const count   = state.files.filter(f => present.indexOf(f._cat) >= 0).length;
       if (count) { live.push({ sec, count, cat: present }); return; }
     }
@@ -3639,33 +3660,102 @@ function ppShowFront() {
   if (lnk) lnk.style.display = '';
   document.querySelectorAll('#pp-sections .pp-sec').forEach(b => b.classList.remove('active'));
   _ppScopeTypeChips(null);          // back on the front, every chip returns
+  _ppScopeTiles(null);              // and every product tile, at its full count
 }
 
 // Back to the front from inside a section.
 function ppCloseSection() {
   ppShowFront();
   const s = LIB.product;
-  if (s) { s.tag = 'all'; s.q = ''; s.cat = null; }
+  if (s) { s.tag = 'all'; s.q = ''; s.cat = 'all'; }
   window.scrollTo(0, 0);
 }
 
 let PP_BANDS = [];
 
-// Show only the type chips that belong to the open section. Hidden with
-// [hidden] rather than removed, so ppCloseSection can put them all back
-// without re-rendering the whole index.
-function _ppScopeTypeChips(band) {
+// Inside a section the facets must offer that section and nothing else.
+//
+// 16 Sep 2026 (deck 9) - David: "on the product portal when you click
+// for example data sheets I don't want all the options just the data
+// sheets to come up." The 9 Sep scoping was written and never worked:
+// `.lib-cat` and `.lib-tile` set `display` in a class rule, which beats
+// the browser's own `[hidden]` rule, so every chip stayed on screen and
+// the section offered the whole library back. Three changes: the
+// stylesheet now carries `[hidden]{display:none!important}` for both,
+// chips are matched on `data-cat` rather than their visible text (which
+// also contains the count), and the rows go altogether when there is
+// nothing left in them to choose between.
+//
+// Hidden rather than removed, so going back to the front puts every
+// chip back without re-rendering the index.
+function _ppScopeTypeChips(band, i) {
   const on = !(HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.scopeTypesToSection === false);
   const chips = document.querySelectorAll('#lib-cats-product .lib-cat');
+  const head  = document.getElementById('lib-cats-head-product');
+  const row   = document.getElementById('lib-cats-product');
   if (!chips.length) return;
   const want = (band && band.cat) ? (Array.isArray(band.cat) ? band.cat : [band.cat]) : null;
-  chips.forEach((b, i) => {
-    if (!on || !want) { b.hidden = false; return; }
-    // Chip 0 is "All" — it is the way back to the whole section, keep it.
-    if (i === 0) { b.hidden = false; return; }
-    const label = (b.textContent || '').replace(/\d+$/, '').trim();
-    b.hidden = !want.some(c => label === c || label.indexOf(c) === 0);
+
+  let shown = 0;
+  chips.forEach((b, n) => {
+    if (!on || !want) {
+      b.hidden = false;
+      // Back on the front, "All" is the whole library again.
+      if (n === 0) b.setAttribute('onclick', "libCat('product','all',this)");
+      return;
+    }
+    if (n === 0) {
+      // Chip 0 is "All". INSIDE a section it means all of THIS section -
+      // it used to call libCat('all'), which quietly widened you back to
+      // the whole library through the one control that looked like it
+      // belonged to the section you were in.
+      b.hidden = false;
+      b.setAttribute('onclick', 'ppOpenSection(' + (typeof i === 'number' ? i : -1) + ')');
+      return;
+    }
+    const cat  = b.getAttribute('data-cat') || '';
+    const keep = want.some(c => _sameCat(c, cat));
+    b.hidden = !keep;
+    if (keep) shown++;
   });
+
+  // One type under the section means the row repeats the heading above
+  // it. Hide the band rather than show a single chip.
+  const hideRow = !!want && shown < 2;
+  if (row)  row.hidden  = hideRow;
+  if (head) head.hidden = hideRow;
+}
+
+// The "By product" tiles, scoped the same way and RE-COUNTED against the
+// open section: a tile reading 12 when only 3 of those files are
+// datasheets is worse than no tile at all.
+function _ppScopeTiles(band) {
+  const on = !(HUB_CONFIG.productPortal && HUB_CONFIG.productPortal.scopeTypesToSection === false);
+  const tiles = document.querySelectorAll('#lib-tiles-product .lib-tile');
+  const head  = document.getElementById('lib-tiles-head-product');
+  const row   = document.getElementById('lib-tiles-product');
+  if (!tiles.length) return;
+  const state = LIB.product;
+  const want  = (band && band.cat) ? (Array.isArray(band.cat) ? band.cat : [band.cat]) : null;
+
+  let shown = 0;
+  tiles.forEach(b => {
+    const nEl = b.querySelector('.lib-tile-n');
+    if (!on || !want || !state) {
+      b.hidden = false;
+      if (nEl) nEl.textContent = b.getAttribute('data-n') || nEl.textContent;
+      shown++;
+      return;
+    }
+    const tag = b.getAttribute('data-tag') || '';
+    const n = state.files.filter(f => f._tag === tag && want.some(c => _sameCat(c, f._cat))).length;
+    b.hidden = !n;
+    if (n) { shown++; if (nEl) nEl.textContent = n; }
+  });
+
+  const hideRow = !!want && shown < 2;
+  if (row)  row.hidden  = hideRow;
+  if (head) head.hidden = hideRow;
 }
 
 function _ppSourceCount(state) {
@@ -3694,7 +3784,10 @@ function ppOpenSection(i, subIndex) {
   const narrowed = (typeof subIndex === 'number' && subIndex >= 0 && subIndex < bandCats.length)
     ? bandCats[subIndex] : null;
 
-  s.tag = 'all'; s.q = ''; s.cat = band ? (narrowed || band.cat) : null;
+  // 'all' rather than null off the front: the filter tests `=== 'all'`
+  // to mean everything, and a null matched no file at all - which is
+  // what "Search everything" was doing.
+  s.tag = 'all'; s.q = ''; s.cat = band ? (narrowed || band.cat) : 'all';
 
   const idx = document.getElementById('pp-index');
   const sec = document.getElementById('pp-sections');
@@ -3724,14 +3817,16 @@ function ppOpenSection(i, subIndex) {
   // that section's own types — "we don't want to see options for
   // Datasheets, Product Training etc". "Search everything" (i < 0) still
   // shows the lot.
-  _ppScopeTypeChips(band);
+  _ppScopeTypeChips(band, i);
+  _ppScopeTiles(band);
 
   const q = document.getElementById('lib-q-product');
   if (q) q.value = '';
   document.querySelectorAll('#lib-tiles-product .lib-tile').forEach(b => b.classList.remove('active'));
   const wanted = narrowed ? [narrowed] : bandCats;
   document.querySelectorAll('#lib-cats-product .lib-cat').forEach(b => {
-    b.classList.toggle('active', wanted.some(c => b.textContent.indexOf(c) === 0));
+    const cat = b.getAttribute('data-cat') || '';
+    b.classList.toggle('active', cat !== 'all' && wanted.some(c => _sameCat(c, cat)));
   });
 
   renderLibraryResults('product');
