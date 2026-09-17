@@ -892,12 +892,6 @@ HUB_CONFIG.productPortal = {
   // marketing's folder in "Images for Product Portal" is named
   // something the word matcher would not reach on its own.
   sections: [
-    { key:'pcn',     label:'Product Change Notifications', eyebrow:'Changes',
-      cats:['Product change notifications'],
-      folder:'Product Change Notifications',
-      aliases:['Product Change Notification','PCN','Change Notifications'],
-      desc:'Every notified change to a product, newest first.' },
-
     { key:'data',    label:'Datasheets & MSDS', eyebrow:'Technical',
       cats:['Data sheets','MSDS & safety data'],
       folder:'Data Sheets and MSDS',
@@ -909,7 +903,25 @@ HUB_CONFIG.productPortal = {
             'NTA 8133','Certificates & approvals'],
       desc:'Conformity, Kitemark, marine and NTA paperwork.' },
 
+    // 16 Sep 2026, David: "the 3 card should be Product notifications."
+    // Third in the order, so it is the third card on the front. The
+    // label here was 'Product change notifications' while the files
+    // carry 'Product Change Notifications', which is why this card has
+    // never appeared - see _sameCat in graph.js.
+    { key:'pcn',     label:'Product Change Notifications', eyebrow:'Changes',
+      cats:['Product Change Notifications'],
+      folder:'Product Change Notifications',
+      aliases:['Product Change Notification','PCN','Change Notifications'],
+      desc:'Every notified change to a product, newest first.' },
+
+    // 16 Sep 2026, David: "we can remove product information on the 3
+    // box." Hidden, not deleted - `show:true` brings the card back with
+    // its folder, aliases and links intact, and Lowri's two PIF links
+    // are unaffected either way: they sit in the links band on the
+    // portal front, which shows every link whether its section renders
+    // or not.
     { key:'pif',     label:'Product Information Files', eyebrow:'Reference',
+      show:false,
       cats:['PIF'],
       folder:'PIF',
       aliases:['PIFs','Links to PIF','Product Information Files','Product Information File'],
