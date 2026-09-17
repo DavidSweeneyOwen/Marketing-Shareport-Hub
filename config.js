@@ -62,7 +62,29 @@ const HUB_CONFIG = {
   // placeholder list back — an empty state that tells the truth beats a
   // full one that lies.
 
-  redirectUri: 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/',
+  // ── Sign-in redirect URI ────────────────────────────────────
+  // 17 Sep 2026. This was HARD-CODED to the GitHub Pages address, so
+  // signing in on marketing.checkfire.co.uk sent the user — and the
+  // auth code — back to davidsweeneyowen.github.io. MSAL then wrote the
+  // session into github.io's sessionStorage, which the new domain can
+  // never read.
+  //
+  // It now follows whatever host the hub is served from, so the same
+  // files work on the domain, on the *.azurestaticapps.net address and
+  // on GitHub Pages during the changeover.
+  //
+  // Entra matches redirect URIs EXACTLY, trailing slash included. Every
+  // host below must be registered on app 0cae2c21… under the
+  // Single-page application platform (NOT "Web") or sign-in fails with
+  // AADSTS50011. GitHub Pages is the one host that is not at the root
+  // of its origin, so it keeps its own literal value.
+  redirectUri: (function () {
+    var o = window.location.origin;
+    if (o.indexOf('github.io') !== -1) {
+      return 'https://davidsweeneyowen.github.io/Marketing-Shareport-Hub/';
+    }
+    return o + '/';
+  })(),
 
 };
 
