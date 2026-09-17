@@ -1,23 +1,14 @@
 {
-  "routes": [
-    {
-      "route": "/login",
-      "allowedRoles": ["anonymous"]
-    },
-    {
-      "route": "/*",
-      "allowedRoles": ["authenticated"]
-    }
-  ],
-  "responseOverrides": {
-    "401": {
-      "redirect": "/login",
-      "statusCode": 302
-    }
-  },
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/css/*", "/js/*", "*.{png,jpg,gif,ico,woff2}"]
+    "exclude": [
+      "/*.{css,js,json,map,txt,xml,png,jpg,jpeg,gif,svg,ico,webp,woff,woff2,ttf,pdf}",
+      "/assets/*",
+      "/images/*",
+      "/img/*",
+      "/css/*",
+      "/js/*"
+    ]
   },
   "globalHeaders": {
     "X-Frame-Options": "SAMEORIGIN",
