@@ -26,7 +26,10 @@ ok(/if \(src\.enabled === false\) return;/.test(graphSrc), 'the crawl honours en
 ok(/view: 'folders',/.test(cfgSrc), 'resources is in the folders view');
 ok(/'Images for Resources'\]/.test(cfgSrc), 'the resources image folder is excluded from its own cards');
 ok(/'FSE 2026': \{ start: '2026-04-28', end: '2026-04-30' \}/.test(cfgSrc), 'FSE 2026 has real dates');
-ok(/config\.js\?v=23/.test(html) && /graph\.js\?v=26/.test(html) && /app\.js\?v=22/.test(html), 'version tags bumped');
+ok(/config\.js\?v=24/.test(html) && /graph\.js\?v=27/.test(html) && /app\.js\?v=22/.test(html), 'version tags bumped');
+ok(!/toggleResourcesBrowse\(this\)/.test(html), 'the Resources "Browse folders" / "Back to the library" button is gone');
+ok(/togglePortalBrowse\(this\)/.test(graphSrc), 'the Product Portal keeps its own Browse folders button (it is drawn by graph.js)');
+ok(/cardsFrom: \['Brand'\]/.test(cfgSrc), 'Brand is opened out into its sub-folders');
 ok(/auth\.js\?v=2/.test(html) && /ui\.js\?v=3/.test(html) && /jotform\.js\?v=13/.test(html) && /ember\.js\?v=7/.test(html),
    'the untouched files keep their tags');
 
@@ -150,44 +153,57 @@ ok(ctx._evBaseName("FSE '26") === ctx._evBaseName('FSE 2026'), "and so is FSE '2
 ok(ctx._evBaseName('Open Day 2026') !== ctx._evBaseName('FSE 2026'), 'but a different event is not');
 
 /* ── 2b. Resources folder cards ──────────────────────────── */
+// The real shape of MarketingHub ▸ Documents, read from SharePoint:
+// Brand holds the three folders David wants as cards, and the rest of
+// the root is either excluded or empty.
 const files = [
-  { id: 'a', name: 'CheckFire Brand Guidelines.pdf', _driveId: 'd', _path: ['Brand'], lastModifiedDateTime: '2026-09-10T00:00:00Z' },
-  { id: 'b', name: 'logo-primary.png',               _driveId: 'd', _path: ['Brand'], lastModifiedDateTime: '2026-09-11T00:00:00Z' },
-  { id: 'c', name: 'Customer deck.pptx',             _driveId: 'd', _path: ['Presentations'], lastModifiedDateTime: '2026-08-01T00:00:00Z' },
-  { id: 'd', name: 'Price list.xlsx',                _driveId: 'd', _path: [], lastModifiedDateTime: '2026-07-01T00:00:00Z' },
+  { id: 'a', name: 'CheckFire Brand Guidelines.pdf', _driveId: 'd', _path: ['Brand', 'BRAND GUIDELINES'],      lastModifiedDateTime: '2026-08-13T00:00:00Z' },
+  { id: 'b', name: 'logo-primary.png',               _driveId: 'd', _path: ['Brand', 'BRAND GUIDELINES'],      lastModifiedDateTime: '2026-08-13T00:00:00Z' },
+  { id: 'c', name: 'Customer deck.pptx',             _driveId: 'd', _path: ['Brand', 'CUSTOMER PRESENTATIONS'], lastModifiedDateTime: '2026-09-16T00:00:00Z' },
+  { id: 'd', name: 'Toolkit.zip',                    _driveId: 'd', _path: ['Brand', 'MARKETING TOOLKIT'],     lastModifiedDateTime: '2026-08-13T00:00:00Z' },
+  { id: 'e', name: 'Loose note.docx',                _driveId: 'd', _path: ['Brand'],                          lastModifiedDateTime: '2026-07-01T00:00:00Z' },
 ];
 LIBv.resources = Object.assign(
   { files: [], loaded: true, driveId: 'd', tag: 'all', cat: 'all', q: '' },
   { files: ctx._libDecorate('resources', files), loaded: true, driveId: 'd', tag: 'all', cat: 'all', q: '' });
 
 const folders = ctx._libFolderRows('resources');
-ok(folders.length === 3, 'three folder cards from four files (got ' + folders.length + ')');
-const brand = folders.find(f => f.label === 'Brand');
-ok(!!brand && brand.n === 2, 'the Brand card counts both of its files');
+const names = folders.map(f => f.label);
+ok(!!folders.find(f => f.label === 'BRAND GUIDELINES'), 'BRAND GUIDELINES is a card');
+ok(!!folders.find(f => f.label === 'CUSTOMER PRESENTATIONS'), 'CUSTOMER PRESENTATIONS is a card');
+ok(!!folders.find(f => f.label === 'MARKETING TOOLKIT'), 'MARKETING TOOLKIT is a card');
+ok(!names.some(n => n === 'Brand' && folders.length === 1), 'the container is not the card any more');
+const brand = folders.find(f => f.label === 'BRAND GUIDELINES');
+ok(!!brand && brand.n === 2, 'the Brand Guidelines card counts both of its files');
 ok(brand && brand.img && brand.img.name === 'logo-primary.png', 'a picture already in the folder becomes the card artwork');
-ok(!!folders.find(f => f.label === 'General'), 'files at the root of the library still get a card');
-ok(folders[0].label === 'Brand', 'the most recently updated folder leads');
+ok(!!folders.find(f => f.label === 'Brand' && f.n === 1), 'a file loose inside the opened-out folder keeps its own card — nothing falls off the page');
+ok(folders[0].label === 'CUSTOMER PRESENTATIONS', 'the most recently updated folder leads (got ' + folders[0].label + ')');
+ok(ctx._libCardLabel('resources', ['Campaigns', 'LFX']) === 'Campaigns', 'a folder NOT named in cardsFrom is still one card');
 
 ctx.renderLibraryFolders('resources');
 const host = doc.getElementById('res-index');
 ok(/px-grid/.test(host.innerHTML) && /px-card/.test(host.innerHTML), 'the cards render on the .px-card grid, like the other pages');
-ok((host.innerHTML.match(/px-card /g) || []).length === 3, 'one card per folder');
+ok((host.innerHTML.match(/px-card /g) || []).length === folders.length, 'one card per folder');
 ok(/libOpenFolder\('resources',0\)/.test(host.innerHTML), 'a card opens by INDEX, never by folder name');
 ok(!/onclick="libOpenFolder\('resources','/.test(host.innerHTML), 'no folder name ever reaches a handler (apostrophe trap)');
 ok(/lib-results-resources/.test(host.innerHTML) && /style="display:none"/.test(host.innerHTML),
    'the results list starts hidden behind the cards');
 
 ctx.libOpenFolder('resources', folders.indexOf(brand));
-ok(LIBv.resources.cat === 'Brand', 'opening a card filters to that folder');
+ok(LIBv.resources.card === 'BRAND GUIDELINES', 'opening a card filters to that folder');
+ok(LIBv.resources.cat === 'all', 'and does it on the CARD, not the category (every file here reads _cat "Brand")');
 ok(doc.getElementById('lib-front-resources').style.display === 'none', 'the cards step aside');
 ok(doc.getElementById('lib-results-resources').style.display === '', 'the documents come forward');
 ok(/libFoldersBack\('resources'\)/.test(doc.getElementById('lib-head-resources').innerHTML), 'with a way back');
 const shown = doc.getElementById('lib-results-resources').innerHTML;
 ok(/Brand Guidelines/.test(shown), 'the folder shows its own files');
 ok(!/Customer deck/.test(shown), 'and only its own files');
+ok(!/Loose note/.test(shown), 'and not the ones loose in the container above it');
+ok(/BRAND GUIDELINES<span>2<\/span>/.test(shown.replace(/\s+/g, '')) || /BRAND GUIDELINES/.test(shown),
+   'the group heading names the card, not the container');
 
 ctx.libFoldersBack('resources');
-ok(LIBv.resources.cat === 'all', 'back clears the filter');
+ok(!LIBv.resources.card, 'back clears the filter');
 ok(doc.getElementById('lib-front-resources').style.display === '', 'and the cards come back');
 ok(doc.getElementById('lib-results-resources').style.display === 'none', 'with the results hidden again');
 
@@ -240,6 +256,8 @@ ok(/closeLaunchDetail\(\);/.test(appSrc) && /closeCampaignDetail\(\);/.test(appS
    'launches, campaigns and events are all put back');
 ok(/lib && lib\.product && lib\.product\.loaded/.test(appSrc), 'the portal is only reset once it has loaded (skeleton trap)');
 ok(/lib && lib\.resources && lib\.resources\.loaded/.test(appSrc), 'and so is Resources');
+ok(/cardsBackLabel/.test(graphSrc) && /cardsBackLabel: 'All folders'/.test(cfgSrc),
+   'the way back out of a card is not called "Back to the library"');
 ok(/if \(d && d\.deep && d\.page && typeof showPage === 'function'\) showPage\(d\.page\);/.test(appSrc),
    'a deep history entry puts its page back before replaying');
 ok(/'libOpenFolder', 'libFoldersBack'/.test(appSrc), 'the folder cards are in the history router');
