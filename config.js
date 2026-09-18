@@ -200,6 +200,31 @@ HUB_CONFIG.tradeEvents = {
       sub:'Open days, demonstrations and everything we run for customers.' },
   ],
   fallback: 'exhibitions',
+
+  // 18 SEP 2026 — David: "Training and Events is showing FSE 2026 as up
+  // and coming, that was back in April/May."
+  //
+  // It was, and the page had no way of knowing. A folder called "FSE
+  // 2026" carries a YEAR and nothing else, and the rule was "this year
+  // or later = upcoming", so everything in the current year stayed
+  // Upcoming until January. Real dates live here, keyed on the folder
+  // name (matched on letters and digits, so "FSE 2026" and "FSE2026"
+  // are the same row), and an event is Upcoming until the day after it
+  // finishes. The card shows the dates instead of the bare year.
+  //
+  // ADD A ROW when a new event folder goes up. An event with no row
+  // still works — a future year is Upcoming, a past year is Previous —
+  // it is only the CURRENT year that has to be assumed, and the console
+  // names any folder in that position with the row to paste in.
+  dates: {
+    'FSE 2026': { start: '2026-04-28', end: '2026-04-30' },   // NEC Birmingham
+    // 'FSE 2027': { start: '2027-04-27', end: '2027-04-29' }, // dates TBC
+  },
+
+  // What to do with an event in the CURRENT year that has no row above:
+  // 'previous' (the default) or 'upcoming'. Previous is the safer
+  // assumption — an undated event this year has usually been and gone.
+  assumeCurrentYear: 'previous',
 };
 
 // ── Videos — pulled onto the hub home page ────────────────────
@@ -591,10 +616,27 @@ HUB_CONFIG.libraries = {
       {
         key: 'portal', label: 'Product Portal',
         site: 'https://checkfireltd.sharepoint.com/sites/CheckFireProductPortal',
-        allLibraries: true, depth: 4, max: 400,
+        allLibraries: true, depth: 4, max: 900,
       },
+      // 18 SEP 2026 — David: "we don't need the product portal point at
+      // the media hub, it just needs to point at the product portal and
+      // the marketing hub we've created for the pictures."
+      //
+      // Both of the other two sources are turned OFF here rather than
+      // deleted: `enabled:false` is read in _libCrawlAll and nowhere
+      // else, so one word brings a source back with its roots, depth and
+      // cap intact. Nothing is lost by switching them off — the Product
+      // Portal site carries its own Data Sheets, Certificates, Product
+      // Change Documents and FormServerTemplates libraries, which is
+      // where the cards are drawn from. What goes is the Media Portal's
+      // photography and the sales.marketing duplicates, which is what
+      // made the page read "960 documents" and made it slow.
+      //
+      // The pictures still come from the Marketing Hub, through
+      // HUB_CONFIG.portalImages ▸ "Images for Product Portal" — that is
+      // a separate read and is untouched by this.
       {
-        key: 'media', label: 'Media Portal',
+        key: 'media', label: 'Media Portal', enabled: false,
         site: 'https://checkfireltd.sharepoint.com/sites/CheckFireMediaPortal',
         library: 'Documents', depth: 5, max: 500,
         roots: [
@@ -605,7 +647,7 @@ HUB_CONFIG.libraries = {
         ],
       },
       {
-        key: 'sales', label: 'Sales & Marketing',
+        key: 'sales', label: 'Sales & Marketing', enabled: false,
         site: 'https://checkfireltd.sharepoint.com/sites/sales.marketing',
         library: 'Documents', depth: 3, max: 500,
         roots: [
@@ -685,6 +727,18 @@ HUB_CONFIG.libraries = {
     // same three things. `simple` drops all of that: a search box and
     // the documents, grouped by the folder they sit in. Set it to
     // false to get the faceted view back.
+    // 18 SEP 2026 — David: "the resources tab needs to be foldered like
+    // every other tab … then we just make it like the other pages."
+    //
+    // `simple` was a flat list grouped by folder heading.
+    // `view:'folders'` is the same .px-card grid the Product Portal and
+    // the events page use: one card per top-level folder, with artwork,
+    // and the documents inside it. Front → folder → document, like
+    // everywhere else in the hub. Set view:'list' to go back to the
+    // flat list; `simple` below is what that falls back to.
+    view: 'folders',
+    foldersLabel: 'What are you looking for?',
+    eyebrow: 'Marketing library',
     simple: true,
     crawlDepth: 3,
     maxFiles: 400,
@@ -695,7 +749,8 @@ HUB_CONFIG.libraries = {
     // page, exactly like Images for Landing Pages, so they are excluded
     // rather than moved: the portal reads them where they are.
     excludeFolders: ['Campaigns', 'Launches', 'Events',
-                     'Images for Landing Pages', 'Images for Product Portal'],
+                     'Images for Landing Pages', 'Images for Product Portal',
+                     'Images for Resources'],
 
     // Grouped by what the file IS, since a marketing library is mixed
     // media rather than one product line.
@@ -717,6 +772,41 @@ HUB_CONFIG.libraries = {
   },
 
 };
+
+// ── Artwork for the Resources folder cards ────────────────────
+// 18 Sep 2026. The folder cards look for a picture in two places, in
+// this order:
+//
+//   1. an image already inside that folder. It is in the index the page
+//      has just read, so it costs one thumbnail request and no crawl —
+//      most marketing folders have their own artwork in them already.
+//   2. a marketing image folder, matched on the folder's NAME with the
+//      same scorer the Product Portal cards use. David: "you might be
+//      able to reuse other images for this."
+//
+// Make "Images for Resources" on MarketingHub ▸ Documents and put a
+// sub-folder in it named after the Resources folder to place a picture
+// deliberately — exactly the convention already in use for the Product
+// Portal cards, where the SUB-FOLDER NAME is the match key and the file
+// can be called anything. Until that folder exists the portal's own
+// images are reused where the names match, and a card with no match
+// keeps its initials.
+HUB_CONFIG.resourceImages = {
+  folder: 'Images for Resources',
+  depth: 2,
+  reusePortalImages: true,
+  // Words that say nothing about WHICH folder a picture belongs to.
+  noiseWords: ['image', 'images', 'picture', 'photo', 'artwork', 'marketing',
+               'resource', 'resources', 'hub', 'checkfire', 'cf', 'final', 'copy'],
+  minWordMatch: 1,
+};
+
+// How good a name match has to be before a reused picture is put on a
+// card. _portalScore gives 100 for an exact name, 60 for a prefix and
+// about 8 a word for an overlap, so 16 means "two words in common, or
+// better" — one word in common is a coincidence, and a coincidence puts
+// a fire blanket on the Brand Guidelines card.
+HUB_CONFIG.imageMatchFloor = 16;
 
 // ── Ember — the CheckFire AI assistant ────────────────────────
 // Ember lives in a slide-over panel on every page of the hub.
