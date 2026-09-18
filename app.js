@@ -515,3 +515,173 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof loadShowroomData === 'function') loadShowroomData();
   }
 });
+
+/* ─── Browser history — 17 Sep 2026 ────────────────────────────
+ * Until today the hub was one HTML page that swapped a .page class,
+ * so nothing a user clicked ever reached the browser's own history:
+ * Back took them OFF the site, and marketing.checkfire.co.uk was the
+ * only URL there was.
+ *
+ * This wraps the functions that move the user, records each one as a
+ * history entry, and plays it back on popstate. Nothing calls into
+ * here — the wrapping is done at DOMContentLoaded, so every existing
+ * onclick in index.html and every link graph.js builds gets history
+ * for free. Adding a new navigation function means adding its NAME to
+ * one of the two lists below; there is nothing else to wire up.
+ *
+ * Top-level pages also get a real path (/campaigns, /product-portal),
+ * which works because staticwebapp.config.json falls back to
+ * index.html for any path that isn't a file. Drill-downs keep their
+ * page's path and carry their state in the history entry.
+ * ───────────────────────────────────────────────────────────── */
+(function () {
+  'use strict';
+
+  // Page ids are the legacy ones in index.html — 'training' is the
+  // Resources page and 'portal' is the Product Portal.
+  var PAGE_PATH = {
+    home: '/', launches: '/launches', campaigns: '/campaigns',
+    trade: '/trade-events', training: '/resources', portal: '/product-portal',
+    reader: '/document', search: '/search'
+  };
+  var PATH_PAGE = {};
+  Object.keys(PAGE_PATH).forEach(function (id) { PATH_PAGE[PAGE_PATH[id]] = id; });
+
+  // Page-level: these land the user on a whole page.
+  var PAGE_FNS = ['showPage', 'openProductPortal'];
+  // Deep: these open something inside the page the user is already on.
+  var DEEP_FNS = [
+    'openCampaignDetail', 'closeCampaignDetail', 'openLaunchDetail', 'closeLaunchDetail',
+    'ppOpenSection', 'ppCloseSection', 'libCat', 'libPick', 'libReset', 'fbCrumb',
+    'openEventFolder', 'openDetailSubfolder', 'openDetailAsset',
+    'srchOpenItem', 'updOpenItem', 'openSiteSearch', 'openDocFile'
+  ];
+
+  var suppress = false;  // true while we are re-rendering FROM history
+  var pending  = null;
+  var timer    = null;
+
+  function currentPage() {
+    var el = document.querySelector('.page.active');
+    return el ? el.id.replace(/^page-/, '') : 'home';
+  }
+
+  // Only primitives survive into history.state. A DOM node becomes null
+  // — every call site passes it as "the button to highlight", which the
+  // renderer works out again anyway. Anything else (openDocFile's file
+  // object) marks the view unrestorable: we still record it so Back has
+  // somewhere to come from, we just land on its page rather than reopen
+  // it. Returns null when the args can't be trusted.
+  function safeArgs(args) {
+    var ok = true;
+    var out = [].map.call(args, function (a) {
+      if (a === null || a === undefined) return null;
+      var t = typeof a;
+      if (t === 'string' || t === 'number' || t === 'boolean') return a;
+      if (typeof Node !== 'undefined' && a instanceof Node) return null;
+      ok = false;
+      return null;
+    });
+    return ok ? out : null;
+  }
+
+  function key(d) {
+    return d.page + (d.deep ? '/' + d.fn + '(' + JSON.stringify(d.args) + ')' : '');
+  }
+
+  function record(fn, args, deep) {
+    if (suppress) return;
+    var safe = safeArgs(args);
+    pending = {
+      fn: fn, args: safe || [], deep: deep,
+      page: currentPage(), restorable: safe !== null
+    };
+    if (!timer) timer = setTimeout(flush, 0);
+  }
+
+  function flush() {
+    timer = null;
+    var d = pending;
+    pending = null;
+    if (!d) return;
+    d.page = currentPage();                       // it has settled by now
+    var url = PAGE_PATH[d.page] || location.pathname;
+    var cur = history.state && history.state.hub;
+    // One click is one entry. The Product Portal nav link calls
+    // showPage('portal') and then openProductPortal(), which is two
+    // records for the same view — the second replaces the first.
+    if (cur && key(cur) === key(d)) history.replaceState({ hub: d }, '', url);
+    else history.pushState({ hub: d }, '', url);
+  }
+
+  function wrap(name, deep) {
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function () {
+      var r = orig.apply(this, arguments);
+      record(name, arguments, deep);
+      return r;
+    };
+  }
+
+  function replay(d) {
+    suppress = true;
+    try {
+      if (d && d.restorable && typeof window[d.fn] === 'function') {
+        window[d.fn].apply(null, d.args);
+      } else if (typeof showPage === 'function') {
+        showPage((d && d.page) || 'home');
+      }
+    } finally {
+      setTimeout(function () { suppress = false; }, 0);
+    }
+  }
+
+  // A deep link has to wait for the token, or its page renders empty.
+  function whenReady(cb) {
+    var tries = 0;
+    (function tick() {
+      if (window.HUB_DEMO_MODE || (window.AUTH && window.AUTH.token)) return cb();
+      if (++tries > 60) return;                   // ~30s, then leave it alone
+      setTimeout(tick, 500);
+    })();
+  }
+
+  function install() {
+    PAGE_FNS.forEach(function (n) { wrap(n, false); });
+    DEEP_FNS.forEach(function (n) { wrap(n, true); });
+
+    var path  = location.pathname.replace(/\/+$/, '') || '/';
+    var start = PATH_PAGE[path] || 'home';
+
+    history.replaceState(
+      { hub: { fn: 'showPage', args: [start], deep: false, page: start, restorable: true } },
+      '', PAGE_PATH[start] || '/'
+    );
+
+    // /campaigns typed straight into the address bar opens Campaigns.
+    if (start !== 'home' && start !== 'reader' && start !== 'search') {
+      whenReady(function () {
+        suppress = true;
+        try {
+          if (start === 'portal' && typeof openProductPortal === 'function') openProductPortal();
+          else if (typeof showPage === 'function') showPage(start);
+        } finally {
+          setTimeout(function () { suppress = false; }, 0);
+        }
+      });
+    }
+
+    window.addEventListener('popstate', function (e) {
+      replay(e.state && e.state.hub);
+    });
+  }
+
+  // Installed on DOMContentLoaded, or straight away if that has already
+  // fired — app.js must keep working whether or not it is deferred.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install);
+  } else {
+    install();
+  }
+})();
