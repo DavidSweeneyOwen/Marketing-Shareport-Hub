@@ -2736,9 +2736,30 @@ function _libDecorate(key, rows) {
       _tagLbl:    t ? t.label : 'Other',
       _catFolder: (f._path || [])[0] || '',
       _cat:       _libCatLabel(key, (f._path || [])[0], f),
+      // Which CARD this file belongs to. Only the folders view uses it,
+      // and it is computed here so the live crawl and the saved index
+      // cannot drift — the same reason _cat and _tag are computed here.
+      _card:      _libCardLabel(key, f._path || []),
       _sub:       [(f._path || [])[1] || '', f._source || ''].filter(Boolean).join(' · '),
     });
   });
+}
+
+// The card a file sits under. Normally its top-level folder — but a
+// folder named in `cardsFrom` is opened out, and its CHILDREN become
+// the cards instead. That is the whole of the 18 Sep second round:
+// marketing filed Brand Guidelines, Customer Presentations and
+// Marketing Toolkit inside a folder called "Brand", so the page was
+// offering one card called Brand rather than the three they meant.
+//
+// A file sitting loose directly inside an opened-out folder keeps that
+// folder as its card, so nothing can fall off the page.
+function _libCardLabel(key, path) {
+  const cfg  = _libCfg(key);
+  const open = (cfg.cardsFrom || []).map(_slugKey);
+  const top  = path[0] || '';
+  if (top && open.indexOf(_slugKey(top)) >= 0 && path[1]) return path[1];
+  return top || cfg.rootCardLabel || 'General';
 }
 
 // Resolve "01. Marketing/08. PDF PIF, Data Sheets…" to a folder id,
@@ -3160,12 +3181,20 @@ function renderLibraryResults(key) {
   const wantCat = f => state.cat === 'all'
     || (Array.isArray(state.cat) ? state.cat.indexOf(f._cat) >= 0 : f._cat === state.cat);
 
+  // In the folders view the card is the filter, and the card is not
+  // always the category — "Brand Guidelines" is a child of "Brand", so
+  // every file in it still reads _cat 'Brand'.
+  const byCard   = cfg.view === 'folders';
+  const cardOf   = f => f._card || f._cat;
+  const wantCard = f => !state.card || state.card === 'all' || cardOf(f) === state.card;
+
   const rows = state.files.filter(f =>
     (state.tag === 'all' || f._tag === state.tag) &&
-    wantCat(f) &&
+    wantCat(f) && wantCard(f) &&
     (!q || (f.name + ' ' + (f._path || []).join(' ') + ' ' + (f._source || '')).toLowerCase().includes(q)));
 
-  const filtered = state.tag !== 'all' || state.cat !== 'all' || !!q;
+  const filtered = state.tag !== 'all' || state.cat !== 'all' || !!q
+    || !!(state.card && state.card !== 'all');
 
   if (!rows.length) {
     box.innerHTML = `<div class="px-empty"><h3>Nothing matches</h3>
@@ -3175,7 +3204,7 @@ function renderLibraryResults(key) {
   }
 
   const groups = {};
-  rows.forEach(f => { (groups[f._cat] = groups[f._cat] || []).push(f); });
+  rows.forEach(f => { const k = byCard ? cardOf(f) : f._cat; (groups[k] = groups[k] || []).push(f); });
 
   const catOrder = (cfg.categories || []).map(c => c.label);
   const keys = Object.keys(groups).sort((a, b) => {
@@ -3282,7 +3311,7 @@ function libSearch(key, v) {
     // something is being looked for. Typing searches every folder;
     // clearing the box puts the cards back. Inside a folder it behaves
     // exactly as it always has.
-    if (_libCfg(key).view === 'folders' && (!s.cat || s.cat === 'all')) {
+    if (_libCfg(key).view === 'folders' && !s.card) {
       const front = document.getElementById('lib-front-' + key);
       const box   = document.getElementById('lib-results-' + key);
       const on    = !!s.q.trim();
@@ -3331,7 +3360,7 @@ function _libFolderRows(key) {
 
   const map = new Map();
   state.files.forEach(f => {
-    const label = f._cat || 'General';
+    const label = f._card || f._cat || 'General';
     let row = map.get(label);
     if (!row) { row = { label: label, key: _slugKey(label), n: 0, modified: '', img: null }; map.set(label, row); }
     row.n++;
@@ -3380,8 +3409,8 @@ function renderLibraryFolders(key) {
 
   // A background refresh must not move the reader: whatever they had
   // open is put back rather than reset to the front.
-  const openIdx = (state.cat && state.cat !== 'all')
-    ? rows.findIndex(r => r.label === state.cat) : -1;
+  const openIdx = (state.card && state.card !== 'all')
+    ? rows.findIndex(r => r.label === state.card) : -1;
   if (openIdx >= 0) libOpenFolder(key, openIdx);
   else if (state.q) libSearch(key, state.q);
 
@@ -3420,7 +3449,7 @@ function libOpenFolder(key, i) {
   if (!row) return;
   const cfg = _libCfg(key);
 
-  state.cat = row.label; state.tag = 'all'; state.q = '';
+  state.card = row.label; state.cat = 'all'; state.tag = 'all'; state.q = '';
   const q = document.getElementById('lib-q-' + key);
   if (q) q.value = '';
 
@@ -3431,7 +3460,7 @@ function libOpenFolder(key, i) {
   if (head) head.innerHTML = `
       <button class="pp-back" onclick="libFoldersBack('${escAttr(key)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
-        ${escHtml(cfg.backLabel || 'Back')}
+        ${escHtml(cfg.cardsBackLabel || cfg.backLabel || 'Back')}
       </button>
       <h2 class="pp-section-title">${escHtml(row.label)}</h2>
       <p class="pp-section-sub">${row.n} file${row.n === 1 ? '' : 's'} in this folder.</p>`;
@@ -3448,7 +3477,7 @@ function libOpenFolder(key, i) {
 function libFoldersBack(key) {
   const state = LIB[key];
   if (!state || _libCfg(key).view !== 'folders') return;
-  state.cat = 'all'; state.tag = 'all'; state.q = '';
+  state.card = null; state.cat = 'all'; state.tag = 'all'; state.q = '';
 
   const q = document.getElementById('lib-q-' + key);
   if (q) q.value = '';
@@ -6526,7 +6555,7 @@ async function navGo(kind, arg) {
       // filter on its own would have looked like nothing happening.
       if (_libCfg('resources').view === 'folders') {
         const rows = s.folders || _libFolderRows('resources');
-        const i = rows.findIndex(r => r.label === arg);
+        const i = rows.findIndex(r => _sameCat(r.label, arg));
         if (i >= 0) { libOpenFolder('resources', i); return; }
       }
       s.tag = 'all'; s.q = ''; s.cat = arg;
