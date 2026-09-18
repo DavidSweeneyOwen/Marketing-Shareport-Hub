@@ -2887,7 +2887,7 @@ async function loadLibrary(key) {
   </div>`;
 
   try {
-    LIB[key].files  = _libDecorate(key, await _libCrawlAll(key));
+    LIB[key].files  = _libDecorate(key, await _libCrawlAll(key, 'first load'));
     LIB[key].loaded = true;
     _libCacheWrite(key, LIB[key].files);
     renderLibrary(key);
@@ -2905,7 +2905,7 @@ async function loadLibrary(key) {
 // and leaves the page alone.
 async function _libRefresh(key) {
   try {
-    const fresh = _libDecorate(key, await _libCrawlAll(key));
+    const fresh = _libDecorate(key, await _libCrawlAll(key, 'refresh'));
     if (!fresh.length) {
       console.info('[Library] background refresh came back empty — keeping the saved index.');
       return;
@@ -2946,7 +2946,7 @@ function _libRepaint(key) {
 // The live crawl. Everything below here is what loadLibrary used to do
 // inline; it is a function now because it runs in two places — on the
 // first ever visit, and behind the saved index on every visit after.
-async function _libCrawlAll(key) {
+async function _libCrawlAll(key, mode) {
   const cfg = _libCfg(key);
   {
     const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
@@ -3031,9 +3031,13 @@ async function _libCrawlAll(key) {
     // cost and the next move is to stop walking (Graph's /root/delta
     // returns a whole library in pages of 200). If it says a few dozen,
     // the walk is fine and the time is in the network.
+    const secs  = ((Date.now() - t0) / 1000).toFixed(1);
+    const calls = graphCallsSince(c0);
     console.info('[Library] ' + (cfg.title || key) + ' — ' + tally.join(' · ')
-      + ` · ${out.length} files in ${((Date.now() - t0) / 1000).toFixed(1)}s`
-      + ` · ${graphCallsSince(c0)} Graph calls`);
+      + ` · ${out.length} files in ${secs}s · ${calls} Graph calls`);
+    // Same numbers, somewhere they can be read without dev tools.
+    _statsPush(key, { title: cfg.title || key, files: out.length, secs, calls,
+                      mode: mode || 'read' });
 
     // The same document is filed on more than one site. Keep the first
     // and remember there was another, rather than listing it twice.
@@ -3519,8 +3523,12 @@ async function paintLibraryFolderImages(key, rows) {
   unplaced.forEach(x => {
     const url = picked.get(x.r.key);
     if (url) setImg(x.i, url);
-    else console.info(`[Resources] no picture for "${x.r.label}" — put one in the folder, or make `
-      + `"${(HUB_CONFIG.resourceImages && HUB_CONFIG.resourceImages.folder) || 'Images for Resources'} ▸ ${x.r.label}".`);
+    else {
+      const note = `No picture for "${x.r.label}" — put one in that folder, or make `
+        + `"${(HUB_CONFIG.resourceImages && HUB_CONFIG.resourceImages.folder) || 'Images for Resources'} ▸ ${x.r.label}".`;
+      console.info('[Resources] ' + note);
+      if (typeof _statsNote === 'function') _statsNote(note);
+    }
   });
 }
 
@@ -4915,9 +4923,11 @@ function _evWhen(name, year, today) {
   else {
     const assume = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.assumeCurrentYear) || 'previous';
     upcoming = assume === 'upcoming';
-    console.info(`[Events] "${name}" has no dates in config.js, so it is being shown as `
-      + `${upcoming ? 'upcoming' : 'previous'}. Add   '${name}': { start: '${thisYear}-04-28', end: '${thisYear}-04-30' }   `
-      + 'to HUB_CONFIG.tradeEvents.dates to be sure.');
+    const note = `"${name}" has no dates — showing it as ${upcoming ? 'upcoming' : 'previous'}. `
+      + 'Send me its dates and I will add them.';
+    console.info(`[Events] ${note} Add   '${name}': { start: '${thisYear}-04-28', end: '${thisYear}-04-30' }   `
+      + 'to HUB_CONFIG.tradeEvents.dates in config.js.');
+    if (typeof _statsNote === 'function') _statsNote(note);
   }
   return {
     upcoming,
@@ -4926,6 +4936,125 @@ function _evWhen(name, year, today) {
     dated: false,
   };
 }
+
+
+// ═══ Diagnostics readout ═════════════════════════════════════
+//
+// 18 Sep 2026 — David: "I can't use dev tools." Fair: they are blocked
+// on the CheckFire build, and the browser extension can't attach to the
+// page either. Every number worth knowing about this hub was in the
+// console, which made it unreadable by the one person who needs it.
+//
+// So it has somewhere to be read ON THE PAGE. It is off for everyone
+// by default: add ?stats=1 to the URL once and it stays on for that tab
+// (?stats=0, or the Hide button, turns it off). It has to latch,
+// because the history router rewrites the path on every click and would
+// drop the query string.
+//
+// It carries what the console carried: how many files each library read,
+// how long it took, HOW MANY GRAPH CALLS IT COST — the number that
+// decides whether the crawl gets rebuilt — and the notes that would
+// otherwise only be console lines: an event with no dates, a card
+// borrowing another year's photograph, a folder with no picture.
+const HUB_STATS = { lib: {}, notes: [] };
+
+function _statsOn() {
+  try {
+    const q = new URLSearchParams(location.search).get('stats');
+    if (q === '1') sessionStorage.setItem('cf-stats', '1');
+    if (q === '0') sessionStorage.removeItem('cf-stats');
+    return sessionStorage.getItem('cf-stats') === '1';
+  } catch (_) { return false; }
+}
+
+function _statsPush(key, row) {
+  HUB_STATS.lib[key] = row;
+  _statsRender();
+}
+
+// Keeps the last 8. A note is a thing somebody can act on in
+// SharePoint, not a log line.
+function _statsNote(msg) {
+  HUB_STATS.notes.push(String(msg));
+  if (HUB_STATS.notes.length > 8) HUB_STATS.notes.shift();
+  _statsRender();
+}
+
+function _statsText() {
+  const rows = Object.keys(HUB_STATS.lib).map(k => {
+    const r = HUB_STATS.lib[k];
+    return `${r.title}: ${r.files} files · ${r.secs}s · ${r.calls} Graph calls (${r.mode})`;
+  });
+  return ['Marketing Hub diagnostics — ' + location.pathname]
+    .concat(rows.length ? rows : ['(nothing read yet)'])
+    .concat('Graph calls this page: ' + GRAPH_CALLS)
+    .concat(HUB_STATS.notes.map(n => '· ' + n))
+    .join('\n');
+}
+
+function _statsRender() {
+  if (!_statsOn() || !document.body) return;
+
+  let el = document.getElementById('hub-stats');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'hub-stats';
+    el.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:9999;max-width:340px;'
+      + 'background:#14110F;color:#F5F2EE;border:1px solid rgba(255,255,255,0.14);border-radius:12px;'
+      + 'padding:12px 14px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;'
+      + 'box-shadow:0 12px 32px rgba(0,0,0,0.4)';
+    document.body.appendChild(el);
+  }
+
+  const rows = Object.keys(HUB_STATS.lib).map(k => {
+    const r = HUB_STATS.lib[k];
+    return `<div style="margin-top:6px">${escHtml(r.title)}<br>
+      <b style="color:#F5B700">${r.calls}</b> Graph calls ·
+      ${r.files} files · ${r.secs}s · ${escHtml(r.mode)}</div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-weight:700;letter-spacing:.04em;text-transform:uppercase;font-size:10.5px;opacity:.6">
+      Marketing Hub · diagnostics</div>
+    ${rows || '<div style="margin-top:6px;opacity:.6">Open a page that reads SharePoint.</div>'}
+    <div style="margin-top:8px;opacity:.6">Graph calls this page: ${GRAPH_CALLS}</div>
+    ${HUB_STATS.notes.length ? `<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.12);padding-top:8px">
+      ${HUB_STATS.notes.map(n => `<div style="margin-top:4px;opacity:.75">· ${escHtml(n)}</div>`).join('')}
+    </div>` : ''}
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="hubStatsCold()" style="font:inherit;cursor:pointer;border:0;border-radius:7px;padding:5px 9px;background:#C8102E;color:#fff">Cold reload</button>
+      <button onclick="hubStatsCopy()" style="font:inherit;cursor:pointer;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:5px 9px;background:transparent;color:#F5F2EE">Copy</button>
+      <button onclick="hubStatsHide()" style="font:inherit;cursor:pointer;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:5px 9px;background:transparent;color:#F5F2EE">Hide</button>
+    </div>`;
+}
+
+// Throw away every saved index and reload: the only way to see what a
+// FIRST visit really costs, and it needs no dev tools.
+function hubStatsCold() {
+  try {
+    Object.keys(localStorage)
+      .filter(k => k.indexOf('cf-lib-') === 0)
+      .forEach(k => localStorage.removeItem(k));
+  } catch (_) { /* private browsing — the reload is still worth doing */ }
+  location.reload();
+}
+
+function hubStatsCopy() {
+  const txt = _statsText();
+  const done = () => { if (typeof showToast === 'function') showToast('Diagnostics copied'); };
+  try {
+    navigator.clipboard.writeText(txt).then(done, () => window.prompt('Copy this:', txt));
+  } catch (_) { window.prompt('Copy this:', txt); }
+}
+
+function hubStatsHide() {
+  try { sessionStorage.removeItem('cf-stats'); } catch (_) {}
+  const el = document.getElementById('hub-stats');
+  if (el) el.remove();
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _statsRender);
+else _statsRender();
 
 // ═══ Trade, events & training ════════════════════════════════
 //
@@ -5122,8 +5251,10 @@ async function eventHeroImage(e) {
     for (const o of sibs) {
       url = await folderHeroImage(o.driveId, o.id);
       if (url) {
-        console.info(`[Events] "${e.name}" has no artwork of its own — showing "${o.name}"'s for now. `
-          + 'Drop an image into its folder in SharePoint to give it one.');
+        const note = `"${e.name}" has no artwork of its own — showing "${o.name}"'s. `
+          + 'Drop an image into its folder in SharePoint.';
+        console.info('[Events] ' + note);
+        if (typeof _statsNote === 'function') _statsNote(note);
         return url;
       }
     }
