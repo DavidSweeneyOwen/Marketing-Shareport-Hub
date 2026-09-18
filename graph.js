@@ -616,14 +616,40 @@ async function folderHeroImage(driveId, folderId) {
       const pick = imgs.find(k => /hero|cover|main|banner|key ?visual/i.test(k.name)) || imgs[0];
       return await driveThumb(driveId, pick.id);
     }
-    const sub = kids.find(k => k.folder && /image|photo|artwork|visual|social|asset/i.test(k.name || ''));
-    if (sub) {
-      const inner = await fetchDriveChildren(driveId, sub.id);
-      const first = inner.find(k => !k.folder && IMAGE_EXT.test(k.name || ''));
-      if (first) return await driveThumb(driveId, first.id);
-    }
+    // 18 Sep 2026 — this used to look one folder down, and only into a
+    // folder whose own name said "image". Event packs file their
+    // artwork as Digital Assets ▸ Images ▸ …, a level below that. It
+    // now walks down — picture-shaped folders first, every top folder
+    // once, and only picture-shaped ones on the second hop — and stops
+    // at the first image it finds. Bounded on purpose: artwork must
+    // never turn one card into a crawl.
+    const deep = await _firstImageBelow(driveId, kids, 1);
+    if (deep) return await driveThumb(driveId, deep.id);
   } catch (_) { /* no folder, no access — card keeps its fallback */ }
   return '';
+}
+
+const _IMG_FOLDER = /image|photo|artwork|visual|social|asset|graphic|media|digital/i;
+
+async function _firstImageBelow(driveId, kids, depth) {
+  if (depth < 0) return null;
+  const folders = (kids || []).filter(k => k.folder)
+    .sort((a, b) => (_IMG_FOLDER.test(b.name || '') ? 1 : 0) - (_IMG_FOLDER.test(a.name || '') ? 1 : 0))
+    .slice(0, 6);
+
+  const nested = [];
+  for (const f of folders) {
+    let inner;
+    try { inner = await fetchDriveChildren(driveId, f.id); } catch (_) { continue; }
+    const img = inner.find(k => !k.folder && IMAGE_EXT.test(k.name || ''));
+    if (img) return img;
+    if (_IMG_FOLDER.test(f.name || '')) nested.push(inner);
+  }
+  for (const inner of nested) {
+    const hit = await _firstImageBelow(driveId, inner, depth - 1);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 // Names in SharePoint rarely match a list Title character for character.
@@ -940,18 +966,27 @@ function matchLandingImage(images, page) {
 // only the fallback.
 let _portalImgs = null;
 
-async function fetchPortalImages() {
-  if (_portalImgs) return _portalImgs;
-  const cfg = HUB_CONFIG.portalImages || {};
-  if (!cfg.folder) return (_portalImgs = []);
-
+// ── One folder of pictures, read and indexed ─────────────────
+// 18 Sep 2026 — this was the inside of fetchPortalImages and is now
+// shared: the Product Portal cards, the Resources folder cards and the
+// event cards all place their artwork the same way, off the same rows,
+// scored by the same matcher. One matcher means one set of bugs — the
+// lesson from the landing images, which were matched twice and wrong
+// twice.
+//
+// THE SUB-FOLDER NAME IS THE MATCH KEY, not the file name. That is the
+// rule marketing work to: make a folder named after the card and put
+// anything in it.
+async function _imagePool(cfg, label) {
+  const tag = '[' + (label || 'Images') + ']';
+  if (!cfg || !cfg.folder) return [];
   try {
     const site  = cfg.site === 'product' ? HUB_CONFIG.productPortalSite : HUB_CONFIG.sharepointSite;
     const drive = await resolveDrive(site, HUB_CONFIG.documentsLibrary);
     const folder = await _findChildFolder(drive.id, null, cfg.folder);
     if (!folder) {
-      console.info(`[Portal images] no "${cfg.folder}" folder yet — the cards keep their initials.`);
-      return (_portalImgs = []);
+      console.info(`${tag} no "${cfg.folder}" folder yet — those cards keep their initials.`);
+      return [];
     }
 
     const found = [];
@@ -969,8 +1004,8 @@ async function fetchPortalImages() {
     await walk(folder.id, [], (cfg.depth === undefined ? 3 : cfg.depth));
 
     if (!found.length) {
-      console.info(`[Portal images] "${cfg.folder}" has no images in it yet.`);
-      return (_portalImgs = []);
+      console.info(`${tag} "${cfg.folder}" has no images in it yet.`);
+      return [];
     }
 
     const rows = await Promise.all(found.map(async ({ item, trail }) => {
@@ -982,24 +1017,74 @@ async function fetchPortalImages() {
       return {
         holder, name: item.name, folder: trail.join('/'),
         keys:  [_slugKey(holder), _slugKey(bare)].filter(Boolean),
-        words: [_portalWords(holder), _portalWords(bare)],
+        words: [_portalWords(holder, cfg), _portalWords(bare, cfg)],
         url:   await driveThumb(drive.id, item.id),
       };
     }));
 
-    _portalImgs = rows.filter(r => r.url && (r.keys.length || r.words.some(w => w.length)));
-    console.info(`[Portal images] ${_portalImgs.length} image(s) available.`);
+    return rows.filter(r => r.url && (r.keys.length || r.words.some(w => w.length)));
   } catch (e) {
-    console.info('[Portal images] unavailable:', e.message);
-    _portalImgs = [];
+    console.info(`${tag} unavailable:`, e.message);
+    return [];
   }
+}
+
+async function fetchPortalImages() {
+  if (_portalImgs) return _portalImgs;
+  const cfg = HUB_CONFIG.portalImages || {};
+  if (!cfg.folder) return (_portalImgs = []);
+  _portalImgs = await _imagePool(cfg, 'Portal images');
+  console.info(`[Portal images] ${_portalImgs.length} image(s) available.`);
   return _portalImgs;
+}
+
+// The pictures the Resources folder cards and the event cards draw on:
+// their own folder if marketing have made one, plus the Product
+// Portal's images, which are already read and already indexed.
+let _resourceImgs = null;
+async function libraryImagePool() {
+  if (_resourceImgs) return _resourceImgs;
+  const cfg = HUB_CONFIG.resourceImages || {};
+  let rows = [];
+  if (cfg.folder) rows = await _imagePool(cfg, 'Resource images');
+  if (cfg.reusePortalImages !== false) {
+    try { rows = rows.concat(await fetchPortalImages()); } catch (_) { /* portal images are a bonus here */ }
+  }
+  _resourceImgs = rows;
+  return _resourceImgs;
+}
+
+// Greedy best-pair-first, the same pass assignPortalImages makes, but
+// for any list of cards and with a FLOOR: a reused picture has to look
+// like it belongs, or the card is better off with its initials.
+// Returns a Map of card key → url.
+function assignImagesToCards(images, cards) {
+  const out = new Map();
+  if (!images || !images.length || !cards || !cards.length) return out;
+  const floor = HUB_CONFIG.imageMatchFloor === undefined ? 16 : HUB_CONFIG.imageMatchFloor;
+  const pool  = images.filter(im => !_portalIsMain(im));
+
+  const pairs = [];
+  cards.forEach((c, ci) => pool.forEach((im, ii) => {
+    const s = _portalScore(im, c);
+    if (s >= floor) pairs.push({ ci, ii, s });
+  }));
+  pairs.sort((a, b) => b.s - a.s);
+
+  const usedC = new Set(), usedI = new Set();
+  for (const p of pairs) {
+    if (usedC.has(p.ci) || usedI.has(p.ii)) continue;
+    usedC.add(p.ci); usedI.add(p.ii);
+    out.set(cards[p.ci].key, pool[p.ii].url);
+  }
+  return out;
 }
 
 // Same shape as _landingWords but with its own noise list, because
 // "product" and "portal" are noise HERE and meaning over there.
-function _portalWords(s) {
-  const noise = (HUB_CONFIG.portalImages && HUB_CONFIG.portalImages.noiseWords) || [];
+function _portalWords(s, cfg) {
+  const src   = cfg || HUB_CONFIG.portalImages || {};
+  const noise = src.noiseWords || (HUB_CONFIG.portalImages && HUB_CONFIG.portalImages.noiseWords) || [];
   const stop  = noise.map(w => String(w).toLowerCase());
   return String(s || '')
     .toLowerCase()
@@ -2859,6 +2944,10 @@ async function _libCrawlAll(key) {
     const c0 = GRAPH_CALLS;  // 16 Sep 2026 — and so does "why?"
 
     await Promise.all(sources.map(async src => {
+      // 18 Sep 2026 — a source can be switched off in config.js without
+      // losing its roots, depth and cap. Read here and nowhere else, so
+      // nothing downstream has to know about it.
+      if (src.enabled === false) return;
       const before = out.length;
       try {
         const drives = src.allLibraries
@@ -2968,6 +3057,11 @@ function renderLibrary(key) {
   // and that is all. Set `simple:false` in config.js to get the
   // faceted view back; the Product Portal, which has 33 files across
   // ten products, still uses it.
+  // 18 Sep 2026 — a library can be shown as folder CARDS, the same
+  // shape as the Product Portal and the events page. See
+  // renderLibraryFolders below.
+  if (cfg.view === 'folders') { renderLibraryFolders(key); return; }
+
   if (_libCfg(key).simple) {
     host.innerHTML = `
       <div class="lib-search-wrap">
@@ -3183,18 +3277,222 @@ function libSearch(key, v) {
   if (!s) return;
   s.q = v || '';
   clearTimeout(_libTimers[key]);
-  _libTimers[key] = setTimeout(() => renderLibraryResults(key), 140);
+  _libTimers[key] = setTimeout(() => {
+    // In the folders view there is no results list on screen until
+    // something is being looked for. Typing searches every folder;
+    // clearing the box puts the cards back. Inside a folder it behaves
+    // exactly as it always has.
+    if (_libCfg(key).view === 'folders' && (!s.cat || s.cat === 'all')) {
+      const front = document.getElementById('lib-front-' + key);
+      const box   = document.getElementById('lib-results-' + key);
+      const on    = !!s.q.trim();
+      if (front) front.style.display = on ? 'none' : '';
+      if (box)   box.style.display   = on ? '' : 'none';
+      if (!on) return;
+    }
+    renderLibraryResults(key);
+  }, 140);
 }
 
 function libReset(key) {
   const s = LIB[key];
   if (!s) return;
+  // In the folders view "clear the filters" means the cards, not an
+  // unfiltered list of all 400 files — that IS the thing the cards
+  // replaced.
+  if (_libCfg(key).view === 'folders') { libFoldersBack(key); return; }
   s.tag = 'all'; s.cat = 'all'; s.q = '';
   const q = document.getElementById('lib-q-' + key);
   if (q) q.value = '';
   document.querySelectorAll('#lib-tiles-' + key + ' .lib-tile').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('#lib-cats-' + key + ' .lib-cat').forEach((b, i) => b.classList.toggle('active', i === 0));
   renderLibraryResults(key);
+}
+
+
+// ═══ A library as folder cards ═══════════════════════════════
+//
+// 18 Sep 2026 — David: "the resources tab needs to be foldered like
+// every other tab … I think this is something with the browse folders,
+// then we just make it like the other pages."
+//
+// So Resources now runs the hub's own three-step shape — front (cards)
+// → folder → document — on the same .px-card grid as the Product Portal
+// and the events page, instead of a flat list of everything.
+//
+// It is the SAME index the list view used. For this library `_cat` IS
+// the top-level folder name (categories:[] in config.js, so
+// _libCatLabel falls through to the folder it sits in), which means
+// opening a card is nothing more than state.cat — search, the results
+// list and the file rows are untouched and cannot drift.
+function _libFolderRows(key) {
+  const state = LIB[key];
+  if (!state) return [];
+
+  const map = new Map();
+  state.files.forEach(f => {
+    const label = f._cat || 'General';
+    let row = map.get(label);
+    if (!row) { row = { label: label, key: _slugKey(label), n: 0, modified: '', img: null }; map.set(label, row); }
+    row.n++;
+    // The first picture in the folder is the card's picture, for free —
+    // it is already in the index, so it costs one thumbnail and no crawl.
+    if (!row.img && IMAGE_EXT.test(f.name || '') && f._driveId && f.id) row.img = f;
+    const m = String(f.lastModifiedDateTime || '');
+    if (m > row.modified) row.modified = m;
+  });
+
+  return [...map.values()].sort((a, b) =>
+    b.modified.localeCompare(a.modified) || a.label.localeCompare(b.label));
+}
+
+function renderLibraryFolders(key) {
+  const cfg   = _libCfg(key);
+  const host  = document.getElementById(cfg.hostId);
+  const state = LIB[key];
+  if (!host || !state) return;
+
+  const rows = _libFolderRows(key);
+  state.folders = rows;
+  if (!rows.length) {
+    host.innerHTML = '<p class="prose dim">Nothing in this library yet.</p>';
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="lib-search-wrap">
+      <svg class="lib-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="lib-search" id="lib-q-${escAttr(key)}" type="search" autocomplete="off"
+             placeholder="${escAttr(cfg.searchPlaceholder || 'Search everything here…')}"
+             oninput="libSearch('${escAttr(key)}',this.value)">
+      <span class="lib-search-count">${state.files.length} file${state.files.length === 1 ? '' : 's'}</span>
+    </div>
+    <div id="lib-head-${escAttr(key)}"></div>
+    <div id="lib-front-${escAttr(key)}">
+      <div class="pp-band">
+        <div class="pp-band-head">
+          <h2 class="pp-band-title">${escHtml(cfg.foldersLabel || 'What are you looking for?')}</h2>
+        </div>
+        <div class="px-grid">${rows.map((r, i) => _libFolderCard(cfg, r, i, key)).join('')}</div>
+      </div>
+    </div>
+    <div class="lib-results" id="lib-results-${escAttr(key)}" style="display:none"></div>`;
+
+  // A background refresh must not move the reader: whatever they had
+  // open is put back rather than reset to the front.
+  const openIdx = (state.cat && state.cat !== 'all')
+    ? rows.findIndex(r => r.label === state.cat) : -1;
+  if (openIdx >= 0) libOpenFolder(key, openIdx);
+  else if (state.q) libSearch(key, state.q);
+
+  paintLibraryFolderImages(key, rows);
+}
+
+function _libFolderCard(cfg, r, i, key) {
+  return `
+    <article class="px-card pp-card" style="--i:${i}"
+             role="button" tabindex="0"
+             onclick="libOpenFolder('${escAttr(key)}',${i})" onkeydown="if(event.key==='Enter')libOpenFolder('${escAttr(key)}',${i})">
+      <div class="px-card-media" id="lib-img-${escAttr(key)}-${i}">
+        <span class="px-card-initials">${escHtml(_pxInitials(r.label))}</span>
+      </div>
+      <div class="px-card-body">
+        <div class="px-card-eyebrow">${escHtml(cfg.eyebrow || cfg.title || '')}</div>
+        <h3 class="px-card-title">${escHtml(r.label)}</h3>
+        <div class="px-card-meta">Updated ${escHtml(fmtSpDate(r.modified))}</div>
+        <div class="pp-card-foot">
+          <span class="pp-card-n">${r.n} file${r.n === 1 ? '' : 's'}</span>
+          <span class="px-card-go">Open <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+        </div>
+      </div>
+    </article>`;
+}
+
+// An INDEX into the rows the page just drew, never the folder's name:
+// a name is free text out of SharePoint and an apostrophe in one breaks
+// the handler the moment the browser decodes the attribute. Same rule
+// as ppOpenSection.
+function libOpenFolder(key, i) {
+  const state = LIB[key];
+  if (!state) return;
+  const rows = state.folders || _libFolderRows(key);
+  const row  = rows[i];
+  if (!row) return;
+  const cfg = _libCfg(key);
+
+  state.cat = row.label; state.tag = 'all'; state.q = '';
+  const q = document.getElementById('lib-q-' + key);
+  if (q) q.value = '';
+
+  const front = document.getElementById('lib-front-' + key);
+  if (front) front.style.display = 'none';
+
+  const head = document.getElementById('lib-head-' + key);
+  if (head) head.innerHTML = `
+      <button class="pp-back" onclick="libFoldersBack('${escAttr(key)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
+        ${escHtml(cfg.backLabel || 'Back')}
+      </button>
+      <h2 class="pp-section-title">${escHtml(row.label)}</h2>
+      <p class="pp-section-sub">${row.n} file${row.n === 1 ? '' : 's'} in this folder.</p>`;
+
+  const box = document.getElementById('lib-results-' + key);
+  if (box) box.style.display = '';
+  renderLibraryResults(key);
+  window.scrollTo(0, 0);
+}
+
+// Back to the cards. Safe to call on a library that isn't in this view
+// and on a page that hasn't loaded yet — showPage() calls it every time
+// the Resources tab is opened.
+function libFoldersBack(key) {
+  const state = LIB[key];
+  if (!state || _libCfg(key).view !== 'folders') return;
+  state.cat = 'all'; state.tag = 'all'; state.q = '';
+
+  const q = document.getElementById('lib-q-' + key);
+  if (q) q.value = '';
+  const head = document.getElementById('lib-head-' + key);
+  if (head) head.innerHTML = '';
+  const box = document.getElementById('lib-results-' + key);
+  if (box) box.style.display = 'none';
+  const front = document.getElementById('lib-front-' + key);
+  if (front) front.style.display = '';
+}
+
+// One picture per card: the folder's own image first, then the
+// marketing image folders matched on name. Painted in after the cards
+// are on screen, never awaited — a slow image folder must not hold up
+// the documents.
+async function paintLibraryFolderImages(key, rows) {
+  const setImg = (i, url) => {
+    const el = document.getElementById('lib-img-' + key + '-' + i);
+    if (el && url) {
+      el.style.backgroundImage = `url('${safeCssUrl(url)}')`;
+      el.classList.add('has-img');
+    }
+  };
+
+  const unplaced = [];
+  await Promise.all(rows.map(async (r, i) => {
+    if (!r.img) { unplaced.push({ r, i }); return; }
+    try {
+      const url = await driveThumb(r.img._driveId, r.img.id);
+      if (url) setImg(i, url); else unplaced.push({ r, i });
+    } catch (_) { unplaced.push({ r, i }); }
+  }));
+
+  if (!unplaced.length) return;
+  const pool = await libraryImagePool();
+  if (!pool.length) return;
+
+  const picked = assignImagesToCards(pool, unplaced.map(x => ({ key: x.r.key, label: x.r.label })));
+  unplaced.forEach(x => {
+    const url = picked.get(x.r.key);
+    if (url) setImg(x.i, url);
+    else console.info(`[Resources] no picture for "${x.r.label}" — put one in the folder, or make `
+      + `"${(HUB_CONFIG.resourceImages && HUB_CONFIG.resourceImages.folder) || 'Images for Resources'} ▸ ${x.r.label}".`);
+  });
 }
 
 // ── The two pages that use it ─────────────────────────────────
@@ -4520,6 +4818,86 @@ function _eventYear(name) {
   return m ? parseInt(m[0], 10) : null;
 }
 
+// 18 SEP 2026 — David: "Training and Events is showing FSE 2026 as up
+// and coming, that was back in April/May."
+//
+// It was, and the page had no way of knowing. A folder called "FSE
+// 2026" carries a YEAR and nothing else, and the rule was
+// `year >= thisYear`, so every event in the current year stayed
+// Upcoming until January. Dates now come from
+// HUB_CONFIG.tradeEvents.dates, keyed on the folder name, and an event
+// is upcoming until the day AFTER it finishes.
+//
+// No row for it: a later year is upcoming, an earlier year is previous,
+// and the current year falls back to tradeEvents.assumeCurrentYear
+// ('previous' by default). That is an assumption, so it says so in the
+// console with the row to paste into config.js — "we guessed" and "we
+// know" must never look the same, which is the round-3 lesson.
+function _evDates(name) {
+  const rows = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.dates) || {};
+  const want = _slugKey(name);
+  for (const k of Object.keys(rows)) {
+    if (_slugKey(k) === want) return rows[k] || null;
+  }
+  return null;
+}
+
+function _evDay(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const _EV_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function _evDateLabel(st, en) {
+  const d = (x) => `${x.getDate()} ${_EV_MONTHS[x.getMonth()]} ${x.getFullYear()}`;
+  if (!st) return en ? d(en) : '';
+  if (!en || st.getTime() === en.getTime()) return d(st);
+  if (st.getMonth() === en.getMonth() && st.getFullYear() === en.getFullYear()) {
+    return `${st.getDate()}–${en.getDate()} ${_EV_MONTHS[en.getMonth()]} ${en.getFullYear()}`;
+  }
+  return `${st.getDate()} ${_EV_MONTHS[st.getMonth()]} – ${d(en)}`;
+}
+
+// Upcoming or previous, what the card says above its title, and what to
+// sort it by.
+function _evWhen(name, year, today) {
+  const now = today ? new Date(today) : new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const row = _evDates(name);
+  const st  = row ? _evDay(row.start) : null;
+  const en  = row ? (_evDay(row.end) || st) : null;
+  if (en) {
+    return {
+      upcoming: en.getTime() >= now.getTime(),
+      label: _evDateLabel(st, en),
+      at: (st || en).getTime(),
+      dated: true,
+    };
+  }
+
+  const thisYear = now.getFullYear();
+  let upcoming;
+  if (year === null)          upcoming = true;      // undated, unnamed: treat as ongoing
+  else if (year > thisYear)   upcoming = true;
+  else if (year < thisYear)   upcoming = false;
+  else {
+    const assume = (HUB_CONFIG.tradeEvents && HUB_CONFIG.tradeEvents.assumeCurrentYear) || 'previous';
+    upcoming = assume === 'upcoming';
+    console.info(`[Events] "${name}" has no dates in config.js, so it is being shown as `
+      + `${upcoming ? 'upcoming' : 'previous'}. Add   '${name}': { start: '${thisYear}-04-28', end: '${thisYear}-04-30' }   `
+      + 'to HUB_CONFIG.tradeEvents.dates to be sure.');
+  }
+  return {
+    upcoming,
+    label: year ? String(year) : 'Ongoing',
+    at: year ? new Date(year, 0, 1).getTime() : 0,
+    dated: false,
+  };
+}
+
 // ═══ Trade, events & training ════════════════════════════════
 //
 // REBUILT 26 Aug 2026 (second round) into the same editorial shape as
@@ -4596,22 +4974,25 @@ async function loadTradeEvents() {
     }));
 
     _eventFolders = groups.map(g => {
-      const k = g.item;
+      const k    = g.item;
       const year = _eventYear(k.name);
+      const when = _evWhen(k.name, year);
       return {
         id: k.id, name: k.name, year: year,
         count: (k.folder && k.folder.childCount) || 0,
         modified: k.lastModifiedDateTime,
         driveId: drive.id, cat: g.cat,
-        // No year in the name? Treat it as current/ongoing.
-        upcoming: year === null || year >= thisYear,
+        // Upcoming is a DATE now, not a year — see _evWhen.
+        upcoming: when.upcoming, when: when.label, at: when.at, dated: when.dated,
       };
     });
 
+    // Soonest first while they are still to come, most recent first
+    // once they have been. `at` is the real start date where there is
+    // one and 1 January of its year where there isn't.
     const order = (a, b) =>
       (a.upcoming === b.upcoming ? 0 : a.upcoming ? -1 : 1) ||
-      (a.upcoming ? (a.year || thisYear) - (b.year || thisYear)
-                  : (b.year || 0) - (a.year || 0)) ||
+      (a.upcoming ? a.at - b.at : b.at - a.at) ||
       String(a.name).localeCompare(String(b.name));
 
     const evCard = (e) => {
@@ -4625,7 +5006,7 @@ async function loadTradeEvents() {
           <span class="px-badge"><span class="px-badge-dot ${e.upcoming ? 'green' : 'grey'}"></span>${e.upcoming ? 'Upcoming' : 'Previous'}</span>
         </div>
         <div class="px-card-body">
-          <div class="px-card-eyebrow">${escHtml(e.year ? String(e.year) : 'Ongoing')}</div>
+          <div class="px-card-eyebrow">${escHtml(e.when || (e.year ? String(e.year) : 'Ongoing'))}</div>
           <h3 class="px-card-title">${escHtml(e.name)}</h3>
           <div class="px-card-meta">${e.count} item${e.count === 1 ? '' : 's'} in the pack</div>
         </div>
@@ -4669,7 +5050,7 @@ async function loadTradeEvents() {
 
     // Event artwork, painted in once SharePoint answers.
     Promise.all(_eventFolders.slice(0, 16).map(async e => {
-      const url = await folderHeroImage(e.driveId, e.id);
+      const url = await eventHeroImage(e);
       if (!url) return;
       const el = document.getElementById('px-img-event-' + _eventFolders.indexOf(e));
       if (el) { el.style.backgroundImage = `url('${safeCssUrl(url)}')`; el.classList.add('has-img'); }
@@ -4683,6 +5064,52 @@ async function loadTradeEvents() {
       : e.message;
     host.innerHTML = `<p class="sp-error">${escHtml(msg)}</p>`;
   }
+}
+
+// 18 SEP 2026 — "no pictures are coming up for the 26 and 27 event."
+// Three places to look, in this order:
+//
+//   1. the event's own folder. folderHeroImage goes deeper now — the
+//      FSE packs keep their artwork in Digital Assets ▸ … , one level
+//      below where the old one-hop look stopped, which is why two cards
+//      had no picture while their folders were full of them.
+//   2. the SAME event in another year, most recent first. An FSE 2027
+//      folder that is still empty borrows the FSE 2026 photograph
+//      rather than showing its initials — and says so in the console,
+//      so an empty folder still looks empty to whoever is filling it.
+//   3. the marketing image folders, matched on the event's name, so
+//      marketing can place one deliberately by making a sub-folder
+//      named after the event — the same convention as the Product
+//      Portal cards.
+async function eventHeroImage(e) {
+  let url = await folderHeroImage(e.driveId, e.id);
+  if (url) return url;
+
+  const base = _evBaseName(e.name);
+  if (base) {
+    const sibs = (_eventFolders || [])
+      .filter(o => o !== e && _evBaseName(o.name) === base)
+      .sort((a, b) => (b.year || 0) - (a.year || 0));
+    for (const o of sibs) {
+      url = await folderHeroImage(o.driveId, o.id);
+      if (url) {
+        console.info(`[Events] "${e.name}" has no artwork of its own — showing "${o.name}"'s for now. `
+          + 'Drop an image into its folder in SharePoint to give it one.');
+        return url;
+      }
+    }
+  }
+
+  try {
+    const pool = await libraryImagePool();
+    return assignImagesToCards(pool, [{ key: 'ev', label: e.name }]).get('ev') || '';
+  } catch (_) { return ''; }
+}
+
+// "FSE 2026", "FSE 2027" and "FSE '26" are the same event in different
+// years — the year is what we strip to find out.
+function _evBaseName(name) {
+  return _slugKey(String(name || '').replace(/(19|20)\d{2}/g, '').replace(/['\u2019]\s?\d{2}\b/g, ''));
 }
 
 function filterEvents(tone, btn) {
@@ -6094,6 +6521,14 @@ async function navGo(kind, arg) {
     setTimeout(() => {
       const s = LIB.resources;
       if (!s || !s.loaded) return;
+      // 18 Sep 2026 — in the folders view the results list is hidden
+      // behind the cards until something opens it, so setting the
+      // filter on its own would have looked like nothing happening.
+      if (_libCfg('resources').view === 'folders') {
+        const rows = s.folders || _libFolderRows('resources');
+        const i = rows.findIndex(r => r.label === arg);
+        if (i >= 0) { libOpenFolder('resources', i); return; }
+      }
       s.tag = 'all'; s.q = ''; s.cat = arg;
       renderLibraryResults('resources');
       const box = document.getElementById('lib-results-resources');
