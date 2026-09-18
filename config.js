@@ -755,6 +755,18 @@ HUB_CONFIG.libraries = {
     // empty — which is why these three are the whole page.)
     cardsFrom: ['Brand'],
 
+    // 18 SEP 2026 — David: "remove the pictures on the resources and
+    // just have the folders." So the Resources cards carry no artwork
+    // at all: no photograph, and no initials tile in its place either —
+    // just the folder, what is in it and when it was last touched.
+    // Nothing is fetched for them, which also takes a round of
+    // thumbnail requests off that page.
+    //
+    // Set this back to true to get the pictures back; the matching and
+    // the "Images for Resources" folder below still work, they are just
+    // not asked for.
+    cardImages: false,
+
     // The way back from inside a card. Deliberately NOT "Back to the
     // library" — see the Browse folders button, which came off the
     // Resources page this round.

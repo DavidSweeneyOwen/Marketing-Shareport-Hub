@@ -3418,17 +3418,24 @@ function renderLibraryFolders(key) {
   if (openIdx >= 0) libOpenFolder(key, openIdx);
   else if (state.q) libSearch(key, state.q);
 
-  paintLibraryFolderImages(key, rows);
+  // No artwork asked for means no thumbnail requests at all, not a
+  // hidden one — that is the point of turning them off.
+  if (cfg.cardImages !== false) paintLibraryFolderImages(key, rows);
 }
 
 function _libFolderCard(cfg, r, i, key) {
+  // 18 Sep 2026 — `cardImages:false` drops the picture area entirely
+  // rather than leaving an empty one. .px-card is a flex column and
+  // .px-card-body carries its own padding, so the card closes up on its
+  // own and needs no CSS of its own.
+  const media = cfg.cardImages === false ? '' : `
+      <div class="px-card-media" id="lib-img-${escAttr(key)}-${i}">
+        <span class="px-card-initials">${escHtml(_pxInitials(r.label))}</span>
+      </div>`;
   return `
     <article class="px-card pp-card" style="--i:${i}"
              role="button" tabindex="0"
-             onclick="libOpenFolder('${escAttr(key)}',${i})" onkeydown="if(event.key==='Enter')libOpenFolder('${escAttr(key)}',${i})">
-      <div class="px-card-media" id="lib-img-${escAttr(key)}-${i}">
-        <span class="px-card-initials">${escHtml(_pxInitials(r.label))}</span>
-      </div>
+             onclick="libOpenFolder('${escAttr(key)}',${i})" onkeydown="if(event.key==='Enter')libOpenFolder('${escAttr(key)}',${i})">${media}
       <div class="px-card-body">
         <div class="px-card-eyebrow">${escHtml(cfg.eyebrow || cfg.title || '')}</div>
         <h3 class="px-card-title">${escHtml(r.label)}</h3>
