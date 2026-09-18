@@ -9,7 +9,49 @@
 const PAGE_KEYS = ['home', 'launches', 'campaigns', 'trade', 'training', 'portal'];
 const dataLoaded = {};
 
+// 18 SEP 2026 — David: "when you open a product launch or campaign it
+// always takes you back to the one you were in … when you click out and
+// click back in it takes you to the home page in that tab."
+//
+// Every page in the hub has a front and a drill-down, and the drill-down
+// was left open when you navigated away: the detail panel is a
+// display:none swap inside the page, and nothing ever put it back. So
+// the tab remembered a launch from twenty minutes ago and opened on it.
+//
+// Clicking a tab now lands on that tab's front, every time. Each page
+// already had a close function — this is the one place that calls them,
+// so a new page means one more line here and nothing else.
+//
+// GUARDED ON LOADED. Resetting a page whose data has never arrived
+// would hide the skeleton the loader is about to fill, so a page that
+// hasn't loaded is left exactly as it is.
+function resetPageView(id) {
+  try {
+    // ONE EXCEPTION. closeReader() calls showPage() to put the reader
+    // back where it came from, and where it came from is quite often an
+    // open campaign or an open portal section. Coming out of the reader
+    // or the search page is a RETURN, not a tab click, so it leaves the
+    // page exactly as it found it.
+    const from = document.querySelector('.page.active');
+    const fromId = from ? String(from.id).replace(/^page-/, '') : '';
+    if (fromId === 'reader' || fromId === 'search') return;
+
+    if (id === 'launches'  && typeof closeLaunchDetail   === 'function') closeLaunchDetail();
+    if (id === 'campaigns' && typeof closeCampaignDetail === 'function') closeCampaignDetail();
+    if (id === 'trade'     && typeof closeEventFolder    === 'function') closeEventFolder();
+
+    const lib = (typeof LIB === 'undefined') ? null : LIB;
+    if (id === 'training' && typeof libFoldersBack === 'function'
+        && lib && lib.resources && lib.resources.loaded) libFoldersBack('resources');
+    if (id === 'portal' && typeof ppCloseSection === 'function'
+        && lib && lib.product && lib.product.loaded) ppCloseSection();
+  } catch (e) {
+    console.info('[Nav] could not reset the ' + id + ' page: ' + e.message);
+  }
+}
+
 async function showPage(id, idx) {
+  resetPageView(id);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const el = document.getElementById('page-' + id);
   if (el) el.classList.add('active');
@@ -554,7 +596,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     'openCampaignDetail', 'closeCampaignDetail', 'openLaunchDetail', 'closeLaunchDetail',
     'ppOpenSection', 'ppCloseSection', 'libCat', 'libPick', 'libReset', 'fbCrumb',
     'openEventFolder', 'openDetailSubfolder', 'openDetailAsset',
-    'srchOpenItem', 'updOpenItem', 'openSiteSearch', 'openDocFile'
+    'srchOpenItem', 'updOpenItem', 'openSiteSearch', 'openDocFile',
+    // 18 Sep 2026 — the Resources folder cards.
+    'libOpenFolder', 'libFoldersBack'
   ];
 
   var suppress = false;  // true while we are re-rendering FROM history
@@ -627,6 +671,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   function replay(d) {
     suppress = true;
     try {
+      // 18 Sep 2026 — a deep entry records the view INSIDE a page, and
+      // used to be replayed straight onto whatever page the reader
+      // happened to be on: Back out of a campaign detail into Trade &
+      // Events and then Back again re-opened the detail with the events
+      // page still on screen. Put its page back first. showPage resets
+      // that page to its front, and the call below then re-opens the
+      // one thing the entry is actually for.
+      if (d && d.deep && d.page && typeof showPage === 'function') showPage(d.page);
       if (d && d.restorable && typeof window[d.fn] === 'function') {
         window[d.fn].apply(null, d.args);
       } else if (typeof showPage === 'function') {
