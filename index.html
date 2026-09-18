@@ -2120,9 +2120,14 @@
           <h1 class="ph-title">Resources &amp; documents</h1>
           <p class="ph-sub">Access all marketing resources and presentations here.</p>
         </div>
-        <div class="ph-actions">
-          <button class="btn primary" onclick="toggleResourcesBrowse(this)">Browse folders</button>
-        </div>
+        <!-- 18 Sep 2026 — David: "you can remove the back to the library
+             we don't need that." That was this button: it reads "Browse
+             folders" until you press it and "Back to the library"
+             afterwards, and with the folder cards on the page it was a
+             second, uglier way of doing what the cards already do.
+             toggleResourcesBrowse() is left in graph.js — nothing calls
+             it now, and the Product Portal's own Browse folders button
+             is untouched. -->
       </div>
     </div>
   </section>
@@ -2400,12 +2405,12 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=23"></script>
+<script src="config.js?v=24"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=26"></script>
+<script src="graph.js?v=27"></script>
 <script src="app.js?v=22"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>
