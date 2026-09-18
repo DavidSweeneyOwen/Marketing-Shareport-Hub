@@ -739,6 +739,26 @@ HUB_CONFIG.libraries = {
     view: 'folders',
     foldersLabel: 'What are you looking for?',
     eyebrow: 'Marketing library',
+
+    // 18 SEP 2026, second round — David sent a screenshot of
+    // Documents ▸ Brand: "these are the folders wanted in the resources
+    // tab." BRAND GUIDELINES, CUSTOMER PRESENTATIONS and MARKETING
+    // TOOLKIT are one level down, inside "Brand", so the cards were
+    // showing their container instead of them.
+    //
+    // A folder named here is OPENED OUT: its children become the cards
+    // rather than the folder itself. Everything else still gets its own
+    // card, so nothing disappears from the page — take a name out and
+    // that folder goes back to being one card. (The rest of this
+    // library's root is Campaigns / Launches / Events / the two image
+    // folders, all excluded below, plus Products and Reports, which are
+    // empty — which is why these three are the whole page.)
+    cardsFrom: ['Brand'],
+
+    // The way back from inside a card. Deliberately NOT "Back to the
+    // library" — see the Browse folders button, which came off the
+    // Resources page this round.
+    cardsBackLabel: 'All folders',
     simple: true,
     crawlDepth: 3,
     maxFiles: 400,
