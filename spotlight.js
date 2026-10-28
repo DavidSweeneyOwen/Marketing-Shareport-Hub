@@ -130,37 +130,44 @@ function _ssItemTest(spec) {
 // Category and Items both narrow: a line counts when its class is one of
 // the categories (if any are given) AND its code is one of the items (if
 // any are given). Neither given matches nothing, deliberately.
+//
+// Like-for-like: the COMPLETED months of this year against the same
+// months of last year (Jan–Sep v Jan–Sep), never the month in progress,
+// so a change on screen is never a part month against a whole one.
 function _ssCompute(t, data) {
   const cats    = String(t.category || '').split(/[;,]/).map(_ssSlug).filter(Boolean);
   const itemOk  = _ssItemTest(t.items);
-  const out     = { rows: [], months: new Array(12).fill(0), total: 0, qty: 0, lastYear: 0, buyers: 0 };
+  const closed  = Math.max(0, Math.min(12, Number(data.closed) || 0));
+  const out     = { rows: [], months: new Array(12).fill(0), lyMonths: new Array(12).fill(0),
+                    total: 0, qty: 0, lastYear: 0, likeTy: 0, likeLy: 0, closed, buyers: 0 };
   if (!cats.length && !itemOk) return out;
 
   const by = new Map();
-  const buyers = new Set();
   for (const [comp, classes] of Object.entries(data.c || {})) {
     for (const [cls, items] of Object.entries(classes)) {
       if (cats.length && cats.indexOf(_ssSlug(cls)) < 0) continue;
       for (const [code, v] of Object.entries(items)) {
         if (itemOk && !itemOk(code)) continue;
-        let a = 0, q = 0;
-        for (let m = 0; m < 12; m++) {
-          a += v.a[12 + m] || 0;
-          q += (v.q && v.q[12 + m]) || 0;
-          out.months[m] += v.a[12 + m] || 0;
-          out.lastYear  += v.a[m] || 0;
-        }
-        if (!a && !q) continue;
         const key = t.type === 'items' ? code : comp;
-        const e = by.get(key) || { key, a: 0, q: 0 };
-        e.a += a; e.q += q;
+        const e = by.get(key) || { key, a: 0, q: 0, ty: 0, ly: 0, lyAll: 0 };
+        for (let m = 0; m < 12; m++) {
+          const ta = v.a[12 + m] || 0, la = v.a[m] || 0;
+          e.a += ta; e.q += (v.q && v.q[12 + m]) || 0; e.lyAll += la;
+          out.months[m] += ta; out.lyMonths[m] += la;
+          if (m < closed) { e.ty += ta; e.ly += la; }
+        }
         by.set(key, e);
-        out.total += a; out.qty += q;
-        if (a > 0) buyers.add(comp);
       }
     }
   }
-  out.buyers = buyers.size;
+  for (const e of by.values()) {
+    out.total += e.a; out.qty += e.q; out.lastYear += e.lyAll;
+    out.likeTy += e.ty; out.likeLy += e.ly;
+  }
+  // Customers with net sales this year (credits can take one to nil).
+  out.buyers = t.type === 'items'
+    ? new Set(Object.entries(data.c || {}).filter(([, cl]) => Object.entries(cl).some(([c, its]) => (!cats.length || cats.indexOf(_ssSlug(c)) >= 0) && Object.entries(its).some(([k, v]) => (!itemOk || itemOk(k)) && v.a.slice(12).reduce((p, q) => p + q, 0) > 0))).map(([k]) => k)).size
+    : [...by.values()].filter(e => e.a > 0).length;
   out.rows = [...by.values()]
     .filter(e => e.a > 0)
     .sort((x, y) => y.a - x.a)
@@ -183,6 +190,58 @@ function _ssWords(t) {
 // The months this year that have any figures in them: January up to the
 // month in progress.
 function _ssMonthCount(data) { return Math.min(12, (Number(data.closed) || 0) + 1); }
+
+// "Jan–Sep" for the like-for-like window.
+function _ssWindow(closed) { return closed <= 1 ? SS_MONTHS[0] : `${SS_MONTHS[0]}–${SS_MONTHS[closed - 1]}`; }
+
+// A change, with its sign and arrow, never colour alone (brand rule:
+// red only for a fall, green for a rise, grey for nothing to compare).
+function _ssChange(ty, ly, opts) {
+  const o = opts || {};
+  if (!ly) return ty > 0 ? `<span class="ss-chg new">New${o.long ? ' this year' : ''}</span>` : '';
+  const p = (ty - ly) / Math.abs(ly) * 100;
+  if (Math.abs(p) < 0.5) return `<span class="ss-chg flat">No change</span>`;
+  const up = p > 0;
+  return `<span class="ss-chg ${up ? 'up' : 'down'}"><i aria-hidden="true">${up ? '▲' : '▼'}</i>${up ? '+' : '−'}${Math.abs(p).toFixed(0)}%</span>`;
+}
+
+function _ssShare(a, total) { return total > 0 ? a / total * 100 : 0; }
+function _ssPct(n) { return n >= 10 ? n.toFixed(0) + '%' : n.toFixed(1) + '%'; }
+
+// Initials for a customer or product chip: "O. HEAP & SON" → "OH".
+function _ssInitials(name) {
+  const w = String(name).replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/)
+    .filter(x => x && !/^(LTD|LIMITED|THE|AND|OF|UK|PLC|WH|CO)$/i.test(x));
+  return ((w[0] || '?')[0] + ((w[1] || '')[0] || '')).toUpperCase();
+}
+
+// Counts the big figure up from zero once, when it first comes into view.
+// Skipped entirely when the viewer asks for reduced motion.
+function _ssCountUp(root) {
+  const els = (root || document).querySelectorAll('[data-ss-count]');
+  const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  els.forEach(el => {
+    const to = Number(el.getAttribute('data-ss-count')) || 0;
+    el.removeAttribute('data-ss-count');
+    if (still || !to) return;
+    const t0 = performance.now(), dur = 900;
+    const step = now => {
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = _ssGbp(to * e);
+      if (k < 1) requestAnimationFrame(step); else el.textContent = _ssGbp(to);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+// Twelve small bars: this year to date. Complete months in the light
+// tone, the month in progress hatched, months to come left empty.
+function _ssSpark(r, nm) {
+  const max = Math.max(1, ...r.months.slice(0, nm), ...r.lyMonths);
+  return `<div class="ss-spark" aria-hidden="true">${r.months.map((v, m) => `
+    <span class="${m === nm - 1 ? 'part' : m >= nm ? 'future' : ''}"><i style="--h:${m >= nm ? 0 : Math.max(2, v / max * 100).toFixed(1)}%"></i></span>`).join('')}</div>
+    <div class="ss-spark-lab" aria-hidden="true">${SS_MONTHS.map(x => `<span>${x[0]}</span>`).join('')}</div>`;
+}
 
 // ── The band on the Product Portal front ──────────────────────
 async function renderSpotlightBand() {
@@ -222,10 +281,14 @@ async function renderSpotlightBand() {
   }
   if (tok !== SS.tok) return;
 
-  const r = _ssCompute(t, data);
-  const top3 = r.rows.slice(0, 3);
-  const w = _ssWords(t);
+  const r     = _ssCompute(t, data);
+  const top3  = r.rows.slice(0, 3);
+  const w     = _ssWords(t);
   const range = _ssRange(t);
+  const nm    = _ssMonthCount(data);
+  const topN  = (HUB_CONFIG.spotlight || {}).topN || 10;
+  const t3    = top3.reduce((s, x) => s + x.a, 0);
+  const max3  = top3.length ? top3[0].a : 1;
 
   host.innerHTML = `
    <div class="pp-band ss-band">
@@ -233,24 +296,36 @@ async function renderSpotlightBand() {
       <h2 class="pp-band-title">Sales Spotlight</h2>
       <span class="pp-band-note">A new topic every fortnight</span>
     </div>
-    <article class="px-card ss-feature" role="button" tabindex="0"
+    <article class="ss-feature" role="button" tabindex="0"
              onclick="openSpotlight(${SS.cur})" onkeydown="if(event.key==='Enter')openSpotlight(${SS.cur})">
-      <div class="px-card-media">
-        ${range ? `<span class="px-badge"><span class="px-badge-dot green"></span>${escHtml(range)}</span>` : ''}
-        <div class="ss-fig"><b>${_ssGbp(r.total)}</b><span>${escHtml(w.sales)} this year</span></div>
-      </div>
-      <div class="px-card-body">
-        <div class="px-card-eyebrow">This fortnight${t.category ? ' · ' + escHtml(t.category) : ''}</div>
-        <h3 class="px-card-title">${escHtml(t.title)}</h3>
-        ${top3.length ? `<ol class="ss-top3">${top3.map((x, i) => `
-          <li><b>${i + 1}</b><span>${escHtml(x.name)}</span><i>${_ssGbp(x.a)}</i></li>`).join('')}</ol>`
-          : `<p class="px-card-meta">No sales found this year. Check the Category or Items on the Spotlight list.</p>`}
-        <div class="px-card-go">See the full top ${(HUB_CONFIG.spotlight || {}).topN || 10}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      <div class="ss-feature-fig">
+        <div class="ss-feature-top">
+          <span class="ss-live"><span class="ss-live-dot"></span>${range ? escHtml(range) : 'Live'}</span>
+          <span class="ss-feature-eyebrow">${escHtml(w.sales)} · ${data.year} to date</span>
         </div>
+        <b class="ss-big" data-ss-count="${Math.round(r.total)}">${_ssGbp(r.total)}</b>
+        ${r.closed && r.likeLy ? `<div class="ss-feature-chg">${_ssChange(r.likeTy, r.likeLy, { long: true })}<span>${_ssWindow(r.closed)} v ${data.year - 1}</span></div>` : ''}
+        ${_ssSpark(r, nm)}
+      </div>
+      <div class="ss-feature-body">
+        <div class="px-card-eyebrow">This fortnight${t.category ? ' · ' + escHtml(t.category) : ''}</div>
+        <h3 class="ss-feature-title">${escHtml(t.title)}</h3>
+        ${top3.length ? `<ol class="ss-top3">${top3.map((x, i) => `
+          <li style="--i:${i}">
+            <span class="ss-rk">${i + 1}</span>
+            <span class="ss-av">${escHtml(_ssInitials(x.name))}</span>
+            <span class="ss-nm"><b>${escHtml(x.name)}</b><span class="ss-bar"><i style="--w:${(x.a / max3 * 100).toFixed(1)}%"></i></span></span>
+            <span class="ss-val">${_ssGbp(x.a)}<small>${_ssPct(_ssShare(x.a, r.total))} of sales</small></span>
+          </li>`).join('')}</ol>
+          <p class="ss-feature-foot">These three bought <b>${_ssPct(_ssShare(t3, r.total))}</b> of ${escHtml(w.salesLc)} this year, out of ${_ssInt(t.type === 'items' ? r.rows.length : r.buyers)} ${t.type === 'items' ? 'products' : 'customers'}.</p>`
+          : `<p class="px-card-meta">No sales found this year. Check the Category or Items on the Spotlight list.</p>`}
+        <span class="ss-go">See the full top ${topN}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </span>
       </div>
     </article>
    </div>`;
+  _ssCountUp(host);
   if (!r.rows.length) console.warn(`[Spotlight] "${t.title}" matched no sales — Category "${t.category}", Items "${t.items}".`);
 }
 
@@ -271,14 +346,15 @@ async function openSpotlight(i) {
   }
   const t = SS.topics[i];
   if (!t) { openProductPortal(); return; }
+  SS.open = i;
 
   const topN  = (HUB_CONFIG.spotlight || {}).topN || 10;
   const r     = _ssCompute(t, data);
   const rows  = r.rows.slice(0, topN);
+  const pod   = rows.slice(0, 3);
+  const rest  = rows.slice(3);
   const max   = rows.length ? rows[0].a : 1;
   const nm    = _ssMonthCount(data);
-  const mVals = r.months.slice(0, nm);
-  const mMax  = Math.max(1, ...mVals);
   const w     = _ssWords(t);
   const yr    = data.year;
   const range = _ssRange(t);
@@ -286,73 +362,110 @@ async function openSpotlight(i) {
   const upd   = SS.file && SS.file.modified ? fmtSpDate(SS.file.modified) : '';
   const noun  = t.type === 'items' ? 'products' : 'customers';
   const count = t.type === 'items' ? r.rows.length : r.buyers;
+  const topSum = rows.reduce((s, x) => s + x.a, 0);
+  const win   = _ssWindow(r.closed);
+  const cmp   = r.closed > 0;
+  const qty   = !!data.hasQty;
+
+  // Month chart: this year (ink) beside last year (grey), same scale.
+  const cMax = Math.max(1, ...r.months.slice(0, nm), ...r.lyMonths);
+  const peak = r.months.slice(0, r.closed).reduce((b, v, m) => v > b.v ? { v, m } : b, { v: -Infinity, m: -1 });
 
   const prev = SS.topics.map((x, n) => ({ x, n })).filter(o => o.n !== i);
 
   host.innerHTML = `
-    <section class="px-lead dark">
-      <div class="px-lead-copy">
-        <div class="px-eyebrow">Sales Spotlight</div>
-        <h1 class="px-lead-title">${escHtml(t.title)}</h1>
-        <p class="px-lead-sub">Our top ${topN} ${noun} by ${escHtml(w.salesLc)}, 1 January to date. Refreshed from NetSuite each weekday morning by the sales dashboard; the date is under About this spotlight.</p>
-        <div class="px-lead-codes">
-          <span class="px-code">${_ssInt(count)} ${noun}</span>
-          ${data.hasQty ? `<span class="px-code">${_ssInt(r.qty)} units</span>` : ''}
-          <span class="px-code">Full year ${yr - 1}: ${_ssGbp(r.lastYear)}</span>
+    <section class="ss-hero">
+      <div class="ss-hero-copy">
+        <div class="px-eyebrow">Sales Spotlight${range ? ' · ' + escHtml(range) : ''}</div>
+        <h1 class="ss-hero-title">${escHtml(t.title)}</h1>
+        <p class="ss-hero-sub">Our top ${topN} ${noun} by ${escHtml(w.salesLc)}, 1 January to date. Refreshed from NetSuite each weekday morning by the sales dashboard${upd ? `; last updated ${escHtml(upd)}` : ''}.</p>
+        <div class="ss-hero-actions">
+          <button class="px-cta" onclick="ssPresent()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Present
+          </button>
+          ${isNow ? '' : `<span class="ss-was">Previous spotlight · today's figures</span>`}
         </div>
-        ${range ? `<div class="px-lead-meta">
-          <span class="px-badge"><span class="px-badge-dot ${isNow ? 'green' : 'grey'}"></span>${isNow ? 'This fortnight' : 'Previous spotlight'}</span>
-          <span class="px-lead-when">${escHtml(range)}</span>
-        </div>` : ''}
       </div>
-      <div class="px-lead-media">
-        <div class="ss-fig lg"><b>${_ssGbp(r.total)}</b><span>${escHtml(w.sales)} · ${yr} to date</span></div>
+      <div class="ss-hero-fig">
+        <span class="ss-hero-label">${escHtml(w.sales)} · ${yr} to date</span>
+        <b class="ss-big xl" data-ss-count="${Math.round(r.total)}">${_ssGbp(r.total)}</b>
+        <div class="ss-hero-stats">
+          ${cmp && r.likeLy ? `<div><span>${win} v ${yr - 1}</span>${_ssChange(r.likeTy, r.likeLy, { long: true })}</div>` : ''}
+          <div><span>${noun[0].toUpperCase() + noun.slice(1)}</span><b>${_ssInt(count)}</b></div>
+          ${qty ? `<div><span>Units</span><b>${_ssInt(r.qty)}</b></div>` : ''}
+          <div><span>Top ${topN} share</span><b>${_ssPct(_ssShare(topSum, r.total))}</b></div>
+        </div>
       </div>
     </section>
 
     <div class="ss-main">
-      <div class="ss-cols">
-        <div>
-          <h2 class="ss-h">Top ${topN} ${escHtml(w.adj)}${noun}</h2>
-          <p class="ss-sub">Ranked by sales so far this year${isNow ? '' : '. Today\'s figures, not the ones shown at the time'}.</p>
-          ${rows.length ? `
-          <div class="ss-rank-head"><span>#</span><span>${t.type === 'items' ? 'Product' : 'Customer'}</span><span>Sales ${yr}</span></div>
-          <ol class="ss-rank">${rows.map((x, n) => `
-            <li>
-              <span class="n">${String(n + 1).padStart(2, '0')}</span>
-              <div>
-                <div class="nm">${escHtml(x.name)}${t.type === 'items' ? ` <span class="px-code sm">${escHtml(x.key)}</span>` : ''}</div>
-                <div class="bar"><i style="width:${(x.a / max * 100).toFixed(1)}%"></i></div>
-              </div>
-              <span class="v">${_ssGbp(x.a)}${data.hasQty ? `<small>${_ssInt(x.q)} units</small>` : ''}</span>
-            </li>`).join('')}</ol>`
-          : `<p class="ss-sub">No sales found this year for this topic. Check the Category or Items on the Spotlight list.</p>`}
-        </div>
+      ${rows.length ? `
+      <h2 class="ss-h">The top three</h2>
+      <div class="ss-podium">${pod.map((x, n) => `
+        <article class="ss-pod" style="--i:${n}">
+          <div class="ss-pod-top">
+            <span class="ss-pod-rk">${n + 1}</span>
+            <span class="ss-av lg">${escHtml(_ssInitials(x.name))}</span>
+          </div>
+          <h3 class="ss-pod-nm">${escHtml(x.name)}${t.type === 'items' ? `<span class="px-code sm">${escHtml(x.key)}</span>` : ''}</h3>
+          <b class="ss-pod-val">${_ssGbp(x.a)}</b>
+          <div class="ss-pod-share"><span class="ss-bar"><i style="--w:${_ssShare(x.a, r.total).toFixed(1)}%"></i></span>${_ssPct(_ssShare(x.a, r.total))} of all ${escHtml(w.salesLc)}</div>
+          <dl class="ss-pod-dl">
+            ${qty ? `<dt>Units</dt><dd>${_ssInt(x.q)}</dd>` : ''}
+            ${cmp ? `<dt>${win} v ${yr - 1}</dt><dd>${_ssChange(x.ty, x.ly)}</dd>` : ''}
+          </dl>
+        </article>`).join('')}
+      </div>
 
-        <aside class="ss-aside">
-          <div class="ss-panel">
-            <h3>${escHtml(w.chart)}</h3>
-            <p>All customers, ${yr}.</p>
-            <div class="ss-chart" role="img" aria-label="${escAttr(w.sales)} by month, ${yr}">
-              ${mVals.map((v, m) => `<div class="${m === nm - 1 ? 'part' : ''}" title="${SS_MONTHS[m]}: ${_ssGbp(v)}"><i style="height:${Math.max(0, v / mMax * 100).toFixed(1)}%"></i></div>`).join('')}
+      ${rest.length ? `
+      <div class="ss-rest ss-reveal">
+        <div class="ss-rank-head"><span>#</span><span>${t.type === 'items' ? 'Product' : 'Customer'}</span><span>Share</span>${cmp ? `<span>${win} v ${yr - 1}</span>` : '<span></span>'}<span>Sales ${yr}</span></div>
+        <ol class="ss-rank" start="4">${rest.map((x, n) => `
+          <li style="--i:${n}">
+            <span class="n">${String(n + 4).padStart(2, '0')}</span>
+            <div class="who">
+              <div class="nm">${escHtml(x.name)}${t.type === 'items' ? ` <span class="px-code sm">${escHtml(x.key)}</span>` : ''}</div>
+              <div class="ss-bar"><i style="--w:${(x.a / max * 100).toFixed(1)}%"></i></div>
             </div>
-            <div class="ss-chart-lab">${mVals.map((_, m) => `<span>${SS_MONTHS[m].charAt(0)}</span>`).join('')}</div>
-            <div class="ss-note">${SS_MONTHS[nm - 1]} is the month in progress.</div>
+            <span class="sh">${_ssPct(_ssShare(x.a, r.total))}</span>
+            <span class="ch">${cmp ? _ssChange(x.ty, x.ly) : ''}</span>
+            <span class="v">${_ssGbp(x.a)}${qty ? `<small>${_ssInt(x.q)} units</small>` : ''}</span>
+          </li>`).join('')}</ol>
+      </div>` : ''}
+
+      <p class="ss-rest-note">The other ${_ssInt(Math.max(0, (t.type === 'items' ? r.rows.length : r.buyers) - rows.length))} ${noun} bought ${_ssGbp(Math.max(0, r.total - topSum))} between them (${_ssPct(_ssShare(Math.max(0, r.total - topSum), r.total))}).</p>`
+      : `<p class="ss-sub">No sales found this year for this topic. Check the Category or Items on the Spotlight list.</p>`}
+
+      <div class="ss-panel ss-chart-panel ss-reveal">
+        <div class="ss-chart-head">
+          <div>
+            <h3>${escHtml(w.chart)}</h3>
+            <p>All customers. ${SS_MONTHS[nm - 1]} is the month in progress${peak.m >= 0 ? `; best complete month so far was ${SS_MONTHS[peak.m]} at ${_ssGbp(peak.v)}` : ''}.</p>
           </div>
-          <div class="ss-panel">
-            <h3>About this spotlight</h3>
-            <dl>
-              ${range ? `<dt>Runs</dt><dd>${escHtml(range)}</dd>` : ''}
-              ${upd ? `<dt>Updated</dt><dd>${escHtml(upd)}</dd>` : ''}
-              <dt>Source</dt><dd>NetSuite, via the sales dashboard</dd>
-              <dt>Measure</dt><dd>Sales £, net of credits</dd>
-            </dl>
-          </div>
-        </aside>
+          <div class="ss-key"><span><i class="ty"></i>${yr}</span><span><i class="ly"></i>${yr - 1}</span></div>
+        </div>
+        <div class="ss-chart2" role="img" aria-label="${escAttr(w.sales)} by month, ${yr} against ${yr - 1}">
+          ${SS_MONTHS.map((mm, m) => `
+          <div class="col${m === nm - 1 ? ' part' : ''}${m >= nm ? ' future' : ''}" title="${mm}: ${m < nm ? _ssGbp(r.months[m]) + ' in ' + yr + ', ' : ''}${_ssGbp(r.lyMonths[m])} in ${yr - 1}">
+            <div class="pair">
+              <i class="ly" style="--h:${(r.lyMonths[m] / cMax * 100).toFixed(1)}%"></i>
+              <i class="ty" style="--h:${m < nm ? (r.months[m] / cMax * 100).toFixed(1) : 0}%"></i>
+            </div>
+            <span>${mm}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="ss-about">
+        <div><span>Source</span><b>NetSuite, via the sales dashboard</b></div>
+        <div><span>Measure</span><b>Sales £, net of credits</b></div>
+        ${cmp ? `<div><span>Change</span><b>${win} ${yr} v ${win} ${yr - 1}, complete months only</b></div>` : ''}
+        ${upd ? `<div><span>Updated</span><b>${escHtml(upd)}</b></div>` : ''}
       </div>
 
       ${prev.length ? `
-      <div class="ss-prev">
+      <div class="ss-prev ss-reveal">
         <h2 class="ss-h">${isNow ? 'Previous spotlights' : 'Other spotlights'}</h2>
         <p class="ss-sub">Every past topic stays here. Opening one shows today's figures for it.</p>
         <div class="ss-grid">${prev.map(({ x, n }, k) => `
@@ -370,4 +483,82 @@ async function openSpotlight(i) {
           </article>`).join('')}</div>
       </div>` : ''}
     </div>`;
+  _ssCountUp(host);
+  _ssReveal(host);
 }
+
+// Sections below the fold hold their entrance until they scroll into
+// view. Without IntersectionObserver they simply play straight away.
+function _ssReveal(root) {
+  const els = (root || document).querySelectorAll('.ss-reveal');
+  if (!('IntersectionObserver' in window)) { els.forEach(e => e.classList.add('ss-seen')); return; }
+  const io = new IntersectionObserver(ents => ents.forEach(en => {
+    if (en.isIntersecting) { en.target.classList.add('ss-seen'); io.unobserve(en.target); }
+  }), { threshold: 0.15 });
+  els.forEach(e => io.observe(e));
+}
+
+// ── Present ───────────────────────────────────────────────────
+// For the Monday Sales & Marketing meeting: the spotlight on its own,
+// full screen, big enough to read across a room. Esc or the button
+// closes it. Built from the same figures as the page.
+function ssPresent() {
+  const t = SS.topics[SS.open];
+  if (!t || !SS.data) return;
+  const data = SS.data, r = _ssCompute(t, data), w = _ssWords(t);
+  const topN = (HUB_CONFIG.spotlight || {}).topN || 10;
+  const rows = r.rows.slice(0, topN), max = rows.length ? rows[0].a : 1;
+  const cmp  = r.closed > 0, win = _ssWindow(r.closed);
+
+  let el = document.getElementById('ss-present');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ss-present';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    document.body.appendChild(el);
+  }
+  el.setAttribute('aria-label', t.title);
+  el.innerHTML = `
+    <button class="ss-pr-close" onclick="ssPresentClose()" aria-label="Close">Close <kbd>Esc</kbd></button>
+    <div class="ss-pr-head">
+      <div>
+        <div class="px-eyebrow">Sales Spotlight</div>
+        <h1>${escHtml(t.title)}</h1>
+      </div>
+      <div class="ss-pr-fig">
+        <b class="ss-big" data-ss-count="${Math.round(r.total)}">${_ssGbp(r.total)}</b>
+        <span>${escHtml(w.sales)} · ${data.year} to date${cmp && r.likeLy ? ` · ${win} v ${data.year - 1} ` : ''}${cmp && r.likeLy ? _ssChange(r.likeTy, r.likeLy) : ''}</span>
+      </div>
+    </div>
+    <ol class="ss-pr-list">${rows.map((x, n) => `
+      <li style="--i:${n}">
+        <span class="n">${n + 1}</span>
+        <span class="nm">${escHtml(x.name)}</span>
+        <span class="ss-bar"><i style="--w:${(x.a / max * 100).toFixed(1)}%"></i></span>
+        <span class="v">${_ssGbp(x.a)}</span>
+        <span class="c">${cmp ? _ssChange(x.ty, x.ly) : ''}</span>
+      </li>`).join('')}</ol>
+    <div class="ss-pr-foot">NetSuite, via the sales dashboard${SS.file && SS.file.modified ? ` · updated ${escHtml(fmtSpDate(SS.file.modified))}` : ''}${cmp ? ` · change is ${win} ${data.year} v ${win} ${data.year - 1}` : ''}</div>`;
+  el.classList.add('on');
+  document.documentElement.classList.add('ss-presenting');
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+  document.addEventListener('keydown', _ssPresentKey);
+  _ssCountUp(el);
+  const btn = el.querySelector('.ss-pr-close'); if (btn) btn.focus();
+}
+
+function ssPresentClose() {
+  const el = document.getElementById('ss-present');
+  if (el) el.classList.remove('on');
+  document.documentElement.classList.remove('ss-presenting');
+  document.removeEventListener('keydown', _ssPresentKey);
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+}
+
+function _ssPresentKey(e) { if (e.key === 'Escape') ssPresentClose(); }
+
+// Leaving full screen with the browser's own Esc closes the view too.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.documentElement.classList.contains('ss-presenting')) ssPresentClose();
+});
