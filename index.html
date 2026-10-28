@@ -1615,7 +1615,7 @@
     .ss-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 26px}
 
     /* Scroll reveal: below-the-fold sections wait for their moment. */
-    .ss-reveal:not(.ss-seen),.ss-reveal:not(.ss-seen) *{animation-play-state:paused !important}
+    @media screen{.ss-reveal:not(.ss-seen),.ss-reveal:not(.ss-seen) *{animation-play-state:paused !important}}
 
     /* ── Present mode ─────────────────────────────────────────── */
     #ss-present{position:fixed;inset:0;z-index:10000;background:var(--px-ink);color:#fff;display:none;
@@ -2749,7 +2749,7 @@
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
 <script src="graph.js?v=30"></script>
-<script src="spotlight.js?v=5"></script>
+<script src="spotlight.js?v=6"></script>
 <script src="app.js?v=23"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>

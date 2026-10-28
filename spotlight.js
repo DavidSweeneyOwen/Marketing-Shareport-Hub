@@ -165,9 +165,7 @@ function _ssCompute(t, data) {
     out.likeTy += e.ty; out.likeLy += e.ly;
   }
   // Customers with net sales this year (credits can take one to nil).
-  out.buyers = t.type === 'items'
-    ? new Set(Object.entries(data.c || {}).filter(([, cl]) => Object.entries(cl).some(([c, its]) => (!cats.length || cats.indexOf(_ssSlug(c)) >= 0) && Object.entries(its).some(([k, v]) => (!itemOk || itemOk(k)) && v.a.slice(12).reduce((p, q) => p + q, 0) > 0))).map(([k]) => k)).size
-    : [...by.values()].filter(e => e.a > 0).length;
+  out.buyers = [...by.values()].filter(e => e.a > 0).length;
   out.rows = [...by.values()]
     .filter(e => e.a > 0)
     .sort((x, y) => y.a - x.a)
@@ -198,7 +196,7 @@ function _ssWindow(closed) { return closed <= 1 ? SS_MONTHS[0] : `${SS_MONTHS[0]
 // red only for a fall, green for a rise, grey for nothing to compare).
 function _ssChange(ty, ly, opts) {
   const o = opts || {};
-  if (!ly) return ty > 0 ? `<span class="ss-chg new">New${o.long ? ' this year' : ''}</span>` : '';
+  if (!(ly > 0)) return ty > 0 ? `<span class="ss-chg new">New${o.long ? ' this year' : ''}</span>` : '';
   const p = (ty - ly) / Math.abs(ly) * 100;
   if (Math.abs(p) < 0.5) return `<span class="ss-chg flat">No change</span>`;
   const up = p > 0;
@@ -494,8 +492,11 @@ function _ssReveal(root) {
   if (!('IntersectionObserver' in window)) { els.forEach(e => e.classList.add('ss-seen')); return; }
   const io = new IntersectionObserver(ents => ents.forEach(en => {
     if (en.isIntersecting) { en.target.classList.add('ss-seen'); io.unobserve(en.target); }
-  }), { threshold: 0.15 });
+  }), { threshold: 0, rootMargin: '0px 0px -10% 0px' });
   els.forEach(e => io.observe(e));
+  // Never leave a section waiting: a tall one, a background tab or an
+  // observer that never fires still shows within two seconds.
+  setTimeout(() => els.forEach(e => e.classList.add('ss-seen')), 2000);
 }
 
 // ── Present ───────────────────────────────────────────────────
@@ -540,10 +541,13 @@ function ssPresent() {
         <span class="c">${cmp ? _ssChange(x.ty, x.ly) : ''}</span>
       </li>`).join('')}</ol>
     <div class="ss-pr-foot">NetSuite, via the sales dashboard${SS.file && SS.file.modified ? ` · updated ${escHtml(fmtSpDate(SS.file.modified))}` : ''}${cmp ? ` · change is ${win} ${data.year} v ${win} ${data.year - 1}` : ''}</div>`;
+  SS.returnFocus = document.activeElement;
   el.classList.add('on');
   document.documentElement.classList.add('ss-presenting');
-  if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   document.addEventListener('keydown', _ssPresentKey);
+  // The page behind can't be reached with Tab while presenting.
+  document.querySelectorAll('body > *:not(#ss-present)').forEach(n => { if (!n.inert) { n.inert = true; n.setAttribute('data-ss-inert', ''); } });
+  try { const p = el.requestFullscreen && el.requestFullscreen(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* stays a full-window view */ }
   _ssCountUp(el);
   const btn = el.querySelector('.ss-pr-close'); if (btn) btn.focus();
 }
@@ -553,7 +557,10 @@ function ssPresentClose() {
   if (el) el.classList.remove('on');
   document.documentElement.classList.remove('ss-presenting');
   document.removeEventListener('keydown', _ssPresentKey);
-  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  document.querySelectorAll('[data-ss-inert]').forEach(n => { n.inert = false; n.removeAttribute('data-ss-inert'); });
+  try { const p = document.fullscreenElement && document.exitFullscreen && document.exitFullscreen(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* already out */ }
+  const back = SS.returnFocus; SS.returnFocus = null;
+  if (back && back.focus && document.contains(back)) back.focus();
 }
 
 function _ssPresentKey(e) { if (e.key === 'Escape') ssPresentClose(); }
