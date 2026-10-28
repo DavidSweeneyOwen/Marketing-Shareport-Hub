@@ -57,6 +57,13 @@ function _ssRange(t) {
 // the meeting screen. Rows starting in the future wait their turn.
 async function _ssTopics() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  // 28 Oct 2026, David: a change to the list "seems to take some time".
+  // The hub keeps lists for 5 minutes (GRAPH_CACHE_TTL); this one is a
+  // handful of rows and is the control the product team edit, so it is
+  // always read fresh when the portal opens.
+  [HUB_CONFIG.productPortalSite, HUB_CONFIG.sharepointSite].filter(Boolean).forEach(site => {
+    try { sessionStorage.removeItem('hubcache_list_' + site + '::' + HUB_CONFIG.lists.spotlight); } catch (_) {}
+  });
   let rows = [];
   try { rows = await _fetchPortalList(HUB_CONFIG.lists.spotlight); }
   catch (e) { console.info('[Spotlight] list not read —', e.message); }
