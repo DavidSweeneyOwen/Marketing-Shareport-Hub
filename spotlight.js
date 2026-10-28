@@ -508,7 +508,7 @@ async function openSpotlight(i) {
             <div class="ss-key"><span><i class="ty"></i>${yr}</span><span><i class="ly"></i>${yr - 1}</span></div>
           </div>
         </div>
-        <div id="ss-line-host" role="img" aria-label="${escAttr(w.sales)} by month, ${yr} against ${yr - 1}">${_ssLineChart(r.months, r.lyMonths, nm, yr, 'cum')}</div>
+        <div id="ss-line-host" role="img" aria-label="${escAttr(w.sales)} by month, ${yr} against ${yr - 1}">${_ssLineChart(r.months, r.lyMonths, nm, yr, 'cum', r.closed < 12)}</div>
       </section>
 
       ${prev.length ? `
@@ -582,13 +582,13 @@ function _ssMono(pts) {
 }
 
 function _ssK(n) {
-  const a = Math.abs(n);
-  if (a >= 1e6) return '£' + (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm';
-  if (a >= 1e3) return '£' + Math.round(n / 1e3) + 'k';
-  return '£' + Math.round(n);
+  const a = Math.abs(n), sg = n < 0 ? '-' : '';
+  if (a >= 1e6) return sg + '£' + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm';
+  if (a >= 1e3) return sg + '£' + Math.round(a / 1e3) + 'k';
+  return sg + '£' + Math.round(a);
 }
 
-function _ssLineChart(months, lyMonths, nm, yr, mode) {
+function _ssLineChart(months, lyMonths, nm, yr, mode, partial) {
   const cum = a => a.reduce((o, x, k) => (o.push((o[k - 1] || 0) + x), o), []);
   const ty = (mode === 'cum' ? cum(months) : months.slice()).slice(0, nm);
   const ly = mode === 'cum' ? cum(lyMonths) : lyMonths.slice();
@@ -625,15 +625,15 @@ function _ssLineChart(months, lyMonths, nm, yr, mode) {
           <path class="ty" d="${tyLine}" vector-effect="non-scaling-stroke"/>
         </g>
       </svg>
-      ${ty.map((v, k) => `<span class="ss-dot${k === last && nm <= 12 ? ' now' : ''}" style="${pct(v, k)};--d:${(0.25 + dur * k / 11).toFixed(2)}s"></span>`).join('')}
+      ${ty.map((v, k) => `<span class="ss-dot${k === last && partial ? ' now' : ''}" style="${pct(v, k)};--d:${(0.25 + dur * k / 11).toFixed(2)}s"></span>`).join('')}
       ${ly.map((v, k) => `<span class="ss-dot ly" style="${pct(v, k)};--d:${(0.1 + 0.9 * k / 11).toFixed(2)}s"></span>`).join('')}
       ${last >= 0 ? `<div class="ss-endlab" style="${pct(ty[last], last)};--d:${(0.3 + dur).toFixed(2)}s">
-        <b>${_ssK(ty[last])}</b><span>${mode === 'cum' ? `${yr} so far` : `${SS_MONTHS[last]} to date`}</span></div>` : ''}
+        <b>${_ssK(ty[last])}</b><span>${mode === 'cum' ? `${yr} so far` : `${SS_MONTHS[last]}${partial ? ' to date' : ''}`}</span></div>` : ''}
       <div class="ss-line-hit">${SS_MONTHS.map((mm, k) => `
         <div class="hc${k > last ? ' future' : ''}" style="left:${(X(k) / W * 100).toFixed(2)}%">
           <i class="guide"></i>
           <div class="tip ${k > 8 ? 'l' : k < 3 ? 'r' : ''}">
-            <span class="mm">${mm}${k === last ? ' · to date' : ''}</span>
+            <span class="mm">${mm}${k === last && partial ? ' · to date' : ''}</span>
             ${k <= last ? `<b>${_ssGbp(tyM[k])}</b><span>${yr} · running ${_ssK(tyC[k])}</span>` : `<b>–</b>`}
             <span class="lyv">${yr - 1}: ${_ssGbp(lyMonths[k])} · running ${_ssK(lyC[k])}</span>
           </div>
@@ -649,7 +649,7 @@ function ssChartMode(mode) {
   const host = document.getElementById('ss-line-host');
   if (!v || !host) return;
   v.mode = mode;
-  host.innerHTML = _ssLineChart(v.r.months, v.r.lyMonths, v.nm, v.yr, mode);
+  host.innerHTML = _ssLineChart(v.r.months, v.r.lyMonths, v.nm, v.yr, mode, v.r.closed < 12);
   document.querySelectorAll('.ss-toggle button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
 }
 
@@ -713,9 +713,14 @@ function ssDetail(n) {
     el.id = 'ss-drawer';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
-    document.body.appendChild(el);
   }
   const fresh = !el.classList.contains('on');
+  const step = fresh ? 0 : (n > SS.detail ? 1 : -1);
+  // Fullscreen only draws the Present element and what is inside it.
+  const pres = document.documentElement.classList.contains('ss-presenting') && document.getElementById('ss-present');
+  const home = pres || document.body;
+  if (el.parentNode !== home) home.appendChild(el);
+  el.inert = false; el.removeAttribute('data-ss-inert');
   el.setAttribute('aria-label', x.name);
   el.innerHTML = `
     <div class="ss-dr-shade" onclick="ssDetailClose()"></div>
@@ -788,13 +793,18 @@ function ssDetail(n) {
   if (fresh) {
     SS.drawerFocus = document.activeElement;
     document.addEventListener('keydown', _ssDetailKey, true);   // capture: Esc closes this, not present mode under it
-    document.querySelectorAll('body > *:not(#ss-drawer)').forEach(nd => { if (!nd.inert) { nd.inert = true; nd.setAttribute('data-ss-dr-inert', ''); } });
+    Array.from(home.children).forEach(nd => { if (nd !== el && !nd.inert) { nd.inert = true; nd.setAttribute('data-ss-dr-inert', ''); } });
+    if (pres) Array.from(document.body.children).forEach(nd => { if (nd !== pres && !nd.inert) { nd.inert = true; nd.setAttribute('data-ss-dr-inert', ''); } });
     document.documentElement.classList.add('ss-drawer-open');
   }
   el.classList.add('on');
   SS.detail = n;
   _ssCountUp(el);
-  const f = el.querySelector('.ss-dr-x'); if (f && fresh) f.focus();
+  // Stepping redraws the panel, so put focus back on the arrow used
+  // (or on Close at either end of the ranking).
+  const nav = el.querySelectorAll('.ss-dr-nav button');
+  const want = step > 0 ? nav[1] : step < 0 ? nav[0] : null;
+  (want && !want.disabled ? want : el.querySelector('.ss-dr-x')).focus();
 }
 
 function ssDetailClose() {
@@ -862,7 +872,7 @@ function ssPresent() {
       </div>
     </div>
     <ol class="ss-pr-list">${rows.map((x, n) => `
-      <li style="--i:${n}" onclick="ssDetail(${n})">
+      <li style="--i:${n}" role="button" tabindex="0" onclick="ssDetail(${n})" onkeydown="if(event.key==='Enter')ssDetail(${n})">
         <span class="n">${n + 1}</span>
         <span class="nm">${escHtml(x.name)}</span>
         <span class="ss-bar"><i style="--w:${(x.a / max * 100).toFixed(1)}%"></i></span>
@@ -875,13 +885,14 @@ function ssPresent() {
   document.documentElement.classList.add('ss-presenting');
   document.addEventListener('keydown', _ssPresentKey);
   // The page behind can't be reached with Tab while presenting.
-  document.querySelectorAll('body > *:not(#ss-present)').forEach(n => { if (!n.inert) { n.inert = true; n.setAttribute('data-ss-inert', ''); } });
+  document.querySelectorAll('body > *:not(#ss-present):not(#ss-drawer)').forEach(n => { if (!n.inert) { n.inert = true; n.setAttribute('data-ss-inert', ''); } });
   try { const p = el.requestFullscreen && el.requestFullscreen(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* stays a full-window view */ }
   _ssCountUp(el);
   const btn = el.querySelector('.ss-pr-close'); if (btn) btn.focus();
 }
 
 function ssPresentClose() {
+  ssDetailClose();
   const el = document.getElementById('ss-present');
   if (el) el.classList.remove('on');
   document.documentElement.classList.remove('ss-presenting');
@@ -896,5 +907,5 @@ function _ssPresentKey(e) { if (e.key === 'Escape') ssPresentClose(); }
 
 // Leaving full screen with the browser's own Esc closes the view too.
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && document.documentElement.classList.contains('ss-presenting')) ssPresentClose();
+  if (!document.fullscreenElement && document.documentElement.classList.contains('ss-presenting')) { ssDetailClose(); ssPresentClose(); }
 });

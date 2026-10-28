@@ -1751,6 +1751,8 @@
     @keyframes ss-slide-in{from{transform:translateX(100%)}to{transform:none}}
     @keyframes ss-shade{from{opacity:0}to{opacity:1}}
     #ss-drawer{position:fixed;inset:0;z-index:10050;display:none}
+    #ss-present>#ss-drawer{position:fixed}
+    #ss-present .ss-pr-list li[role="button"]:focus-visible{outline:2px solid #fff;outline-offset:2px}
     #ss-drawer.on{display:block}
     .ss-dr-shade{position:absolute;inset:0;background:rgba(18,16,14,.45);backdrop-filter:blur(3px);animation:ss-shade .3s ease both}
     .ss-dr{position:absolute;top:0;right:0;bottom:0;width:min(560px,100%);background:#fff;display:flex;flex-direction:column;
@@ -2982,7 +2984,7 @@
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
 <script src="graph.js?v=30"></script>
-<script src="spotlight.js?v=11"></script>
+<script src="spotlight.js?v=12"></script>
 <script src="app.js?v=23"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>
