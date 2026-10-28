@@ -892,3 +892,7 @@ function _ssPresentKey(e) { if (e.key === 'Escape') ssPresentClose(); }
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && document.documentElement.classList.contains('ss-presenting')) { ssDetailClose(); ssPresentClose(); }
 });
+
+// Browser Back moves the hub to another view; never leave the breakdown
+// panel or Present on top of it.
+window.addEventListener('popstate', () => { ssDetailClose(); if (document.documentElement.classList.contains('ss-presenting')) ssPresentClose(); });
