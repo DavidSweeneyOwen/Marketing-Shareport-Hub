@@ -1198,3 +1198,29 @@ HUB_CONFIG.productPortal = {
   feedbackTitle: 'Feedback on a product',
   feedbackSub: 'Something wrong with a datasheet, a certificate out of date, or a product you keep being asked for? Tell the product team.',
 };
+
+// ── Sales Spotlight ─────────────────────────────────────────────
+// 28 Oct 2026 — Lowri (7 Oct): "a section on the Product Portal where
+// we can have a live data dashboard … update it every two weeks with a
+// different category", above "What are you looking for?", for the
+// Monday Sales and Marketing meeting.
+//
+// The figures are NOT kept here or typed in by anyone. They are the
+// sales dashboard's customer-items.json, which the dashboard's daily
+// NetSuite refresh already uploads to the Sales & Marketing site. It is
+// read under the viewer's own permissions: anyone who can't open that
+// site simply doesn't see the band. Nothing is copied.
+//
+// The product team pick the topic in a "Spotlight" list on the Product
+// Portal site (Title, Type, Category, Items, Start, End, Show — see
+// SPOTLIGHT-SETUP.md). Until that list exists, `fallback` is shown.
+HUB_CONFIG.lists.spotlight = 'Spotlight';
+
+HUB_CONFIG.spotlight = {
+  dataSite: 'https://checkfireltd.sharepoint.com/sites/sales.marketing',
+  dataPath: 'Sales & Marketing/data/customer-items.json',
+  topN: 10,
+  fallback: [
+    { title: "Who's buying LFX this year", type: 'customers', category: 'LFX', items: '' },
+  ],
+};

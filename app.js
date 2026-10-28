@@ -598,7 +598,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     'openEventFolder', 'openDetailSubfolder', 'openDetailAsset',
     'srchOpenItem', 'updOpenItem', 'openSiteSearch', 'openDocFile',
     // 18 Sep 2026 — the Resources folder cards.
-    'libOpenFolder', 'libFoldersBack'
+    'libOpenFolder', 'libFoldersBack',
+    // 28 Oct 2026 — the Sales Spotlight page (spotlight.js). It keeps the
+    // portal's path, so a refresh lands back on the Product Portal.
+    'openSpotlight'
   ];
 
   var suppress = false;  // true while we are re-rendering FROM history

@@ -1399,6 +1399,87 @@
       .pp-count{text-align:left}
     }
 
+    /* ── Product Portal: Sales Spotlight (28 Oct 2026) ──────────
+       Lowri's mockup of 14 Oct, on the existing px-card / px-lead
+       components. The band is one wide card; the page is a ranked list
+       with a month chart beside it. */
+    .ss-feature{flex-direction:row;min-height:260px}
+    .ss-feature .px-card-media{aspect-ratio:auto;flex:0 0 42%}
+    .ss-feature .px-card-body{padding:34px 40px;justify-content:center;gap:10px}
+    .ss-feature .px-card-title{font-size:30px;line-height:1.08;letter-spacing:-.015em}
+    .ss-feature .px-card-go{padding:8px 0 0}
+    .ss-feature-skel{height:260px;border-radius:16px}
+    .ss-fig{position:relative;color:#fff;text-align:center;padding:24px}
+    .ss-fig b{
+      display:block;font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:54px;
+      line-height:1;letter-spacing:-.02em;font-variant-numeric:lining-nums;
+    }
+    .ss-fig span{
+      display:block;margin-top:10px;font-size:11px;font-weight:800;letter-spacing:.14em;
+      text-transform:uppercase;color:rgba(255,255,255,.6);
+    }
+    .ss-fig.lg b{font-size:clamp(52px,6.5vw,96px)}
+    .ss-top3{list-style:none;margin:6px 0 0;padding:0;max-width:520px;display:flex;flex-direction:column;gap:6px}
+    .ss-top3 li{display:flex;gap:10px;font-size:13.5px;color:#4A443C}
+    .ss-top3 b{font-family:'Fraunces',Georgia,serif;color:var(--px-red);width:22px;flex:0 0 auto}
+    .ss-top3 span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ss-top3 i{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+
+    .ss-backbar{max-width:1280px;margin:0 auto;padding:22px 32px 14px}
+    .ss-main{max-width:1280px;margin:0 auto;padding:46px 32px 80px}
+    .ss-cols{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:48px;align-items:start}
+    .ss-h{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:26px;letter-spacing:-.01em;color:var(--px-ink);margin:0 0 6px}
+    .ss-sub{font-size:14px;line-height:1.6;color:#6B645A;margin:0 0 20px;max-width:58ch}
+    .ss-rank-head,.ss-rank li{display:grid;grid-template-columns:56px minmax(0,1fr) 130px;gap:16px;align-items:center}
+    .ss-rank-head{padding:0 4px 10px;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#8B8378}
+    .ss-rank-head span:last-child{text-align:right}
+    .ss-rank{list-style:none;margin:0;padding:0;border-top:2px solid var(--px-ink)}
+    .ss-rank li{padding:16px 4px;border-bottom:1px solid var(--px-rule)}
+    .ss-rank .n{font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;color:#C9C2B7;font-variant-numeric:lining-nums tabular-nums}
+    .ss-rank li:nth-child(-n+3) .n{color:var(--px-red)}
+    .ss-rank .nm{font-size:15.5px;font-weight:700;color:var(--px-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ss-rank .bar{height:4px;border-radius:2px;background:var(--px-paper);margin-top:8px}
+    .ss-rank .bar i{display:block;height:100%;border-radius:2px;background:var(--px-ink)}
+    .ss-rank li:nth-child(-n+3) .bar i{background:var(--px-red)}
+    .ss-rank .v{text-align:right;font-size:16px;font-weight:800;color:var(--px-ink);font-variant-numeric:tabular-nums}
+    .ss-rank .v small{display:block;font-size:11.5px;font-weight:600;color:#8B8378;margin-top:2px}
+    .ss-aside{position:sticky;top:calc(var(--hub-header-h,104px) + 16px);display:flex;flex-direction:column;gap:20px}
+    .ss-panel{background:var(--px-paper);border:1px solid var(--px-rule);border-radius:16px;padding:22px 24px}
+    .ss-panel h3{font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;color:var(--px-ink);margin:0 0 4px}
+    .ss-panel p{font-size:13px;line-height:1.6;color:#6B645A;margin:0}
+    .ss-panel dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px}
+    .ss-panel dt{color:#8B8378}
+    .ss-panel dd{margin:0;font-weight:700;text-align:right;color:var(--px-ink)}
+    .ss-chart{display:flex;align-items:flex-end;gap:5px;height:130px;margin-top:16px;border-bottom:1px solid var(--px-rule)}
+    .ss-chart div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+    .ss-chart i{display:block;background:var(--px-ink);border-radius:3px 3px 0 0}
+    .ss-chart div.part i{background:repeating-linear-gradient(135deg,#C9C2B7 0 3px,transparent 3px 6px);border:1px solid #C9C2B7;border-bottom:0}
+    .ss-chart-lab{display:flex;gap:5px;margin-top:6px}
+    .ss-chart-lab span{flex:1;text-align:center;font-size:10.5px;font-weight:700;color:#8B8378}
+    .ss-note{font-size:11.5px;color:#8B8378;margin-top:8px}
+    .ss-prev{margin-top:72px}
+    .ss-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 26px}
+    @media(max-width:980px){
+      .ss-cols{grid-template-columns:1fr}
+      .ss-aside{position:static}
+      .ss-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    @media(max-width:900px){
+      .ss-feature{flex-direction:column}
+      .ss-feature .px-card-media{aspect-ratio:16/8;flex:none}
+      .ss-feature .px-card-body{padding:22px}
+    }
+    @media(max-width:600px){
+      .ss-backbar,.ss-main{padding-left:16px;padding-right:16px}
+      .ss-feature .px-card-title{font-size:24px}
+      .ss-fig b{font-size:42px}
+      .ss-grid{grid-template-columns:1fr}
+      .ss-rank-head,.ss-rank li{grid-template-columns:36px minmax(0,1fr) 92px;gap:10px}
+      .ss-rank .n{font-size:20px}
+      .ss-rank .nm{font-size:14px}
+      .ss-rank .v{font-size:14px}
+    }
+
     /* ── Product Portal: the folder-driven sections ─────────── */
     .pp-secs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-bottom:26px}
     .pp-sec{
@@ -2223,6 +2304,12 @@
          Product Launches list the rest of the hub does. -->
     <div id="pp-upcoming"></div>
 
+    <!-- 28 Oct 2026 — Sales Spotlight, Lowri's fortnightly topic. Sits
+         directly above "What are you looking for?" as asked. Built by
+         renderSpotlightBand() in spotlight.js; absent for anyone who
+         can't read the sales figures. -->
+    <div id="pp-spotlight"></div>
+
     <!-- Product change notifications, PIF links, sample request sheet,
          new product request sheet, datasheets/MSDS. Folder-driven. -->
     <div id="pp-sections"></div>
@@ -2264,6 +2351,24 @@
          config.js (HUB_CONFIG.productPortal.feedbackUrl). -->
     <div id="pp-feedback"></div>
   </section>
+</main>
+
+<!-- ─── SALES SPOTLIGHT ──────────────────────────────────────── -->
+<!-- Opened from the band on the Product Portal; filled by
+     openSpotlight() in spotlight.js. Back returns to the portal. -->
+<main id="page-spotlight" class="page" data-screen-label="Sales Spotlight">
+  <div class="ss-backbar">
+    <button class="rdr-back" onclick="openProductPortal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><polyline points="15 18 9 12 15 6"/></svg>
+      <span>Back to Product Portal</span>
+    </button>
+  </div>
+  <div id="spotlight-body">
+    <div class="px-boot">
+      <div class="skeleton sk-line med"></div>
+      <div class="skeleton sk-line"></div>
+    </div>
+  </div>
 </main>
 
 
@@ -2428,13 +2533,14 @@
   });
 </script>
 <!-- Configuration (edit these values — see DEPLOY.md) -->
-<script src="config.js?v=25"></script>
+<script src="config.js?v=26"></script>
 
 <!-- Hub scripts (order matters: ui.js defines shared helpers) -->
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
-<script src="graph.js?v=29"></script>
-<script src="app.js?v=22"></script>
+<script src="graph.js?v=30"></script>
+<script src="spotlight.js?v=2"></script>
+<script src="app.js?v=23"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>
 

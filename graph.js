@@ -3724,6 +3724,9 @@ function ppLinks() {
 async function loadProductPortal() {
   const done = loadLibrary('product');
   renderPortalUpcoming();      // the launches list, not the library
+  // Sales Spotlight (spotlight.js) — its own data, never awaited here,
+  // so an 8 MB download can't hold up the documents.
+  if (typeof renderSpotlightBand === 'function') renderSpotlightBand().catch(e => console.info('[Spotlight]', e.message));
   // The lead spread is drawn from config before anything lands, so the
   // page has a top the moment it opens; the picture is painted in when
   // Graph gets round to it. Same order Launches and Campaigns use.
@@ -3998,6 +4001,8 @@ function ppShowFront() {
   if (idx) idx.style.display = 'none';
   if (sec) sec.style.display = '';
   if (up)  up.style.display  = '';
+  const ss  = document.getElementById('pp-spotlight');
+  if (ss)  ss.style.display  = '';
   const lnk = document.getElementById('pp-links');
   if (lnk) lnk.style.display = '';
   document.querySelectorAll('#pp-sections .pp-sec').forEach(b => b.classList.remove('active'));
@@ -4136,6 +4141,8 @@ function ppOpenSection(i, subIndex) {
   const up  = document.getElementById('pp-upcoming');
   if (sec) sec.style.display = 'none';
   if (up)  up.style.display  = 'none';
+  const ss  = document.getElementById('pp-spotlight');
+  if (ss)  ss.style.display  = 'none';
   if (idx) idx.style.display = '';
   const lnk = document.getElementById('pp-links');
   if (lnk) lnk.style.display = 'none';   // front-page links only
@@ -4282,7 +4289,7 @@ async function toggleLibraryBrowse(key, btn) {
 async function togglePortalBrowse(btn) {
   const br    = document.getElementById('pp-browser');
   const going = !br || br.style.display === 'none' || !br.style.display;
-  ['pp-sections', 'pp-links', 'pp-upcoming', 'pp-feedback'].forEach(id => {
+  ['pp-sections', 'pp-links', 'pp-upcoming', 'pp-spotlight', 'pp-feedback'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = going ? 'none' : '';
   });
