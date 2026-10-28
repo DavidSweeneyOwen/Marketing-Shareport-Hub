@@ -99,7 +99,11 @@ function _ssLoad() {
   SS.loading = (async () => {
     const siteId = await resolveSiteId(cfg.dataSite);
     const path   = cfg.dataPath.split('/').map(encodeURIComponent).join('/');
-    const item   = await graphFetch(`/sites/${siteId}/drive/root:/${path}?$select=id,lastModifiedDateTime,@microsoft.graph.downloadUrl`);
+    // No $select: on a single item fetched by path, Graph drops
+    // @microsoft.graph.downloadUrl when $select is given (seen 28 Oct on
+    // the preview), even when it is named. The V2 dashboard reads the
+    // same file the same way.
+    const item   = await graphFetch(`/sites/${siteId}/drive/root:/${path}`);
     const url    = item['@microsoft.graph.downloadUrl'];
     if (!url) throw new Error('no download URL for ' + cfg.dataPath);
     const res = await fetch(url);
