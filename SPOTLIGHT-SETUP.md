@@ -17,6 +17,7 @@ On the **Product Portal** SharePoint site (`/sites/CheckFireProductPortal`), cre
 | Start | Date | First day it shows |
 | End | Date | Last day it shows |
 | Show | Yes/No (default Yes) | Untick to hide a row without deleting it |
+| Tag | Single line of text | Optional. A short label on the card under Previous spotlights, e.g. `NPD range` |
 
 If you fill in both Category and Items, a sale has to match both.
 
@@ -37,6 +38,27 @@ Commander Extinguishers · CommanderEDGE Extinguishers · Contempo Extinguishers
 | Who's buying LFX this year | Top customers | LFX | |
 | Commander flat-pack stands | Top customers | | `SD-CFP-*; FP-COM-*; BX-FP-COM-*` |
 | Our best-selling fire blankets | Top items | Fire Blankets | |
+
+## The NPD range
+
+Until the list exists, the hub shows the NPD range as built-in topics under the current one:
+
+| Title | Type | Items | Tag |
+|---|---|---|---|
+| Who is buying the new LFX extinguishers | Top customers | `FX-LFX-003-ACF; FX-LFX-003-AFS; FX-LFX-006-ACF; FX-LFX-006-AFS; FX-LFX-009-ACF; FX-LFX-009-AFS` | NPD range |
+| Who is buying LFX fire blankets | Top customers | `FB-CAR-001-BGH; FB-CAR-002-BGH; FB-CAR-003-BGH; FB-CAR-004-BGH; FB-CAR-101-BGH; FB-FKL-001-BGH; FB-FKL-002-BGH; FB-FKL-101-BGH; FB-LIB-001-BGH; FB-LIB-002-BGH; FB-EXT-001-BGH; FB-EXT-002-BGH; FB-EXT-003-BGH; CB-BGH-001-BLK` | NPD range |
+| Who is buying flat-pack tub stands | Top customers | `SD-FPT-001-RED; SD-FPT-002-CHR; SD-FPT-002-RED` | NPD range |
+| Contempo Gold: which models sell | Top items | `CX-CO2-002-DGD; CX-CO2-005-DGD; CX-FFF-006-DGD; CX-FFF-009-DGD; CX-PWA-006-DGD; CX-PWA-009-DGD; CX-PWD-006-DGD; CX-PWD-009-DGD` | NPD range |
+| Who is buying Contempo Gold stands | Top customers | `CS32-PG; CS33-PG` | NPD range |
+| Who is buying the 3L wet chemical | Top customers | `FX-WCH-003-ACF` | NPD range |
+
+When you create the list, copy these rows in (with dates) so nothing disappears. The codes come from the old NPD board; tell David if the range has changed.
+
+## On the page
+
+- Click anyone on the podium or in the ranks to see their breakdown: their months against last year, what they bought, and (for a customer) how big this topic is in their whole account. ‹ › or the arrow keys step through the ranking; Esc closes.
+- The year-so-far chart has two views: **Running total** and **Each month**. Hover a month for the figures.
+- **Present** opens a full-screen top 10 for the meeting; click a row there for the same breakdown.
 
 ## Good to know
 

@@ -1213,7 +1213,15 @@ HUB_CONFIG.productPortal = {
 //
 // The product team pick the topic in a "Spotlight" list on the Product
 // Portal site (Title, Type, Category, Items, Start, End, Show — see
-// SPOTLIGHT-SETUP.md). Until that list exists, `fallback` is shown.
+// SPOTLIGHT-SETUP.md). Until that list exists, `fallback` is shown: the
+// first entry is "this fortnight", the rest sit under Other spotlights.
+//
+// 28 Oct 2026 — the NPD range, so the product team can see each new
+// line through the Spotlight. Item codes are the "NPD board" groups from
+// the old Geckoboard config (NPD_ITEM_GROUPS); every code was checked
+// against this year's sales (two Contempo Gold codes, CX-CO2-005-DGD and
+// CX-PWD-009-DGD, have none yet and simply add nothing). Once the
+// Spotlight list exists these move into it, with Tag = NPD range.
 HUB_CONFIG.lists.spotlight = 'Spotlight';
 
 HUB_CONFIG.spotlight = {
@@ -1222,5 +1230,17 @@ HUB_CONFIG.spotlight = {
   topN: 10,
   fallback: [
     { title: "Who's buying LFX this year", type: 'customers', category: 'LFX', items: '' },
+    { title: 'Who is buying the new LFX extinguishers', type: 'customers', tag: 'NPD range',
+      items: 'FX-LFX-003-ACF; FX-LFX-003-AFS; FX-LFX-006-ACF; FX-LFX-006-AFS; FX-LFX-009-ACF; FX-LFX-009-AFS' },
+    { title: 'Who is buying LFX fire blankets', type: 'customers', tag: 'NPD range',
+      items: 'FB-CAR-001-BGH; FB-CAR-002-BGH; FB-CAR-003-BGH; FB-CAR-004-BGH; FB-CAR-101-BGH; FB-FKL-001-BGH; FB-FKL-002-BGH; FB-FKL-101-BGH; FB-LIB-001-BGH; FB-LIB-002-BGH; FB-EXT-001-BGH; FB-EXT-002-BGH; FB-EXT-003-BGH; CB-BGH-001-BLK' },
+    { title: 'Who is buying flat-pack tub stands', type: 'customers', tag: 'NPD range',
+      items: 'SD-FPT-001-RED; SD-FPT-002-CHR; SD-FPT-002-RED' },
+    { title: 'Contempo Gold: which models sell', type: 'items', tag: 'NPD range',
+      items: 'CX-CO2-002-DGD; CX-CO2-005-DGD; CX-FFF-006-DGD; CX-FFF-009-DGD; CX-PWA-006-DGD; CX-PWA-009-DGD; CX-PWD-006-DGD; CX-PWD-009-DGD' },
+    { title: 'Who is buying Contempo Gold stands', type: 'customers', tag: 'NPD range',
+      items: 'CS32-PG; CS33-PG' },
+    { title: 'Who is buying the 3L wet chemical', type: 'customers', tag: 'NPD range',
+      items: 'FX-WCH-003-ACF' },
   ],
 };

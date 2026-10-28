@@ -68,6 +68,7 @@ async function _ssTopics() {
       type:     /item|product/i.test(String(_ppField(r, ['Type', 'Kind']) || '')) ? 'items' : 'customers',
       category: String(_ppField(r, ['Category', 'Class', 'ProductGroup', 'Product Group']) || '').trim(),
       items:    String(_ppField(r, ['Items', 'ItemCodes', 'Item Codes', 'Codes']) || '').trim(),
+      tag:      String(_ppField(r, ['Tag', 'Label', 'Range']) || '').trim(),
       start:    _ssDay(_ppField(r, ['Start', 'StartDate', 'Start Date', 'From'])),
       end:      _ssDay(_ppField(r, ['End', 'EndDate', 'End Date', 'To'])),
     }))
@@ -205,6 +206,15 @@ function _ssChange(ty, ly, opts) {
 
 function _ssShare(a, total) { return total > 0 ? a / total * 100 : 0; }
 function _ssPct(n) { return n >= 10 ? n.toFixed(0) + '%' : n.toFixed(1) + '%'; }
+
+// The mark on a spotlight card: the category, or the initials of the
+// product words in the title ("Who is buying LFX fire blankets" → LFB).
+function _ssTopicMark(x) {
+  if (x.category) return x.category.slice(0, 3).toUpperCase();
+  const w = String(x.title).replace(/^(who('s| is) buying|who buys|which)\s+/i, '')
+    .split(/[\s:-]+/).filter(t => t && !/^(the|new|a|an|of|and|which|models|sell|this|year)$/i.test(t));
+  return w.slice(0, 3).map(t => /^\d/.test(t) ? t.replace(/[^0-9a-z]/gi, '').slice(0, 2) : t[0]).join('').toUpperCase() || 'S';
+}
 
 // Initials for a customer or product chip: "O. HEAP & SON" → "OH".
 function _ssInitials(name) {
@@ -388,6 +398,7 @@ async function openSpotlight(i) {
   const R = 54, C = 2 * Math.PI * R;
 
   const prev = SS.topics.map((x, n) => ({ x, n })).filter(o => o.n !== i);
+  SS.view = { t, r, data, nm, yr, mode: 'cum' };
 
   // Title words rise in one after another.
   const words = String(t.title).split(/\s+/).filter(Boolean)
@@ -434,7 +445,7 @@ async function openSpotlight(i) {
         <h2 class="ss-h">The podium</h2>
         <div class="ss-podium">${podOrder.map(n => { const x = pod[n]; return `
           <div class="ss-place p${n + 1}">
-            <article class="ss-pod">
+            <article class="ss-pod" role="button" tabindex="0" aria-label="Open ${escAttr(x.name)}" onclick="ssDetail(${n})" onkeydown="if(event.key==='Enter')ssDetail(${n})">
               ${n === 0 ? '<span class="ss-crown" aria-hidden="true">★</span>' : ''}
               <span class="ss-av lg">${escHtml(_ssInitials(x.name))}</span>
               <h3 class="ss-pod-nm">${escHtml(x.name)}</h3>
@@ -470,7 +481,7 @@ async function openSpotlight(i) {
       <section class="ss-rest ss-reveal">
         <div class="ss-rank-head"><span>#</span><span>${items ? 'Product' : 'Customer'}</span><span>Share</span>${cmp ? `<span>${win} v ${yr - 1}</span>` : '<span></span>'}<span>Sales ${yr}</span></div>
         <ol class="ss-rank" start="4">${rest.map((x, n) => `
-          <li style="--i:${n}">
+          <li style="--i:${n}" role="button" tabindex="0" onclick="ssDetail(${n + 3})" onkeydown="if(event.key==='Enter')ssDetail(${n + 3})">
             <span class="n">${String(n + 4).padStart(2, '0')}</span>
             <div class="who">
               <div class="nm">${escHtml(x.name)}${items ? ` <span class="px-code sm">${escHtml(x.key)}</span>` : ''}</div>
@@ -486,22 +497,18 @@ async function openSpotlight(i) {
       <section class="ss-panel ss-chart-panel ss-reveal">
         <div class="ss-chart-head">
           <div>
-            <h3>${escHtml(w.chart)}</h3>
-            <p>All customers. ${SS_MONTHS[nm - 1]} is the month in progress${peak.m >= 0 ? `; the best complete month so far was ${SS_MONTHS[peak.m]} at ${_ssGbp(peak.v)}` : ''}.</p>
+            <h3>The year so far</h3>
+            <p>All customers, ${yr} against ${yr - 1}. ${SS_MONTHS[nm - 1]} is the month in progress${peak.m >= 0 ? `; the best complete month was ${SS_MONTHS[peak.m]} at ${_ssGbp(peak.v)}` : ''}. Hover a month for the figures.</p>
           </div>
-          <div class="ss-key"><span><i class="ty"></i>${yr}</span><span><i class="ly"></i>${yr - 1}</span></div>
-        </div>
-        <div class="ss-chart2" role="img" aria-label="${escAttr(w.sales)} by month, ${yr} against ${yr - 1}">
-          ${SS_MONTHS.map((mm, m) => `
-          <div class="col${m === nm - 1 ? ' part' : ''}${m >= nm ? ' future' : ''}${m === peak.m ? ' peak' : ''}">
-            <div class="tip">${mm}<b>${m < nm ? _ssGbp(r.months[m]) : '–'}</b><span>${yr - 1}: ${_ssGbp(r.lyMonths[m])}</span></div>
-            <div class="pair">
-              <i class="ly" style="--h:${(r.lyMonths[m] / cMax * 100).toFixed(1)}%"></i>
-              <i class="ty" style="--h:${m < nm ? (r.months[m] / cMax * 100).toFixed(1) : 0}%"></i>
+          <div class="ss-chart-ctl">
+            <div class="ss-toggle" role="group" aria-label="Chart view">
+              <button data-mode="cum" aria-pressed="true" onclick="ssChartMode('cum')">Running total</button>
+              <button data-mode="month" aria-pressed="false" onclick="ssChartMode('month')">Each month</button>
             </div>
-            <span>${mm}</span>
-          </div>`).join('')}
+            <div class="ss-key"><span><i class="ty"></i>${yr}</span><span><i class="ly"></i>${yr - 1}</span></div>
+          </div>
         </div>
+        <div id="ss-line-host" role="img" aria-label="${escAttr(w.sales)} by month, ${yr} against ${yr - 1}">${_ssLineChart(r.months, r.lyMonths, nm, yr, 'cum')}</div>
       </section>
 
       ${prev.length ? `
@@ -513,10 +520,10 @@ async function openSpotlight(i) {
                    onclick="openSpotlight(${n})" onkeydown="if(event.key==='Enter')openSpotlight(${n})">
             <div class="px-card-media">
               ${_ssRange(x) ? `<span class="px-badge"><span class="px-badge-dot ${n === SS.cur ? 'green' : 'grey'}"></span>${escHtml(_ssRange(x))}</span>` : ''}
-              <span class="px-card-initials">${escHtml((x.category || x.title).slice(0, 3).toUpperCase())}</span>
+              <span class="px-card-initials">${escHtml(_ssTopicMark(x))}</span>
             </div>
             <div class="px-card-body">
-              <div class="px-card-eyebrow">${n === SS.cur ? 'This fortnight' : escHtml(x.category || 'Spotlight')}</div>
+              <div class="px-card-eyebrow">${n === SS.cur ? 'This fortnight' : escHtml(x.tag || x.category || 'Spotlight')}</div>
               <h3 class="px-card-title">${escHtml(x.title)}</h3>
             </div>
             <div class="px-card-go">Open</div>
@@ -544,6 +551,267 @@ function _ssStage() {
     raf = requestAnimationFrame(() => { st.style.setProperty('--mx', x + '%'); st.style.setProperty('--my', y + '%'); st.classList.add('ss-follow'); });
   });
   st.addEventListener('pointerleave', () => st.classList.remove('ss-follow'));
+}
+
+// ── The year so far: an animated line chart ───────────────────
+// 28 Oct 2026, David didn't like the bars. Two lines, this year (ink,
+// with a soft fill) and last year (grey), drawn left to right; dots pop
+// in month by month; the month in progress is a hollow, pulsing dot.
+// "Running total" shows the race; "Each month" shows the shape. Hover
+// any month for the figures.
+function _ssMono(pts) {
+  // Monotone cubic through the points, so a line never overshoots a
+  // month it passes through (Fritsch–Carlson).
+  const n = pts.length;
+  if (n < 2) return n ? `M${pts[0][0]},${pts[0][1]}` : '';
+  const dx = [], dy = [], m = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; dy[i] = (pts[i + 1][1] - pts[i][1]) / dx[i]; }
+  m[0] = dy[0]; m[n - 1] = dy[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = dy[i - 1] * dy[i] <= 0 ? 0 : (dy[i - 1] + dy[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (!dy[i]) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / dy[i], b = m[i + 1] / dy[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * dy[i]; m[i + 1] = t * b * dy[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += ` C${(pts[i][0] + h).toFixed(1)},${(pts[i][1] + m[i] * h).toFixed(1)} ${(pts[i + 1][0] - h).toFixed(1)},${(pts[i + 1][1] - m[i + 1] * h).toFixed(1)} ${pts[i + 1][0].toFixed(1)},${pts[i + 1][1].toFixed(1)}`;
+  }
+  return d;
+}
+
+function _ssK(n) {
+  const a = Math.abs(n);
+  if (a >= 1e6) return '£' + (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm';
+  if (a >= 1e3) return '£' + Math.round(n / 1e3) + 'k';
+  return '£' + Math.round(n);
+}
+
+function _ssLineChart(months, lyMonths, nm, yr, mode) {
+  const cum = a => a.reduce((o, x, k) => (o.push((o[k - 1] || 0) + x), o), []);
+  const ty = (mode === 'cum' ? cum(months) : months.slice()).slice(0, nm);
+  const ly = mode === 'cum' ? cum(lyMonths) : lyMonths.slice();
+  const tyM = months.slice(0, nm), tyC = cum(months).slice(0, nm), lyC = cum(lyMonths);
+  const W = 1000, H = 300, top = 16, bot = 12;
+  const max = Math.max(1, ...ty, ...ly) * 1.1;
+  const min = Math.min(0, ...ty, ...ly);
+  const X = k => 20 + (W - 40) * (k / 11);
+  const Y = v => top + (H - top - bot) * (1 - (v - min) / (max - min));
+  const tyPts = ty.map((v, k) => [X(k), Y(v)]), lyPts = ly.map((v, k) => [X(k), Y(v)]);
+  const base = Y(Math.max(0, min));
+  const tyLine = _ssMono(tyPts), lyLine = _ssMono(lyPts);
+  const area = tyPts.length > 1 ? `${tyLine} L${tyPts[tyPts.length - 1][0].toFixed(1)},${base.toFixed(1)} L${tyPts[0][0].toFixed(1)},${base.toFixed(1)} Z` : '';
+  const grid = [0.25, 0.5, 0.75, 1].map(f => min + (max / 1.1 - min) * f);
+  const last = ty.length - 1;
+  const pct = (v, k) => `left:${(X(k) / W * 100).toFixed(2)}%;top:${(Y(v) / H * 100).toFixed(2)}%`;
+  const dur = 1.5;
+
+  return `
+    <div class="ss-line ${mode}">
+      <div class="ss-line-grid" aria-hidden="true">${grid.map(g => `
+        <div style="top:${(Y(g) / H * 100).toFixed(2)}%"><span>${_ssK(g)}</span></div>`).join('')}
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="ss-fillg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#12100E" stop-opacity=".16"/>
+            <stop offset="1" stop-color="#12100E" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g class="ly-g"><path class="ly" d="${lyLine}" vector-effect="non-scaling-stroke"/></g>
+        <g class="ty-g" style="--dur:${dur}s">
+          ${area ? `<path class="area" d="${area}"/>` : ''}
+          <path class="ty" d="${tyLine}" vector-effect="non-scaling-stroke"/>
+        </g>
+      </svg>
+      ${ty.map((v, k) => `<span class="ss-dot${k === last && nm <= 12 ? ' now' : ''}" style="${pct(v, k)};--d:${(0.25 + dur * k / 11).toFixed(2)}s"></span>`).join('')}
+      ${ly.map((v, k) => `<span class="ss-dot ly" style="${pct(v, k)};--d:${(0.1 + 0.9 * k / 11).toFixed(2)}s"></span>`).join('')}
+      ${last >= 0 ? `<div class="ss-endlab" style="${pct(ty[last], last)};--d:${(0.3 + dur).toFixed(2)}s">
+        <b>${_ssK(ty[last])}</b><span>${mode === 'cum' ? `${yr} so far` : `${SS_MONTHS[last]} to date`}</span></div>` : ''}
+      <div class="ss-line-hit">${SS_MONTHS.map((mm, k) => `
+        <div class="hc${k > last ? ' future' : ''}" style="left:${(X(k) / W * 100).toFixed(2)}%">
+          <i class="guide"></i>
+          <div class="tip ${k > 8 ? 'l' : k < 3 ? 'r' : ''}">
+            <span class="mm">${mm}${k === last ? ' · to date' : ''}</span>
+            ${k <= last ? `<b>${_ssGbp(tyM[k])}</b><span>${yr} · running ${_ssK(tyC[k])}</span>` : `<b>–</b>`}
+            <span class="lyv">${yr - 1}: ${_ssGbp(lyMonths[k])} · running ${_ssK(lyC[k])}</span>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div class="ss-line-x" aria-hidden="true">${SS_MONTHS.map((mm, k) => `<span style="left:${(X(k) / W * 100).toFixed(2)}%">${mm}</span>`).join('')}</div>
+    </div>`;
+}
+
+// Switch between running total and each month; the lines redraw.
+function ssChartMode(mode) {
+  const v = SS.view;
+  const host = document.getElementById('ss-line-host');
+  if (!v || !host) return;
+  v.mode = mode;
+  host.innerHTML = _ssLineChart(v.r.months, v.r.lyMonths, v.nm, v.yr, mode);
+  document.querySelectorAll('.ss-toggle button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+}
+
+// ── A customer (or product) up close ──────────────────────────
+// Click anyone on the podium or in the ranks: a panel slides in with
+// their months against last year, what they bought within the topic,
+// and — for a customer — how big this topic is in their whole account
+// with us. ‹ › (or the arrow keys) step through the ranking.
+function _ssMatch(t) {
+  const cats = String(t.category || '').split(/[;,]/).map(_ssSlug).filter(Boolean);
+  const itemOk = _ssItemTest(t.items);
+  return (cls, code) => (!cats.length || cats.indexOf(_ssSlug(cls)) >= 0) && (!itemOk || itemOk(code));
+}
+
+function _ssSum(a, from, to) { let s = 0; for (let k = from; k < to; k++) s += a[k] || 0; return s; }
+
+function ssDetail(n) {
+  const v = SS.view;
+  if (!v || !v.r.rows[n]) return;
+  const { t, r, data } = v;
+  const x = r.rows[n];
+  const ok = _ssMatch(t);
+  const items = t.type === 'items';
+  const yr = data.year, nm = _ssMonthCount(data), closed = r.closed;
+  const qty = !!data.hasQty;
+
+  const months = new Array(12).fill(0), lyMonths = new Array(12).fill(0);
+  const lines = new Map();               // what makes up their total
+  let acct = 0;                          // customer: their whole account this year
+  const groups = new Map();              // customer: their product groups this year
+
+  for (const [comp, classes] of Object.entries(data.c || {})) {
+    if (!items && comp !== x.key) continue;
+    for (const [cls, its] of Object.entries(classes)) {
+      for (const [code, val] of Object.entries(its)) {
+        const tyA = _ssSum(val.a, 12, 24);
+        if (!items) { acct += tyA; groups.set(cls, (groups.get(cls) || 0) + tyA); }
+        const hit = items ? code === x.key && ok(cls, code) : ok(cls, code);
+        if (!hit) continue;
+        for (let k = 0; k < 12; k++) { months[k] += val.a[12 + k] || 0; lyMonths[k] += val.a[k] || 0; }
+        const key = items ? comp : code;
+        const e = lines.get(key) || { key, a: 0, q: 0, name: items ? comp : ((data.names || {})[code] || code) };
+        e.a += tyA; e.q += val.q ? _ssSum(val.q, 12, 24) : 0;
+        lines.set(key, e);
+      }
+    }
+  }
+  const list = [...lines.values()].filter(e => e.a > 0).sort((p, q) => q.a - p.a);
+  const lmax = list.length ? list[0].a : 1;
+  const topicShare = !items && acct > 0 ? x.a / acct * 100 : 0;
+  const gl = [...groups.entries()].filter(([, a]) => a > 0).sort((p, q) => q[1] - p[1]).slice(0, 6);
+  const gmax = gl.length ? gl[0][1] : 1;
+  const w = _ssWords(t);
+  const cMax = Math.max(1, ...months.slice(0, nm), ...lyMonths);
+  const cats = String(t.category || '').split(/[;,]/).map(_ssSlug).filter(Boolean);
+  const total = r.rows.length;
+
+  let el = document.getElementById('ss-drawer');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ss-drawer';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    document.body.appendChild(el);
+  }
+  const fresh = !el.classList.contains('on');
+  el.setAttribute('aria-label', x.name);
+  el.innerHTML = `
+    <div class="ss-dr-shade" onclick="ssDetailClose()"></div>
+    <aside class="ss-dr">
+      <header class="ss-dr-head">
+        <div class="ss-dr-nav">
+          <button onclick="ssDetail(${n - 1})" ${n === 0 ? 'disabled' : ''} aria-label="Previous">‹</button>
+          <span>#${n + 1} of ${_ssInt(total)}</span>
+          <button onclick="ssDetail(${n + 1})" ${n >= total - 1 ? 'disabled' : ''} aria-label="Next">›</button>
+        </div>
+        <button class="ss-dr-x" onclick="ssDetailClose()" aria-label="Close">×</button>
+      </header>
+      <div class="ss-dr-body">
+        <div class="ss-dr-who">
+          <span class="ss-av xl">${escHtml(_ssInitials(x.name))}</span>
+          <div>
+            <div class="px-eyebrow">${escHtml(w.sales)} · ${yr} to date</div>
+            <h2>${escHtml(x.name)}</h2>
+            ${items ? `<span class="px-code sm">${escHtml(x.key)}</span>` : ''}
+          </div>
+        </div>
+        <div class="ss-dr-fig">
+          <b class="ss-big" data-ss-count="${Math.round(x.a)}">${_ssGbp(x.a)}</b>
+          <div class="ss-dr-chips">
+            ${closed ? `${_ssChange(x.ty, x.ly, { long: true })}<span class="ss-dr-win">${_ssWindow(closed)} v ${yr - 1}</span>` : ''}
+          </div>
+          <div class="ss-dr-stats">
+            <div><span>Share of ${escHtml(w.salesLc)}</span><b>${_ssPct(_ssShare(x.a, r.total))}</b></div>
+            ${qty ? `<div><span>Units</span><b data-ss-count="${Math.round(x.q)}" data-ss-fmt="int">${_ssInt(x.q)}</b></div>` : ''}
+            <div><span>${yr - 1} full year</span><b>${_ssGbp(x.lyAll)}</b></div>
+          </div>
+        </div>
+
+        <section class="ss-dr-sec">
+          <h3>Month by month</h3>
+          <div class="ss-dr-chart" role="img" aria-label="${escAttr(x.name)} by month">
+            ${SS_MONTHS.map((mm, k) => `
+            <div class="c${k === nm - 1 ? ' part' : ''}" title="${mm}: ${k < nm ? _ssGbp(months[k]) + ' · ' : ''}${yr - 1}: ${_ssGbp(lyMonths[k])}">
+              <div class="p"><i class="ly" style="--h:${(Math.max(0, lyMonths[k]) / cMax * 100).toFixed(1)}%;--k:${k}"></i><i class="ty" style="--h:${k < nm ? (Math.max(0, months[k]) / cMax * 100).toFixed(1) : 0}%;--k:${k}"></i></div>
+              <span>${mm[0]}</span>
+            </div>`).join('')}
+          </div>
+          <div class="ss-key sm"><span><i class="ty"></i>${yr}</span><span><i class="ly"></i>${yr - 1}</span></div>
+        </section>
+
+        <section class="ss-dr-sec">
+          <h3>${items ? 'Who buys it' : 'What they bought'}</h3>
+          <ol class="ss-dr-list">${list.slice(0, 12).map((e, k) => `
+            <li style="--k:${k}">
+              <div class="nm"><b>${escHtml(e.name)}</b>${items ? '' : `<span>${escHtml(e.key)}</span>`}</div>
+              <div class="v">${_ssGbp(e.a)}${qty ? `<small>${_ssInt(e.q)} units</small>` : ''}</div>
+              <div class="ss-bar"><i style="--w:${(e.a / lmax * 100).toFixed(1)}%;--i:${k}"></i></div>
+            </li>`).join('')}</ol>
+          ${list.length > 12 ? `<p class="ss-dr-more">and ${list.length - 12} more</p>` : ''}
+        </section>
+
+        ${!items ? `
+        <section class="ss-dr-sec">
+          <h3>Their whole account</h3>
+          <p class="ss-dr-acct"><b>${_ssGbp(acct)}</b> with CheckFire this year. ${escHtml(t.category || 'This spotlight')} is <b>${_ssPct(topicShare)}</b> of it.</p>
+          <div class="ss-dr-share"><i style="--w:${Math.min(100, topicShare).toFixed(1)}%"></i></div>
+          <ol class="ss-dr-groups">${gl.map(([g, a], k) => `
+            <li class="${cats.indexOf(_ssSlug(g)) >= 0 ? 'this' : ''}" style="--k:${k}">
+              <span>${escHtml(g)}</span><b>${_ssGbp(a)}</b>
+              <div class="ss-bar"><i style="--w:${(a / gmax * 100).toFixed(1)}%;--i:${k}"></i></div>
+            </li>`).join('')}</ol>
+        </section>` : ''}
+      </div>
+    </aside>`;
+  if (fresh) {
+    SS.drawerFocus = document.activeElement;
+    document.addEventListener('keydown', _ssDetailKey, true);   // capture: Esc closes this, not present mode under it
+    document.querySelectorAll('body > *:not(#ss-drawer)').forEach(nd => { if (!nd.inert) { nd.inert = true; nd.setAttribute('data-ss-dr-inert', ''); } });
+    document.documentElement.classList.add('ss-drawer-open');
+  }
+  el.classList.add('on');
+  SS.detail = n;
+  _ssCountUp(el);
+  const f = el.querySelector('.ss-dr-x'); if (f && fresh) f.focus();
+}
+
+function ssDetailClose() {
+  const el = document.getElementById('ss-drawer');
+  if (!el || !el.classList.contains('on')) return;
+  el.classList.remove('on');
+  document.removeEventListener('keydown', _ssDetailKey, true);
+  document.querySelectorAll('[data-ss-dr-inert]').forEach(nd => { nd.inert = false; nd.removeAttribute('data-ss-dr-inert'); });
+  document.documentElement.classList.remove('ss-drawer-open');
+  const back = SS.drawerFocus; SS.drawerFocus = null;
+  if (back && back.focus && document.contains(back)) back.focus();
+}
+
+function _ssDetailKey(e) {
+  if (e.key === 'Escape') { e.stopImmediatePropagation(); ssDetailClose(); }
+  else if (e.key === 'ArrowRight') ssDetail(SS.detail + 1);
+  else if (e.key === 'ArrowLeft') ssDetail(SS.detail - 1);
 }
 
 // Sections below the fold hold their entrance until they scroll into
@@ -594,7 +862,7 @@ function ssPresent() {
       </div>
     </div>
     <ol class="ss-pr-list">${rows.map((x, n) => `
-      <li style="--i:${n}">
+      <li style="--i:${n}" onclick="ssDetail(${n})">
         <span class="n">${n + 1}</span>
         <span class="nm">${escHtml(x.name)}</span>
         <span class="ss-bar"><i style="--w:${(x.a / max * 100).toFixed(1)}%"></i></span>
