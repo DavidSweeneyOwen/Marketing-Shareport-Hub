@@ -1516,7 +1516,7 @@
     @keyframes ss-shine{0%{transform:translateX(-120%) skewX(-18deg)}100%{transform:translateX(260%) skewX(-18deg)}}
     @keyframes ss-twinkle{0%,100%{transform:scale(1) rotate(0);opacity:.9}50%{transform:scale(1.25) rotate(18deg);opacity:1}}
     @keyframes ss-slide{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
-    @keyframes ss-fill{from{flex-grow:0}to{flex-grow:var(--f)}}
+    @keyframes ss-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
 
     .ss-backbar{max-width:1280px;margin:0 auto;padding:22px 32px 14px}
 
@@ -1611,9 +1611,13 @@
 
     /* Where the money comes from: one bar, segments fill in turn. */
     .ss-mix{margin-top:56px}
-    .ss-mixbar{display:flex;gap:3px;height:58px;margin:14px 0 14px;border-radius:12px;overflow:hidden;background:var(--px-paper-2)}
+    /* The bar wipes in left to right at its final widths (animating
+       flex-grow made segment 1 swallow the bar for a moment). */
+    .ss-mixbar{display:flex;gap:3px;height:58px;margin:14px 0 14px;border-radius:12px;overflow:hidden;background:var(--px-paper-2);
+      animation:ss-wipe 1.3s cubic-bezier(.65,0,.35,1) .15s both}
+    .ss-mixbar .ss-seg em{animation:ss-in .4s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--n) * 70ms + 500ms)}
     .ss-mixbar .ss-seg{position:relative;flex:var(--f) 1 0;min-width:0;background:#3A342D;display:flex;align-items:center;justify-content:center;
-      animation:ss-fill .9s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--n) * 80ms + 150ms);transition:filter .2s}
+      transition:filter .2s}
     .ss-mixbar .ss-seg.top{background:var(--px-ink)}
     .ss-mixbar .ss-seg.rest{background:#C9C2B7}
     .ss-mixbar .ss-seg:hover{filter:brightness(1.35)}
@@ -1740,6 +1744,7 @@
     @media(max-width:600px){
       .ss-backbar,.ss-main{padding-left:16px;padding-right:16px}
       .ss-stage-in{padding:36px 16px 34px}
+      .ss-big.xl{font-size:clamp(40px,12vw,60px)}
       .ss-stage-stats{gap:18px}
       .ss-ring{width:104px;height:104px}
       .ss-ring b{font-size:21px}
@@ -1775,7 +1780,7 @@
       .ss-chart2 .col span{font-size:9.5px}
     }
     @media (prefers-reduced-motion:reduce){
-      .ss-band,.ss-band *,#page-spotlight *,#ss-present,#ss-present *,
+      .ss-band,.ss-band *,#page-spotlight *,#page-spotlight *::before,#page-spotlight *::after,#ss-present,#ss-present *,
       .ss-feature-fig::before,.ss-hero-fig::before,#ss-present::before,.ss-stage::before{animation:none !important}
       .ss-beam{display:none}
       .ss-rank li:hover{transform:none}
@@ -2841,7 +2846,7 @@
 <script src="ui.js?v=3"></script>
 <script src="auth.js?v=2"></script>
 <script src="graph.js?v=30"></script>
-<script src="spotlight.js?v=8"></script>
+<script src="spotlight.js?v=9"></script>
 <script src="app.js?v=23"></script>
 <script src="jotform.js?v=13"></script>
 <script src="ember.js?v=7"></script>

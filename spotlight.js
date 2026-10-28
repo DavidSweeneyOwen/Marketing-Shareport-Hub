@@ -430,7 +430,7 @@ async function openSpotlight(i) {
 
     <div class="ss-main">
       ${rows.length ? `
-      <section class="ss-podium-wrap" id="ss-podium">
+      <section class="ss-podium-wrap ss-reveal" id="ss-podium">
         <h2 class="ss-h">The podium</h2>
         <div class="ss-podium">${podOrder.map(n => { const x = pod[n]; return `
           <div class="ss-place p${n + 1}">
