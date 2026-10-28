@@ -56,7 +56,7 @@ When you create the list, copy these rows in (with dates) so nothing disappears.
 
 ## On the page
 
-- Click anyone on the podium or in the ranks to see their breakdown: their months against last year, what they bought, and (for a customer) how big this topic is in their whole account. ‹ › or the arrow keys step through the ranking; Esc closes.
+- Click anyone on the podium or in the ranks to see their breakdown: their months against last year and what they bought, for the spotlighted products only. ‹ › or the arrow keys step through the ranking; Esc closes.
 - The year-so-far chart has two views: **Running total** and **Each month**. Hover a month for the figures.
 - **Present** opens a full-screen top 10 for the meeting; click a row there for the same breakdown.
 

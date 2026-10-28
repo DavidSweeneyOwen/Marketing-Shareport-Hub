@@ -464,8 +464,8 @@ async function openSpotlight(i) {
 
       <section class="ss-mix ss-reveal">
         <div class="ss-mix-head">
-          <h2 class="ss-h">Where the money comes from</h2>
-          <p class="ss-sub">Each block is one of the top ${rows.length}, sized by sales. The grey block is everyone else.</p>
+          <h2 class="ss-h">${items ? 'Product split' : 'Customer split'}</h2>
+          <p class="ss-sub">Each block is one of the top ${rows.length} ${noun}, sized by sales. The grey block is everyone else.</p>
         </div>
         <div class="ss-mixbar" role="img" aria-label="Top ${rows.length} ${_ssPct(share)}, other ${noun} ${_ssPct(100 - share)}">
           ${rows.map((x, n) => `<span class="ss-seg${n < 3 ? ' top' : ''}" style="--f:${_ssShare(x.a, r.total).toFixed(3)};--n:${n}" title="${escAttr(x.name)}: ${_ssGbp(x.a)} (${_ssPct(_ssShare(x.a, r.total))})"><em>${n + 1}</em></span>`).join('')}
@@ -678,15 +678,14 @@ function ssDetail(n) {
 
   const months = new Array(12).fill(0), lyMonths = new Array(12).fill(0);
   const lines = new Map();               // what makes up their total
-  let acct = 0;                          // customer: their whole account this year
-  const groups = new Map();              // customer: their product groups this year
 
+  // Only the spotlighted products: David, 28 Oct — "when you open the
+  // customer it's just the spotlighted, for example just LFX".
   for (const [comp, classes] of Object.entries(data.c || {})) {
     if (!items && comp !== x.key) continue;
     for (const [cls, its] of Object.entries(classes)) {
       for (const [code, val] of Object.entries(its)) {
         const tyA = _ssSum(val.a, 12, 24);
-        if (!items) { acct += tyA; groups.set(cls, (groups.get(cls) || 0) + tyA); }
         const hit = items ? code === x.key && ok(cls, code) : ok(cls, code);
         if (!hit) continue;
         for (let k = 0; k < 12; k++) { months[k] += val.a[12 + k] || 0; lyMonths[k] += val.a[k] || 0; }
@@ -699,12 +698,8 @@ function ssDetail(n) {
   }
   const list = [...lines.values()].filter(e => e.a > 0).sort((p, q) => q.a - p.a);
   const lmax = list.length ? list[0].a : 1;
-  const topicShare = !items && acct > 0 ? x.a / acct * 100 : 0;
-  const gl = [...groups.entries()].filter(([, a]) => a > 0).sort((p, q) => q[1] - p[1]).slice(0, 6);
-  const gmax = gl.length ? gl[0][1] : 1;
   const w = _ssWords(t);
   const cMax = Math.max(1, ...months.slice(0, nm), ...lyMonths);
-  const cats = String(t.category || '').split(/[;,]/).map(_ssSlug).filter(Boolean);
   const total = r.rows.length;
 
   let el = document.getElementById('ss-drawer');
@@ -776,18 +771,6 @@ function ssDetail(n) {
             </li>`).join('')}</ol>
           ${list.length > 12 ? `<p class="ss-dr-more">and ${list.length - 12} more</p>` : ''}
         </section>
-
-        ${!items ? `
-        <section class="ss-dr-sec">
-          <h3>Their whole account</h3>
-          <p class="ss-dr-acct"><b>${_ssGbp(acct)}</b> with CheckFire this year. ${escHtml(t.category || 'This spotlight')} is <b>${_ssPct(topicShare)}</b> of it.</p>
-          <div class="ss-dr-share"><i style="--w:${Math.min(100, topicShare).toFixed(1)}%"></i></div>
-          <ol class="ss-dr-groups">${gl.map(([g, a], k) => `
-            <li class="${cats.indexOf(_ssSlug(g)) >= 0 ? 'this' : ''}" style="--k:${k}">
-              <span>${escHtml(g)}</span><b>${_ssGbp(a)}</b>
-              <div class="ss-bar"><i style="--w:${(a / gmax * 100).toFixed(1)}%;--i:${k}"></i></div>
-            </li>`).join('')}</ol>
-        </section>` : ''}
       </div>
     </aside>`;
   if (fresh) {
