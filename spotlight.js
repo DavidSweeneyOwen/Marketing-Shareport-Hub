@@ -213,20 +213,25 @@ function _ssInitials(name) {
   return ((w[0] || '?')[0] + ((w[1] || '')[0] || '')).toUpperCase();
 }
 
-// Counts the big figure up from zero once, when it first comes into view.
+// Counts a figure up from zero once. A figure inside a section still
+// waiting to scroll into view is left for _ssReveal to start later.
+// data-ss-fmt: £ (default), 'int' or 'pct'.
 // Skipped entirely when the viewer asks for reduced motion.
 function _ssCountUp(root) {
   const els = (root || document).querySelectorAll('[data-ss-count]');
   const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   els.forEach(el => {
+    if (el.closest('.ss-reveal:not(.ss-seen)')) return;
     const to = Number(el.getAttribute('data-ss-count')) || 0;
+    const fmt = el.getAttribute('data-ss-fmt');
+    const show = v => fmt === 'pct' ? _ssPct(v) : fmt === 'int' ? _ssInt(v) : _ssGbp(v);
     el.removeAttribute('data-ss-count');
     if (still || !to) return;
     const t0 = performance.now(), dur = 900;
     const step = now => {
       const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      el.textContent = _ssGbp(to * e);
-      if (k < 1) requestAnimationFrame(step); else el.textContent = _ssGbp(to);
+      el.textContent = show(to * e);
+      if (k < 1) requestAnimationFrame(step); else el.textContent = show(to);
     };
     requestAnimationFrame(step);
   });
@@ -328,6 +333,11 @@ async function renderSpotlightBand() {
 }
 
 // ── The Spotlight page ────────────────────────────────────────
+// 28 Oct 2026, David: "when you click in to it … impress me". So the
+// page opens as an event: a beam sweeps the dark hero and then follows
+// the pointer, the title rises word by word, the top-ten ring draws,
+// the podium grows from the floor, and every figure counts up as it
+// comes into view. The figures are exactly the ones on the card.
 async function openSpotlight(i) {
   const host = document.getElementById('spotlight-body');
   if (!host) return;
@@ -357,95 +367,134 @@ async function openSpotlight(i) {
   const yr    = data.year;
   const range = _ssRange(t);
   const isNow = i === SS.cur;
-  const upd   = SS.file && SS.file.modified ? fmtSpDate(SS.file.modified) : '';
   const noun  = t.type === 'items' ? 'products' : 'customers';
   const count = t.type === 'items' ? r.rows.length : r.buyers;
   const topSum = rows.reduce((s, x) => s + x.a, 0);
+  const others = Math.max(0, r.total - topSum);
+  const share  = _ssShare(topSum, r.total);
   const win   = _ssWindow(r.closed);
   const cmp   = r.closed > 0;
   const qty   = !!data.hasQty;
+  const items = t.type === 'items';
 
   // Month chart: this year (ink) beside last year (grey), same scale.
   const cMax = Math.max(1, ...r.months.slice(0, nm), ...r.lyMonths);
   const peak = r.months.slice(0, r.closed).reduce((b, v, m) => v > b.v ? { v, m } : b, { v: -Infinity, m: -1 });
 
+  // Podium order on screen: 2, 1, 3 — the winner in the middle, raised.
+  const podOrder = [1, 0, 2].filter(n => pod[n]);
+
+  // Ring: the top ten's share of all sales, drawn as an arc.
+  const R = 54, C = 2 * Math.PI * R;
+
   const prev = SS.topics.map((x, n) => ({ x, n })).filter(o => o.n !== i);
 
+  // Title words rise in one after another.
+  const words = String(t.title).split(/\s+/).filter(Boolean)
+    .map((wd, k) => `<span class="ss-w" style="--k:${k}">${escHtml(wd)}</span>`).join(' ');
+
   host.innerHTML = `
-    <section class="ss-hero">
-      <div class="ss-hero-copy">
-        <div class="px-eyebrow">Sales Spotlight${range ? ' · ' + escHtml(range) : ''}</div>
-        <h1 class="ss-hero-title">${escHtml(t.title)}</h1>
-        <p class="ss-hero-sub">Our top ${topN} ${noun} by ${escHtml(w.salesLc)}, 1 January to date. Refreshed from NetSuite each weekday morning by the sales dashboard${upd ? `; last updated ${escHtml(upd)}` : ''}.</p>
-        <div class="ss-hero-actions">
-          <button class="px-cta" onclick="ssPresent()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Present
-          </button>
-          ${isNow ? '' : `<span class="ss-was">Previous spotlight · today's figures</span>`}
+    <section class="ss-stage" id="ss-stage">
+      <div class="ss-beam" aria-hidden="true"></div>
+      <div class="ss-stage-in">
+        <div class="ss-stage-copy">
+          <div class="ss-kicker"><span class="ss-live-dot"></span>Sales Spotlight${range ? ' · ' + escHtml(range) : ''}${isNow ? '' : ' · previous'}</div>
+          <h1 class="ss-stage-title">${words}</h1>
+          <p class="ss-stage-sub">Our top ${topN} ${noun} by ${escHtml(w.salesLc)}, 1 January to date${isNow ? '' : ", with today's figures"}.</p>
+          <div class="ss-stage-actions">
+            <button class="ss-present-btn" onclick="ssPresent()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              Present
+            </button>
+            ${rows.length ? `<a class="ss-jump" href="#ss-podium" onclick="document.getElementById('ss-podium').scrollIntoView({behavior:'smooth',block:'start'});return false">See the podium ↓</a>` : ''}
+          </div>
         </div>
-      </div>
-      <div class="ss-hero-fig">
-        <span class="ss-hero-label">${escHtml(w.sales)} · ${yr} to date</span>
-        <b class="ss-big xl" data-ss-count="${Math.round(r.total)}">${_ssGbp(r.total)}</b>
-        <div class="ss-hero-stats">
-          ${cmp && r.likeLy ? `<div><span>${win} v ${yr - 1}</span>${_ssChange(r.likeTy, r.likeLy, { long: true })}</div>` : ''}
-          <div><span>${noun[0].toUpperCase() + noun.slice(1)}</span><b>${_ssInt(count)}</b></div>
-          ${qty ? `<div><span>Units</span><b>${_ssInt(r.qty)}</b></div>` : ''}
-          <div><span>Top ${topN} share</span><b>${_ssPct(_ssShare(topSum, r.total))}</b></div>
+        <div class="ss-stage-fig">
+          <span class="ss-stage-label">${escHtml(w.sales)} · ${yr} to date</span>
+          <b class="ss-big xl" data-ss-count="${Math.round(r.total)}">${_ssGbp(r.total)}</b>
+          ${cmp && r.likeLy ? `<div class="ss-stage-chg">${_ssChange(r.likeTy, r.likeLy, { long: true })}<span>${win} ${yr} v ${win} ${yr - 1}</span></div>` : ''}
+          <div class="ss-stage-stats">
+            <div class="ss-ring" role="img" aria-label="Top ${topN} share ${_ssPct(share)}">
+              <svg viewBox="0 0 128 128" aria-hidden="true">
+                <circle cx="64" cy="64" r="${R}" class="trk"/>
+                <circle cx="64" cy="64" r="${R}" class="arc" style="--c:${C.toFixed(1)};--off:${(C * (1 - share / 100)).toFixed(1)}"/>
+              </svg>
+              <div><b data-ss-count="${share.toFixed(1)}" data-ss-fmt="pct">${_ssPct(share)}</b><span>top ${topN}</span></div>
+            </div>
+            <div class="ss-stat"><span>${noun[0].toUpperCase() + noun.slice(1)}</span><b data-ss-count="${count}" data-ss-fmt="int">${_ssInt(count)}</b></div>
+            ${qty ? `<div class="ss-stat"><span>Units</span><b data-ss-count="${Math.round(r.qty)}" data-ss-fmt="int">${_ssInt(r.qty)}</b></div>` : ''}
+          </div>
         </div>
       </div>
     </section>
 
     <div class="ss-main">
       ${rows.length ? `
-      <h2 class="ss-h">The top three</h2>
-      <div class="ss-podium">${pod.map((x, n) => `
-        <article class="ss-pod" style="--i:${n}">
-          <div class="ss-pod-top">
-            <span class="ss-pod-rk">${n + 1}</span>
-            <span class="ss-av lg">${escHtml(_ssInitials(x.name))}</span>
-          </div>
-          <h3 class="ss-pod-nm">${escHtml(x.name)}${t.type === 'items' ? `<span class="px-code sm">${escHtml(x.key)}</span>` : ''}</h3>
-          <b class="ss-pod-val">${_ssGbp(x.a)}</b>
-          <div class="ss-pod-share"><span class="ss-bar"><i style="--w:${_ssShare(x.a, r.total).toFixed(1)}%"></i></span>${_ssPct(_ssShare(x.a, r.total))} of all ${escHtml(w.salesLc)}</div>
-          <dl class="ss-pod-dl">
-            ${qty ? `<dt>Units</dt><dd>${_ssInt(x.q)}</dd>` : ''}
-            ${cmp ? `<dt>${win} v ${yr - 1}</dt><dd>${_ssChange(x.ty, x.ly)}</dd>` : ''}
-          </dl>
-        </article>`).join('')}
-      </div>
+      <section class="ss-podium-wrap" id="ss-podium">
+        <h2 class="ss-h">The podium</h2>
+        <div class="ss-podium">${podOrder.map(n => { const x = pod[n]; return `
+          <div class="ss-place p${n + 1}">
+            <article class="ss-pod">
+              ${n === 0 ? '<span class="ss-crown" aria-hidden="true">★</span>' : ''}
+              <span class="ss-av lg">${escHtml(_ssInitials(x.name))}</span>
+              <h3 class="ss-pod-nm">${escHtml(x.name)}</h3>
+              ${items ? `<span class="px-code sm">${escHtml(x.key)}</span>` : ''}
+              <b class="ss-pod-val" data-ss-count="${Math.round(x.a)}">${_ssGbp(x.a)}</b>
+              <div class="ss-pod-meta">
+                <span>${_ssPct(_ssShare(x.a, r.total))} of sales</span>
+                ${cmp ? _ssChange(x.ty, x.ly) : ''}
+              </div>
+              ${qty ? `<div class="ss-pod-units">${_ssInt(x.q)} units</div>` : ''}
+            </article>
+            <div class="ss-step"><span>${n + 1}</span></div>
+          </div>`; }).join('')}
+        </div>
+      </section>
+
+      <section class="ss-mix ss-reveal">
+        <div class="ss-mix-head">
+          <h2 class="ss-h">Where the money comes from</h2>
+          <p class="ss-sub">Each block is one of the top ${rows.length}, sized by sales. The grey block is everyone else.</p>
+        </div>
+        <div class="ss-mixbar" role="img" aria-label="Top ${rows.length} ${_ssPct(share)}, other ${noun} ${_ssPct(100 - share)}">
+          ${rows.map((x, n) => `<span class="ss-seg${n < 3 ? ' top' : ''}" style="--f:${_ssShare(x.a, r.total).toFixed(3)};--n:${n}" title="${escAttr(x.name)}: ${_ssGbp(x.a)} (${_ssPct(_ssShare(x.a, r.total))})"><em>${n + 1}</em></span>`).join('')}
+          <span class="ss-seg rest" style="--f:${_ssShare(others, r.total).toFixed(3)};--n:${rows.length}" title="Other ${noun}: ${_ssGbp(others)}"><em>The other ${_ssInt(Math.max(0, count - rows.length))}</em></span>
+        </div>
+        <div class="ss-mix-legend">
+          <span><b data-ss-count="${share.toFixed(1)}" data-ss-fmt="pct">${_ssPct(share)}</b> from the top ${rows.length}</span>
+          <span><b data-ss-count="${Math.round(others)}">${_ssGbp(others)}</b> from the other ${_ssInt(Math.max(0, count - rows.length))} ${noun}</span>
+        </div>
+      </section>
 
       ${rest.length ? `
-      <div class="ss-rest ss-reveal">
-        <div class="ss-rank-head"><span>#</span><span>${t.type === 'items' ? 'Product' : 'Customer'}</span><span>Share</span>${cmp ? `<span>${win} v ${yr - 1}</span>` : '<span></span>'}<span>Sales ${yr}</span></div>
+      <section class="ss-rest ss-reveal">
+        <div class="ss-rank-head"><span>#</span><span>${items ? 'Product' : 'Customer'}</span><span>Share</span>${cmp ? `<span>${win} v ${yr - 1}</span>` : '<span></span>'}<span>Sales ${yr}</span></div>
         <ol class="ss-rank" start="4">${rest.map((x, n) => `
           <li style="--i:${n}">
             <span class="n">${String(n + 4).padStart(2, '0')}</span>
             <div class="who">
-              <div class="nm">${escHtml(x.name)}${t.type === 'items' ? ` <span class="px-code sm">${escHtml(x.key)}</span>` : ''}</div>
+              <div class="nm">${escHtml(x.name)}${items ? ` <span class="px-code sm">${escHtml(x.key)}</span>` : ''}</div>
               <div class="ss-bar"><i style="--w:${(x.a / max * 100).toFixed(1)}%"></i></div>
             </div>
             <span class="sh">${_ssPct(_ssShare(x.a, r.total))}</span>
             <span class="ch">${cmp ? _ssChange(x.ty, x.ly) : ''}</span>
-            <span class="v">${_ssGbp(x.a)}${qty ? `<small>${_ssInt(x.q)} units</small>` : ''}</span>
+            <span class="v"><b data-ss-count="${Math.round(x.a)}">${_ssGbp(x.a)}</b>${qty ? `<small>${_ssInt(x.q)} units</small>` : ''}</span>
           </li>`).join('')}</ol>
-      </div>` : ''}
-
-      <p class="ss-rest-note">The other ${_ssInt(Math.max(0, (t.type === 'items' ? r.rows.length : r.buyers) - rows.length))} ${noun} bought ${_ssGbp(Math.max(0, r.total - topSum))} between them (${_ssPct(_ssShare(Math.max(0, r.total - topSum), r.total))}).</p>`
+      </section>` : ''}`
       : `<p class="ss-sub">No sales found this year for this topic. Check the Category or Items on the Spotlight list.</p>`}
 
-      <div class="ss-panel ss-chart-panel ss-reveal">
+      <section class="ss-panel ss-chart-panel ss-reveal">
         <div class="ss-chart-head">
           <div>
             <h3>${escHtml(w.chart)}</h3>
-            <p>All customers. ${SS_MONTHS[nm - 1]} is the month in progress${peak.m >= 0 ? `; best complete month so far was ${SS_MONTHS[peak.m]} at ${_ssGbp(peak.v)}` : ''}.</p>
+            <p>All customers. ${SS_MONTHS[nm - 1]} is the month in progress${peak.m >= 0 ? `; the best complete month so far was ${SS_MONTHS[peak.m]} at ${_ssGbp(peak.v)}` : ''}.</p>
           </div>
           <div class="ss-key"><span><i class="ty"></i>${yr}</span><span><i class="ly"></i>${yr - 1}</span></div>
         </div>
         <div class="ss-chart2" role="img" aria-label="${escAttr(w.sales)} by month, ${yr} against ${yr - 1}">
           ${SS_MONTHS.map((mm, m) => `
-          <div class="col${m === nm - 1 ? ' part' : ''}${m >= nm ? ' future' : ''}" title="${mm}: ${m < nm ? _ssGbp(r.months[m]) + ' in ' + yr + ', ' : ''}${_ssGbp(r.lyMonths[m])} in ${yr - 1}">
+          <div class="col${m === nm - 1 ? ' part' : ''}${m >= nm ? ' future' : ''}${m === peak.m ? ' peak' : ''}">
+            <div class="tip">${mm}<b>${m < nm ? _ssGbp(r.months[m]) : '–'}</b><span>${yr - 1}: ${_ssGbp(r.lyMonths[m])}</span></div>
             <div class="pair">
               <i class="ly" style="--h:${(r.lyMonths[m] / cMax * 100).toFixed(1)}%"></i>
               <i class="ty" style="--h:${m < nm ? (r.months[m] / cMax * 100).toFixed(1) : 0}%"></i>
@@ -453,17 +502,10 @@ async function openSpotlight(i) {
             <span>${mm}</span>
           </div>`).join('')}
         </div>
-      </div>
-
-      <div class="ss-about">
-        <div><span>Source</span><b>NetSuite, via the sales dashboard</b></div>
-        <div><span>Measure</span><b>Sales £, net of credits</b></div>
-        ${cmp ? `<div><span>Change</span><b>${win} ${yr} v ${win} ${yr - 1}, complete months only</b></div>` : ''}
-        ${upd ? `<div><span>Updated</span><b>${escHtml(upd)}</b></div>` : ''}
-      </div>
+      </section>
 
       ${prev.length ? `
-      <div class="ss-prev ss-reveal">
+      <section class="ss-prev ss-reveal">
         <h2 class="ss-h">${isNow ? 'Previous spotlights' : 'Other spotlights'}</h2>
         <p class="ss-sub">Every past topic stays here. Opening one shows today's figures for it.</p>
         <div class="ss-grid">${prev.map(({ x, n }, k) => `
@@ -479,24 +521,43 @@ async function openSpotlight(i) {
             </div>
             <div class="px-card-go">Open</div>
           </article>`).join('')}</div>
-      </div>` : ''}
+      </section>` : ''}
     </div>`;
   _ssCountUp(host);
   _ssReveal(host);
+  _ssStage();
+}
+
+// The beam: sweeps once on open, then follows the pointer over the
+// dark stage. Pointer only — touch screens keep the sweep and no more.
+function _ssStage() {
+  const st = document.getElementById('ss-stage');
+  if (!st) return;
+  const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (still) return;
+  let raf = 0;
+  st.addEventListener('pointermove', e => {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    const b = st.getBoundingClientRect();
+    const x = ((e.clientX - b.left) / b.width * 100).toFixed(1), y = ((e.clientY - b.top) / b.height * 100).toFixed(1);
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => { st.style.setProperty('--mx', x + '%'); st.style.setProperty('--my', y + '%'); st.classList.add('ss-follow'); });
+  });
+  st.addEventListener('pointerleave', () => st.classList.remove('ss-follow'));
 }
 
 // Sections below the fold hold their entrance until they scroll into
 // view. Without IntersectionObserver they simply play straight away.
 function _ssReveal(root) {
   const els = (root || document).querySelectorAll('.ss-reveal');
-  if (!('IntersectionObserver' in window)) { els.forEach(e => e.classList.add('ss-seen')); return; }
+  if (!('IntersectionObserver' in window)) { els.forEach(e => { e.classList.add('ss-seen'); _ssCountUp(e); }); return; }
   const io = new IntersectionObserver(ents => ents.forEach(en => {
-    if (en.isIntersecting) { en.target.classList.add('ss-seen'); io.unobserve(en.target); }
+    if (en.isIntersecting) { en.target.classList.add('ss-seen'); io.unobserve(en.target); _ssCountUp(en.target); }
   }), { threshold: 0, rootMargin: '0px 0px -10% 0px' });
   els.forEach(e => io.observe(e));
   // Never leave a section waiting: a tall one, a background tab or an
   // observer that never fires still shows within two seconds.
-  setTimeout(() => els.forEach(e => e.classList.add('ss-seen')), 2000);
+  setTimeout(() => els.forEach(e => { if (!e.classList.contains('ss-seen')) { e.classList.add('ss-seen'); _ssCountUp(e); } }), 2000);
 }
 
 // ── Present ───────────────────────────────────────────────────
